@@ -44,12 +44,17 @@ import * as Clipboard from 'expo-clipboard';
 import { ThemedText } from '@/components/themed-text';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import TopBar from '@/components/layout/TopBar';
+import { useRegisterTabReselect } from '@/components/tab-bar';
 import { type ThemePreference, useThemePreference } from '@/utils/theme-preference';
 import {
   restoreDismissedTips,
   useDismissedTipCount,
   useFeatureTipsEnabled,
 } from '@/utils/feature-tips';
+import {
+  setRemoveInterestedReminderEnabled,
+  useRemoveInterestedReminderEnabled,
+} from '@/utils/interested-elsewhere-reminder';
 import { startIntro } from '@/utils/intro';
 import { markSignedOut, useIsSignedIn } from '@/utils/auth-session';
 import useAuth from 'shared/hooks/useAuth';
@@ -71,6 +76,7 @@ import { PRIVACY_POLICY_URL, SUPPORT_PAGE_URL } from '@/constants/legal-links';
 import TabScreenSkeleton from '@/components/layout/TabScreenSkeleton';
 import { tabContentHoldMs } from '@/components/tab-bar';
 import { useDeferredMount } from '@/utils/use-deferred-mount';
+import { useAnimatedValue } from '@/hooks/useAnimatedValue';
 
 // Placeholder for the danger zone card's height until it has been measured
 // once. Sized from the card's own styles (18pt padding top and bottom, roughly
@@ -113,6 +119,7 @@ function SettingsScreen() {
   const [themePreference, setThemePreference] = useThemePreference();
   const [featureTipsEnabled, setFeatureTipsEnabled] = useFeatureTipsEnabled();
   const dismissedTipCount = useDismissedTipCount();
+  const removeInterestedReminderEnabled = useRemoveInterestedReminderEnabled();
   // Router instance used for in-app navigation actions.
   const router = useRouter();
   // React Query client used for cache updates and invalidation.
@@ -194,10 +201,14 @@ function SettingsScreen() {
   // The danger zone is collapsed by default so it takes an extra, deliberate
   // tap to reach account deletion.
   const [isDangerZoneOpen, setIsDangerZoneOpen] = useState(false);
-  const dangerCaretRotation = useRef(new Animated.Value(0)).current;
+  const dangerCaretRotation = useAnimatedValue(0);
   // The ScrollView is scrolled to the end once the danger zone expands, so the
   // newly revealed card is never left cut off below the fold.
   const scrollViewRef = useRef<ScrollView>(null);
+  // Tapping the Settings tab again while already on it just snaps back to the top.
+  useRegisterTabReselect('settings', () => {
+    scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+  });
   // Where the Letterboxd card sits in the scroll content, captured on layout
   // so the "no watchlist connected" digest warning can jump straight to it
   // instead of leaving someone to hunt for it themselves.
@@ -243,22 +254,34 @@ function SettingsScreen() {
   // Whether the account already has a password set (false for social-only sign-in).
   const hasPassword = user?.has_password ?? true;
 
-  // Populate editable form state once user data has loaded.
-  useEffect(() => {
-    if (!user) return;
-    // Preserves whatever's currently typed into current_password — this
-    // effect also re-fires on unrelated user-cache refreshes, and clearing a
-    // field mid-edit that the user didn't just submit would be its own bug.
+  // Populate editable form state once user data has loaded. Seeded with
+  // `undefined` rather than `user` itself — if the currentUser query has
+  // already resolved by the time this mounts (common on a release build),
+  // starting from the live value would make it equal to `user` on the very
+  // first render and the sync below would never fire, leaving the fields
+  // permanently blank.
+  const [lastSyncedUser, setLastSyncedUser] = useState<typeof user>(undefined);
+  if (user && user !== lastSyncedUser) {
+    setLastSyncedUser(user);
+    // Preserves whatever's currently typed into current_password — this also
+    // re-fires on unrelated user-cache refreshes, and clearing a field
+    // mid-edit that the user didn't just submit would be its own bug.
     setProfile((prev) => ({
       ...prev,
       display_name: user.display_name ?? '',
       email: user.email ?? '',
     }));
-  }, [user]);
+  }
 
-  useEffect(() => {
+  // Same seeding fix as lastSyncedUser above: `undefined`, not the live
+  // value, so an already-resolved user on mount still triggers the sync.
+  const [lastSyncedDigestEnabled, setLastSyncedDigestEnabled] = useState<
+    boolean | undefined
+  >(undefined);
+  if (user?.notify_watchlist_digest_enabled !== lastSyncedDigestEnabled) {
+    setLastSyncedDigestEnabled(user?.notify_watchlist_digest_enabled);
     setDigestEnabled(!!user?.notify_watchlist_digest_enabled);
-  }, [user?.notify_watchlist_digest_enabled]);
+  }
 
   // Load the saved Cineville card digits from device storage.
   useEffect(() => {
@@ -884,6 +907,23 @@ function SettingsScreen() {
                 </ThemedText>
               </TouchableOpacity>
             ) : null}
+          </View>
+          <View style={styles.card}>
+            <View style={styles.notificationToggleHeader}>
+              <View style={styles.notificationToggleTextContainer}>
+                <ThemedText style={styles.notificationToggleTitle}>
+                  Clear "interested" when you go
+                </ThemedText>
+                <ThemedText style={styles.notificationToggleDescription}>
+                  When you mark a showtime "going", ask to remove "interested" from other
+                  showtimes of the same movie.
+                </ThemedText>
+              </View>
+              <AppSwitch
+                value={removeInterestedReminderEnabled}
+                onValueChange={setRemoveInterestedReminderEnabled}
+              />
+            </View>
           </View>
         </View>
         ) : null}

@@ -67,10 +67,10 @@ export default function SeatFloorPlanPreview({
       // One snap point, at the full height: like the barcode sheet, there is
       // no half-open state worth resting in — a swipe down only ever closes it.
       snapPoints={FULL_HEIGHT_SNAP_POINTS}
-      // This can be opened from on top of the showtime sheet, so it must not
-      // stay mounted behind it after a first close (see AppBottomSheet's own
-      // doc comment on `dismissWhenClosed`).
-      dismissWhenClosed
+      // Only ever opened from on top of the showtime sheet, which therefore
+      // always registers its portal first — so this one lands in front of it
+      // without needing to be rebuilt on every open, which is what it used to
+      // do, at a cost of ~300ms before it began to move.
     >
       <BottomSheetScrollView
         contentContainerStyle={[styles.content, { paddingBottom: 24 + insets.bottom }]}
@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
   },
   // Centers the room within whatever `body` was measured at; see its usage.
   gridLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
   },

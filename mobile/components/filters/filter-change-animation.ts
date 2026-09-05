@@ -193,7 +193,12 @@ export function useImmediateFlashTint(flashNonce: number) {
   const own = useSharedValue(0);
   const started = useRef(0);
 
+  // Deliberately read/written during render, not from an effect — see the
+  // doc comment above for why. `started` never drives what is rendered, so
+  // the compiler's usual concern (stale reads across a bailout) doesn't apply.
+  // eslint-disable-next-line react-hooks/refs
   if (flashNonce !== started.current) {
+    // eslint-disable-next-line react-hooks/refs
     started.current = flashNonce;
     if (flashNonce !== 0) {
       own.value = 1;

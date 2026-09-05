@@ -10,7 +10,7 @@ import {
 } from "@/components/themed-refresh-control";
 import { DateTime } from "luxon";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useIsFocused } from "@react-navigation/native";
+import { useIsFocused } from "expo-router/react-navigation";
 import { useFetchMainPageShowtimes } from "shared/hooks/useFetchMainPageShowtimes";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 import { useFetchMovies } from "shared/hooks/useFetchMovies";
@@ -437,7 +437,8 @@ function CinemaShowtimesContent({
   );
 
   const loadMoreMovies = useScrollTriggeredLoadMore(() => {
-    if (moviesHasNextPage && !moviesFetchingNextPage) moviesFetchNextPage();
+    if (!moviesHasNextPage || moviesFetchingNextPage) return false;
+    return moviesFetchNextPage();
   });
 
   // ─── Handlers ────────────────────────────────────────────────────────────────
@@ -450,9 +451,8 @@ function CinemaShowtimesContent({
   });
 
   const handleLoadMore = () => {
-    if (showtimesHasNextPage && !showtimesFetchingNextPage) {
-      showtimesFetchNextPage();
-    }
+    if (!showtimesHasNextPage || showtimesFetchingNextPage) return false;
+    return showtimesFetchNextPage();
   };
 
   const handleClearAll = () => {
@@ -656,7 +656,7 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
   StyleSheet.create({
     flex: { flex: 1 },
     movieFeed: { padding: 16 },
-    loadingOverlay: { ...StyleSheet.absoluteFillObject },
+    loadingOverlay: { ...StyleSheet.absoluteFill },
     centerContainer: { paddingVertical: 40, alignItems: "center" },
     emptyText: { fontSize: 16, color: colors.textSecondary },
   });

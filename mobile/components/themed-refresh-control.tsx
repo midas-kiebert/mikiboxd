@@ -1,14 +1,27 @@
+import { useCallback } from 'react';
 import { RefreshControl, type RefreshControlProps } from 'react-native';
 
 import { useThemeColors } from '@/hooks/use-theme-color';
+import { triggerImpactHaptic } from '@/utils/long-press';
 
 /**
  * RefreshControl pre-wired with the app's theme colors so the pull-to-refresh
  * spinner is clearly visible on both light and dark backgrounds. Plain
  * RefreshControl renders a near-invisible gray spinner on the dark theme.
+ *
+ * It also answers the gesture. `onRefresh` fires the moment the pull crosses
+ * the threshold and the finger lets go, which is exactly the moment the pull
+ * became a refresh — so the buzz belongs here rather than in any one screen's
+ * handler. Every refreshable list in the app goes through this component, so
+ * one call covers all of them and a new screen cannot forget it.
  */
-export function ThemedRefreshControl(props: RefreshControlProps) {
+export function ThemedRefreshControl({ onRefresh, ...props }: RefreshControlProps) {
   const colors = useThemeColors();
+
+  const handleRefresh = useCallback(() => {
+    triggerImpactHaptic();
+    onRefresh?.();
+  }, [onRefresh]);
 
   return (
     <RefreshControl
@@ -16,6 +29,7 @@ export function ThemedRefreshControl(props: RefreshControlProps) {
       colors={[colors.tint]}
       progressBackgroundColor={colors.cardBackground}
       {...props}
+      onRefresh={handleRefresh}
     />
   );
 }

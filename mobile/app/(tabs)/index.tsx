@@ -2,22 +2,23 @@
  * Expo Router screen/module for (tabs) / index. It controls navigation and screen-level state for this route.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, StyleSheet, View } from 'react-native';
+import { Dimensions, FlatList, StyleSheet, View } from 'react-native';
 import {
   pullToRefreshContentStyle,
   pullToRefreshScrollProps,
   ThemedRefreshControl,
 } from '@/components/themed-refresh-control';
 import { DateTime } from 'luxon';
-import { useIsFocused, useNavigation } from '@react-navigation/native';
+import { useNavigation } from "expo-router/react-navigation";
 import TabScreenSkeleton from '@/components/layout/TabScreenSkeleton';
 import { tabContentHoldMs } from '@/components/tab-bar';
 import { useDeferredMount } from '@/utils/use-deferred-mount';
+import { useSettledFocus } from '@/utils/use-settled-focus';
 import { useRouter } from 'expo-router';
 import { useFetchMainPageShowtimes } from 'shared/hooks/useFetchMainPageShowtimes';
 import { useFetchMovies, type MovieFilters } from 'shared/hooks/useFetchMovies';
 import type { SearchField } from 'shared/client';
-import type { MovieSummaryPublic } from 'shared';
+import type { MovieSummaryPublic, ShowtimePublic } from 'shared';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import useAuth from 'shared/hooks/useAuth';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
@@ -63,6 +64,7 @@ import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 import { useSingleFireNavigation } from '@/hooks/useSingleFireNavigation';
 import { buildSnapshotTime, useSnapshotRefresh } from '@/utils/reset-infinite-query';
+import { useRegisterTabReselect } from '@/components/tab-bar';
 
 // One request per pause in typing, not one per keystroke — five requests for
 // "alkmaar" racing each other otherwise, and whichever lands last (not
@@ -86,6 +88,29 @@ const TAB_PRELOAD_GAP_MS = 600;
 /** Every tab in the bar except this one. `movies` has no button. */
 const PRELOADED_TABS = ['activity', 'friends', 'settings'] as const;
 
+/** Only the parts of the tab navigator's state the preload guard below reads. */
+type TabNavigatorState = {
+  index: number;
+  routes: { key: string; name: string }[];
+  /** TabRouter's visit log: one record per tab that has been focused. */
+  history?: { key?: string }[];
+};
+
+/**
+ * Whether the user has already been to this tab, so preloading it would be
+ * both pointless and harmful — see the preload effect.
+ *
+ * Focused *now* counts as visited, and so does anything in the navigator's
+ * history, which is where TabRouter records every tab that has been focused.
+ */
+const hasVisitedTab = (state: TabNavigatorState | undefined, name: string): boolean => {
+  if (!state) return false;
+  const route = state.routes.find((candidate) => candidate.name === name);
+  if (!route) return false;
+  if (state.routes[state.index]?.key === route.key) return true;
+  return Boolean(state.history?.some((record) => record.key === route.key));
+};
+
 /**
  * Hoisted so the feed is handed the same object every render: it reaches
  * `ShowtimeCard` through the list's `renderItem`, and a new object there
@@ -94,6 +119,13 @@ const PRELOADED_TABS = ['activity', 'friends', 'settings'] as const;
 const SHOWTIME_MODAL_OPTIONS = { inheritFilters: true } as const;
 
 const SEARCH_DEBOUNCE_MS = 280;
+
+/**
+ * How tall the stand-in for an empty/refreshing movies grid is kept — see
+ * `renderMoviesEmpty`. Roughly a screenful, so the scroll content never
+ * actually collapses during a refresh.
+ */
+const EMPTY_PLACEHOLDER_MIN_HEIGHT = Dimensions.get('window').height;
 
 function MainShowtimesScreen() {
   const colors = useThemeColors();
@@ -124,26 +156,49 @@ function MainShowtimesScreen() {
   const [feedHoldUntil, setFeedHoldUntil] = useState(0);
   const { openFiltersModal } = useFiltersModal();
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
-  const isFocused = useIsFocused();
+  const isFocused = useSettledFocus();
   // Typed by hand: `preload` belongs to the tab navigator this screen sits in,
   // and the generic `useNavigation()` result cannot know which navigator that
   // is without the app declaring its whole route map.
-  const tabNavigation = useNavigation<{ preload: (name: string) => void }>();
+  const tabNavigation = useNavigation<{
+    preload: (name: string) => void;
+    // Read, never subscribed to: `useNavigationState` would re-render this
+    // screen inside every tab switch, which is the one thing the tab work has
+    // been spent avoiding.
+    getState: () => TabNavigatorState | undefined;
+  }>();
 
   useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = [];
     PRELOADED_TABS.forEach((name, index) => {
       timers.push(
-        setTimeout(
-          () => tabNavigation.preload(name),
-          TAB_PRELOAD_START_MS + index * TAB_PRELOAD_GAP_MS
-        )
+        setTimeout(() => {
+          // Never preload a tab the user has already reached. A preload is only
+          // ever meant to build a screen nobody has opened yet, and preloading
+          // one that is already open is not the no-op it looks like: the
+          // navigator keeps the route in `preloadedRouteKeys` from then on, and
+          // nothing takes it out again. That list is what decides whether a
+          // blurred screen may be frozen and detached
+          // (`shouldFreeze: activityState === STATE_INACTIVE && !isPreloaded`
+          // in BottomTabView) — so a tab preloaded while it was in front stops
+          // being detachable for the rest of the session, and can be left
+          // painted over the tab you actually switched to.
+          //
+          // These timers land 2.5-3.7s after launch, which is comfortably
+          // inside the time it takes someone to open the app and press a tab.
+          if (hasVisitedTab(tabNavigation.getState(), name)) return;
+          tabNavigation.preload(name);
+        }, TAB_PRELOAD_START_MS + index * TAB_PRELOAD_GAP_MS)
       );
     });
     return () => timers.forEach(clearTimeout);
   }, [tabNavigation]);
   // The intro's last step highlights this screen's Filters button in place.
   const filtersButtonRef = useRef<View>(null);
+  // Scroll targets for the tab-bar reselect action (tapping Showtimes while
+  // already on it) — whichever of the two feeds is currently rendered below.
+  const moviesListRef = useRef<FlatList<MovieSummaryPublic>>(null);
+  const showtimesListRef = useRef<FlatList<ShowtimePublic>>(null);
   const introPhase = useIntroPhase();
   const isAnyBlockingOverlayOpen = useIsAnyBlockingOverlayOpen();
 
@@ -178,6 +233,7 @@ function MainShowtimesScreen() {
     setWatchlistExclude,
     watchedOnly,
     setWatchedOnly,
+    isHydrated,
   } = useSharedTabFilters();
 
   const { user } = useAuth();
@@ -254,7 +310,7 @@ function MainShowtimesScreen() {
     firstPageLimit: SHOWTIMES_FIRST_PAGE_LIMIT,
     snapshotTime,
     filters: showtimesFilters,
-    enabled: isFocused && !appliedGroupByMovie,
+    enabled: isFocused && !appliedGroupByMovie && isHydrated,
   });
 
   // ─── Movies query (Group by Movie mode) ─────────────────────────────────────
@@ -287,7 +343,7 @@ function MainShowtimesScreen() {
     firstPageLimit: MOVIES_FIRST_PAGE_LIMIT,
     snapshotTime,
     filters: movieFilters,
-    enabled: isFocused && appliedGroupByMovie,
+    enabled: isFocused && appliedGroupByMovie && isHydrated,
   });
 
   // ─── Active query ────────────────────────────────────────────────────────────
@@ -309,6 +365,19 @@ function MainShowtimesScreen() {
     fetchNextPage: moviesFetchNextPage,
   } = moviesQuery;
 
+  // A focus-gated query that has not been switched on yet is neither loading nor
+  // empty as far as react-query is concerned: no data, no fetch in flight. It is
+  // loading — the fetch is owed — and saying otherwise renders the empty state
+  // for the beat between the tab appearing and `useSettledFocus` letting the
+  // query go, with the loading panel arriving after it. `data === undefined`
+  // rather than an empty list, because a query that fetched and came back with
+  // nothing really is empty and must go on saying so from the background.
+  // `!isHydrated` gets the same treatment: the feed is held off it too (see
+  // `useSharedTabFilters`), and that wait is exactly as "loading" as the focus
+  // one is.
+  const isAwaitingShowtimes = (!isFocused || !isHydrated) && showtimesData === undefined;
+  const isAwaitingMovies = (!isFocused || !isHydrated) && moviesData === undefined;
+
   // One identity for the life of the list: a new `renderItem` re-renders every
   // cell, which would undo `MovieCard`'s memo.
   const openMovie = useCallback(
@@ -325,7 +394,12 @@ function MainShowtimesScreen() {
   );
 
   const loadMoreMovies = useScrollTriggeredLoadMore(() => {
-    if (moviesHasNextPage && !moviesFetchingNextPage) moviesFetchNextPage();
+    // `refreshing` (declared below): a refresh moves the query to a snapshot
+    // key with nothing cached, so for a beat the list is genuinely empty,
+    // which `onEndReached` reads as "the end" — see the matching guard in
+    // `ShowtimesScreen.tsx` for why that must not start a real page fetch.
+    if (refreshing || !moviesHasNextPage || moviesFetchingNextPage) return false;
+    return moviesFetchNextPage();
   });
 
   const isAppliedFilterTransitionPending =
@@ -361,6 +435,55 @@ function MainShowtimesScreen() {
     setSnapshotTime,
     isFetching: showtimesFetching || moviesFetching,
   });
+
+  // A refresh replaces the movies grid with a fresh first page — exactly the
+  // "just mounted" situation `useScrollTriggeredLoadMore` exists to protect.
+  // Without re-arming it here, the debounce stays permanently spent after the
+  // very first drag this list ever saw, so the fresh page's `onEndReached`
+  // goes straight through to a real `fetchNextPage()`, flashing the footer
+  // spinner on for a beat. (`ShowtimesListContent` does the equivalent for the
+  // showtimes-mode feed internally.)
+  const wasRefreshingRef = useRef(refreshing);
+  useEffect(() => {
+    if (refreshing && !wasRefreshingRef.current) {
+      loadMoreMovies.reset();
+    }
+    wasRefreshingRef.current = refreshing;
+  }, [refreshing, loadMoreMovies.reset]);
+
+  // A refresh triggered without the user's finger on the glass — this one —
+  // occasionally leaves iOS's RefreshControl's own scroll-position compensation
+  // stuck: it makes room for the spinner up front but doesn't always give it
+  // back once `refreshing` drops, leaving the list a few points short of 0.
+  // The pull-to-refresh gesture itself isn't affected (there the offset is
+  // already wherever the finger left it), so this only re-snaps after a
+  // reselect-triggered reload. Animated, and fired the moment `refreshing`
+  // drops rather than after a wait: in the normal case the list is already at
+  // 0 from the initial scroll in `handleTabReselect`, so this glides nowhere
+  // and is invisible; only the rare stuck case actually moves, and doing that
+  // smoothly is far less jarring than the instant jump this replaced.
+  const pendingScrollResetRef = useRef(false);
+  useEffect(() => {
+    if (!pendingScrollResetRef.current || refreshing) return;
+    pendingScrollResetRef.current = false;
+    (appliedGroupByMovie ? moviesListRef : showtimesListRef).current?.scrollToOffset({
+      offset: 0,
+      animated: true,
+    });
+  }, [refreshing, appliedGroupByMovie]);
+
+  // Tapping the Showtimes tab again while already on it: scroll whichever
+  // feed is on screen back to the top and reload it, the same way a
+  // pull-to-refresh does (no extra loading screen — just fresh rows).
+  const handleTabReselect = useCallback(() => {
+    (appliedGroupByMovie ? moviesListRef : showtimesListRef).current?.scrollToOffset({
+      offset: 0,
+      animated: true,
+    });
+    pendingScrollResetRef.current = true;
+    handleRefresh();
+  }, [appliedGroupByMovie, handleRefresh]);
+  useRegisterTabReselect('index', handleTabReselect);
 
   const handleApplyPreset = (preset: DisplayPreset) => {
     setFeedHoldUntil(Date.now() + FILTER_ROW_SETTLE_MS);
@@ -479,7 +602,9 @@ function MainShowtimesScreen() {
   // showing `moviesLoading` immediately just moved the flash from "quick
   // filter taps" to "quick presets" instead of removing it.
   const isMoviesFetchEmptyLoading =
-    (moviesLoading || moviesFetching) && !refreshing && visibleMovies.length === 0;
+    (moviesLoading || moviesFetching || isAwaitingMovies) &&
+    !refreshing &&
+    visibleMovies.length === 0;
   const showMoviesFetchLoadingLogo = useDelayedTrue(
     isMoviesFetchEmptyLoading,
     LOADING_LOGO_DELAY_MS,
@@ -508,7 +633,12 @@ function MainShowtimesScreen() {
     // the pull gesture's own spinner already covers that, and this would
     // otherwise flash up for an already-empty list mid-refresh even though
     // the loading panel is deliberately skipped for that case.
-    if (isMoviesEmptyLoading || refreshing) return null;
+    //
+    // A stand-in view rather than `null` while empty/refreshing — see the
+    // matching comment in `ShowtimesScreen.tsx`'s `renderEmpty`: an empty
+    // content container during a refresh is what let iOS's RefreshControl
+    // render a duplicate spinner mid-scrollbox.
+    if (isMoviesEmptyLoading || refreshing) return <View style={styles.emptyPlaceholder} />;
     return (
       <ThemedView style={styles.centerContainer}>
         <ThemedText style={styles.emptyText}>No movies found</ThemedText>
@@ -535,6 +665,7 @@ function MainShowtimesScreen() {
       {appliedGroupByMovie ? (
         <View style={styles.listWrapper}>
           <FlatList
+            ref={moviesListRef}
             data={visibleMovies}
             renderItem={renderMovie}
             keyExtractor={byIdKeyExtractor}
@@ -561,14 +692,16 @@ function MainShowtimesScreen() {
         </View>
       ) : (
         <ShowtimesListContent
+          listRef={showtimesListRef}
           showtimes={visibleShowtimes}
-          isLoading={showtimesLoading}
+          isLoading={showtimesLoading || isAwaitingShowtimes}
           isFetching={showtimesFetching}
           immediateEmptyLoading={isFilterTransitionLoading}
           isFetchingNextPage={showtimesFetchingNextPage}
           hasNextPage={showtimesHasNextPage}
           onLoadMore={() => {
-            if (showtimesHasNextPage && !showtimesFetchingNextPage) showtimesFetchNextPage();
+            if (!showtimesHasNextPage || showtimesFetchingNextPage) return false;
+            return showtimesFetchNextPage();
           }}
           refreshing={refreshing}
           onRefresh={handleRefresh}
@@ -596,10 +729,11 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     listWrapper: { flex: 1 },
-    loadingOverlay: { ...StyleSheet.absoluteFillObject },
+    loadingOverlay: { ...StyleSheet.absoluteFill },
     movieFeed: { ...tabletCappedContentStyle, padding: 16 },
     centerContainer: { paddingVertical: 40, alignItems: 'center' },
     emptyText: { fontSize: 16, color: colors.textSecondary },
+    emptyPlaceholder: { minHeight: EMPTY_PLACEHOLDER_MIN_HEIGHT },
   });
 
 /**

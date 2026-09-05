@@ -94,10 +94,6 @@ type SeatFloorPlanProps = {
 
 const FULL_HEIGHT_SNAP_POINTS = ["100%"];
 const LEGEND_HEIGHT = 34;
-// Long enough to clear `AppBottomSheet`'s 220ms open/close animation with a
-// margin, so the grid's native views are never created or destroyed while the
-// sheet is moving. Keep in step with that component's `animationConfigs`.
-const GRID_MOUNT_DELAY_MS = 280;
 
 // Memoized: with ~150-300 seats in a room, an inline `onPress` closure per
 // seat (recreated every render) defeated memoization entirely, so every seat
@@ -147,7 +143,7 @@ export const SeatRect = memo(function SeatRect({
   // The colour goes straight onto the seat's own view. It used to be painted
   // by a separate absolutely-filled child, which doubled the native view count
   // of the whole room for nothing — and view count is what this screen's
-  // open/close cost is made of (see `GRID_MOUNT_DELAY_MS`).
+  // open/close cost is made of (see `useSheetContentReady`).
   const badge = showFriendBadge ? (
     <View style={[styles.friendBadge, { backgroundColor: colors.blue.secondary }]}>
       <ThemedText style={styles.friendBadgeText}>{seat.friend_count}</ThemedText>
@@ -255,31 +251,6 @@ export default function SeatFloorPlan({
   const [bodySize, setBodySize] = useState({ width: 0, height: 0 });
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
 
-  // Mounting the grid is the expensive part of this screen, and the expense is
-  // not JavaScript: a room is 150-300 seats, each a native view, and native
-  // views are created and destroyed on the UI thread — the same thread the
-  // sheet's own animation runs on. Build them while the sheet is moving and
-  // they stall the very animation they are riding in on, which is why this
-  // sheet (alone among the app's sheets, none of which mount anything like
-  // this many views) felt slow to open *and* to close.
-  //
-  // So the grid is kept strictly outside both animation windows: it appears a
-  // beat after the sheet has settled, and — just as importantly — it is not
-  // unmounted when `visible` goes false, because that teardown would land on
-  // the UI thread exactly as the close animation starts. It stays up through
-  // the close and is reset once the sheet is already gone (by which point
-  // `dismissWhenClosed` has usually unmounted the content anyway, making the
-  // reset free).
-  //
-  // A plain timer rather than `InteractionManager.runAfterInteractions`: the
-  // sheet animates under Reanimated, which registers no interaction handle,
-  // so `runAfterInteractions` resolves immediately and defers nothing.
-  const [isGridReady, setIsGridReady] = useState(false);
-  useEffect(() => {
-    const timer = setTimeout(() => setIsGridReady(visible), GRID_MOUNT_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, [visible]);
-
   // What the row/seat fields held just before the keyboard came up, so Cancel
   // can put them back — see `handleCancelPress`. Read from a ref rather than
   // captured in the listener below, which is bound once.
@@ -315,21 +286,27 @@ export default function SeatFloorPlan({
     };
   }, []);
 
-  // Skipped entirely until the grid is due to render — this is the actual
-  // expensive part (not just mounting the `SeatRect`s), so computing it
-  // eagerly on mount would undo the point of deferring below.
+  // Mounting the grid is the expensive part of this screen, and the expense is
+  // not JavaScript: a room is 150-300 seats, each a native view, and native
+  // views are created and destroyed on the UI thread — the same thread the
+  // sheet's own animation runs on. None of that happens inside either
+  // animation any more, and not because of anything in here: `AppBottomSheet`
+  // holds every sheet's body back until the sheet has arrived and keeps it up
+  // through the close (see `useSheetContentReady`), which is exactly the
+  // treatment this screen used to have to arrange for itself.
   const layout = useMemo(
     () =>
-      isGridReady
-        ? layoutSeatFloorPlan(seats ?? [], { availableWidth: bodySize.width, availableHeight: bodySize.height })
-        : { width: 0, height: 0, seats: [] },
-    [isGridReady, seats, bodySize.width, bodySize.height]
+      layoutSeatFloorPlan(seats ?? [], {
+        availableWidth: bodySize.width,
+        availableHeight: bodySize.height,
+      }),
+    [seats, bodySize.width, bodySize.height]
   );
 
   // The row/seat draft, owned outright here rather than mirrored up to
   // `ShowtimeActionModal` — see this file's header comment for why. Re-seeded
   // from the saved seat on each *open* rather than only at mount: this
-  // component stays mounted between opens (`dismissWhenClosed` unmounts the
+  // component stays mounted between opens (a sheet's own `visible` unmounts the
   // sheet's portal node, not the component that renders it), so without this
   // a draft abandoned on one showtime would still be sitting in the fields
   // the next time the picker came up on another.
@@ -399,9 +376,7 @@ export default function SeatFloorPlan({
   }, [onSave, draftRow, draftNumber]);
 
   const showEmptyState = !isLoading && (isError || !seats || seats.length === 0);
-  // Only a room that actually has seats to mount is worth waiting for; with
-  // nothing heavy coming, the message says so straight away.
-  const showGridSpinner = isLoading || (!isGridReady && !showEmptyState);
+  const showGridSpinner = isLoading;
 
   // With the keyboard up, Cancel's job is to get out of text-editing, not to
   // leave the sheet: it dismisses the keyboard and puts the fields back to
@@ -440,10 +415,10 @@ export default function SeatFloorPlan({
       onClose={handleDismiss}
       title="Select your seat"
       snapPoints={FULL_HEIGHT_SNAP_POINTS}
-      // Can be opened from on top of the showtime sheet, so it must not stay
-      // mounted behind it after a first close — see AppBottomSheet's own doc
-      // comment on `dismissWhenClosed`.
-      dismissWhenClosed
+      // Only ever opened from on top of the showtime sheet, which therefore
+      // always registers its portal first — so this one lands in front of it
+      // without needing to be rebuilt on every open, which is what it used to
+      // do, at a cost of ~300ms before it began to move.
     >
       <View style={styles.container}>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
@@ -458,8 +433,8 @@ export default function SeatFloorPlan({
             ) : null}
 
             <ThemedText style={[styles.explanation, { color: colors.textSecondary }]}>
-              This shows your seat to friends going to this screening. This doesn't book
-              anything, you'll still need to get your own ticket separately.
+              This shows your seat to friends going to this screening. This doesn&apos;t book
+              anything, you&apos;ll still need to get your own ticket separately.
             </ThemedText>
 
             <View
@@ -653,7 +628,7 @@ const styles = StyleSheet.create({
   body: { flex: 1, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   // Centers the room within whatever `body` was measured at; see its usage.
   gridLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: "center",
     justifyContent: "center",
   },

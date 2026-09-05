@@ -66,8 +66,6 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 import { useCinemaSelection } from "@/hooks/useCinemaSelection";
 import { useIsSignedIn } from "@/utils/auth-session";
 import AppBottomSheet from "@/components/sheets/AppBottomSheet";
-import { useSheetContentReady } from "@/components/sheets/use-sheet-content-ready";
-import LoadingLogo from "@/components/layout/LoadingLogo";
 import { retireCinemaPresetTip } from "@/utils/feature-tips";
 import { triggerImpactHaptic, triggerSelectionHaptic } from "@/utils/long-press";
 
@@ -88,9 +86,6 @@ type CinemaFilterModalProps = {
 export type OpenCinemaModalOptions = { editPresetId?: string };
 
 type CinemaModalPage = "selection" | "presets";
-
-/** Smaller than the theme curtain's: this sits in a sheet, not a whole screen. */
-const LOADING_LOGO_SIZE = 96;
 
 const formatCinemaCount = (count: number) => `${count} cinema${count === 1 ? "" : "s"}`;
 
@@ -219,19 +214,23 @@ export default function CinemaFilterModal({
       editOpenedFromShortcutRef.current = false;
       return;
     }
-    setPresetError(null);
-    setPresetName("");
-    setIsSavePresetDialogVisible(false);
-    setIsReplacingNamedPreset(false);
-    setPresetPendingDeletion(null);
-    setSavedMyCinemasSignature(null);
+    queueMicrotask(() => {
+      setPresetError(null);
+      setPresetName("");
+      setIsSavePresetDialogVisible(false);
+      setIsReplacingNamedPreset(false);
+      setPresetPendingDeletion(null);
+      setSavedMyCinemasSignature(null);
+    });
     // An edit already under way owns the picker and the page; this effect
     // re-runs whenever the cinema list settles, which would otherwise wipe it.
     if (autoEditStartedRef.current) return;
-    setLocalSelectedCinemaSet(new Set(selectedCinemas));
-    setPresetBeingEdited(null);
-    setEditNameError(null);
-    setPage(initialPage);
+    queueMicrotask(() => {
+      setLocalSelectedCinemaSet(new Set(selectedCinemas));
+      setPresetBeingEdited(null);
+      setEditNameError(null);
+      setPage(initialPage);
+    });
   }, [visible, selectedCinemas, initialPage]);
 
   const { data: presets = [], isLoading: isPresetsLoading } = useCinemaPresets({
@@ -370,7 +369,7 @@ export default function CinemaFilterModal({
     const trimmedOrder = presetOrderIds.filter((id) => presetIdSet.has(id));
     if (trimmedOrder.length === presetOrderIds.length) return;
     const normalizedOrder = sanitizeCinemaPresetOrderIds(trimmedOrder);
-    setPresetOrderIds(normalizedOrder);
+    queueMicrotask(() => setPresetOrderIds(normalizedOrder));
     saveCinemaPresetOrder(normalizedOrder).catch(() => undefined);
   }, [presetOrderIds, namedPresets]);
 
@@ -514,7 +513,7 @@ export default function CinemaFilterModal({
     if (!target) return;
     autoEditStartedRef.current = true;
     editOpenedFromShortcutRef.current = true;
-    handleStartEditPreset(target);
+    queueMicrotask(() => handleStartEditPreset(target));
   }, [visible, initialEditPresetId, presets, handleStartEditPreset]);
 
   const persistPresetOrder = useCallback((orderedIds: readonly string[]) => {
@@ -581,13 +580,6 @@ export default function CinemaFilterModal({
     cinemas === undefined ||
     (sessionCinemaIds === undefined && favoriteCinemaIds === undefined && isFavoritesLoading);
 
-  // ~80 cinema chips are several hundred native views, and gorhom builds its
-  // children before the sheet starts to rise — so mounting them on open made
-  // the sheet answer the tap a beat late. Nothing is mounted here until the
-  // sheet is up; the panel below stands in until then.
-  const isSheetContentReady = useSheetContentReady(visible);
-  const isWaitingForContent = isLoadingSelection || !isSheetContentReady;
-
   return (
     <>
       <AppBottomSheet
@@ -597,25 +589,23 @@ export default function CinemaFilterModal({
         handleAndroidBack={handleAndroidBack}
         title={page === "presets" ? "Manage presets" : "Cinemas"}
         backgroundColor={colors.nestedModalBackground}
-        // This sheet opens both on its own (the cinema chip) and on top of the
-        // Filters sheet, so it has to re-mount each time to stay in front — see
-        // AppBottomSheet's `dismissWhenClosed`.
-        dismissWhenClosed
+        // Opens both on its own (the cinema chip) and on top of the Filters
+        // sheet, so it has to draw in front of it. That used to mean rebuilding
+        // the sheet on every open, which cost ~400ms before it started to move;
+        // warming instead registers its portal after the Filters sheet's, once,
+        // and every open after that is a single frame. It must therefore stay
+        // *after* FiltersModal in FiltersModalProvider's JSX.
+        warmUpOnMount
+        // ~80 cinema chips are several hundred native views, so this sheet is
+        // the reason AppBottomSheet defers content at all: it holds the chips
+        // back until the sheet is up, and this keeps the panel there past that
+        // for as long as there is nothing to put in them.
+        contentReady={!isLoadingSelection}
+        loadingLabel="Loading cinemas…"
       >
         {/* @gorhom/portal does not forward React context; re-provide QueryClient for hooks inside. */}
         <QueryClientProvider client={queryClient}>
-          {isWaitingForContent ? (
-            <LoadingLogo
-              style={styles.loadingContainer}
-              label="Loading cinemas…"
-              tintColor={colors.tint}
-              labelColor={colors.textSecondary}
-              logoSize={LOADING_LOGO_SIZE}
-              // Most opens are over before the fade finishes, so a fast one
-              // shows next to nothing rather than a blink of logo.
-              fadeIn
-            />
-          ) : page === "presets" ? (
+          {page === "presets" ? (
             /* ── Manage presets page ── */
             <BottomSheetScrollView
               contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomInset }]}
@@ -1304,7 +1294,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       justifyContent: "center",
       paddingHorizontal: 20,
     },
-    dialogBackdropPressable: { ...StyleSheet.absoluteFillObject },
+    dialogBackdropPressable: { ...StyleSheet.absoluteFill },
     dialogCard: {
       borderRadius: 16,
       borderWidth: 1,

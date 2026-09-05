@@ -12,7 +12,7 @@
  * hear from, and `useUserModeration` records them as separate backend rows so
  * lifting the block later never withdraws the report.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Animated, Modal, StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import type { UserReportReason } from "shared";
@@ -20,6 +20,7 @@ import type { UserReportReason } from "shared";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { triggerSelectionHaptic } from "@/utils/long-press";
+import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
 const FADE_IN_MS = 140;
 const FADE_OUT_MS = 120;
@@ -51,7 +52,10 @@ export default function ReportUserDialog({
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const [isMounted, setIsMounted] = useState(visible);
-  const anim = useRef(new Animated.Value(0)).current;
+  if (visible && !isMounted) {
+    setIsMounted(true);
+  }
+  const anim = useAnimatedValue(0);
   const scale = useMemo(
     () => anim.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }),
     [anim]
@@ -59,7 +63,6 @@ export default function ReportUserDialog({
 
   useEffect(() => {
     if (visible) {
-      setIsMounted(true);
       anim.setValue(0);
       Animated.timing(anim, { toValue: 1, duration: FADE_IN_MS, useNativeDriver: true }).start();
       return;

@@ -77,49 +77,98 @@ export function useSwipePager({
   // Where the pager was last sent from JS, so neither `goTo` nor the sync below
   // restarts a tween that is already running to the same page.
   const settledRef = useRef(index);
+  // The most recently rendered `index`, updated in the render body rather than
+  // an effect — so it is current by the time *any* effect actually runs, no
+  // matter how late. The sync effect below reads this instead of its own
+  // `index` closure: under load (three feed pages re-rendering, a burst of
+  // queries), React can badly backlog a passive effect's scheduling, and one
+  // finally running late would otherwise still be holding the `index` from
+  // whatever render it was scheduled by — stale relative to a newer `commit()`
+  // that has since moved `settledRef` on. Diffing that stale value against the
+  // now-current `settledRef` reads as an outside change to catch up to, and
+  // "corrects" the pager backward to the old page before a second, newer
+  // effect corrects it forward again — the pager visibly swapping pages on
+  // its own, well after the user's gesture had already settled.
+  const latestIndexRef = useRef(index);
+  latestIndexRef.current = index;
 
   const settle = useCallback(
     (target: number) => {
       "worklet";
-      progress.value = withTiming(target, {
-        duration: THUMB_SLIDE_MS,
-        easing: THUMB_SLIDE_EASING,
-      });
+      progress.set(
+        withTiming(target, {
+          duration: THUMB_SLIDE_MS,
+          easing: THUMB_SLIDE_EASING,
+        })
+      );
     },
     [progress]
   );
 
-  const commit = useCallback(
-    (target: number) => {
-      settledRef.current = target;
-      onIndexChange(target);
-    },
-    [onIndexChange]
-  );
+  // Takes no argument on purpose: `runOnJS` is asynchronous, and a fast
+  // back-and-forth can queue several of these before the JS thread catches
+  // up. A `target` captured on the UI thread at the moment the gesture ended
+  // would still be delivered, stale, once its turn came — applying a page
+  // the pager had already moved past, which read as it swapping pages on its
+  // own after the user had let go. Reading `restingIndex` fresh here instead
+  // means whichever commit call actually runs applies the true current
+  // position, so a stale, superseded one is just a no-op.
+  const commit = useCallback(() => {
+    const current = restingIndex.value;
+    if (__DEV__) {
+      console.log(
+        `[pager ${Date.now() % 100000}] commit(): restingIndex=${current} settledRef=${settledRef.current}` +
+          (settledRef.current === current ? " -> no-op" : " -> onIndexChange")
+      );
+    }
+    if (settledRef.current === current) return;
+    settledRef.current = current;
+    onIndexChange(current);
+  }, [onIndexChange, restingIndex]);
 
   const goTo = useCallback(
     (target: number) => {
+      if (__DEV__) {
+        console.log(
+          `[pager ${Date.now() % 100000}] goTo(${target}): settledRef=${settledRef.current}` +
+            (settledRef.current === target ? " -> no-op" : " -> animate")
+        );
+      }
       if (settledRef.current === target) return;
       settledRef.current = target;
-      restingIndex.value = target;
-      progress.value = withTiming(target, {
-        duration: THUMB_SLIDE_MS,
-        easing: THUMB_SLIDE_EASING,
-      });
+      restingIndex.set(target);
+      progress.set(
+        withTiming(target, {
+          duration: THUMB_SLIDE_MS,
+          easing: THUMB_SLIDE_EASING,
+        })
+      );
     },
     [progress, restingIndex]
   );
 
   // Catches every index change that did not come through the gesture or `goTo`:
-  // a deep link, or state restored from elsewhere.
+  // a deep link, or state restored from elsewhere. Reads `latestIndexRef`
+  // rather than closing over `index` directly — see the ref's own comment for
+  // why a stale closure here is what caused the pager to swap pages on its
+  // own after a fast, repeated swipe.
   useEffect(() => {
-    if (settledRef.current === index) return;
-    settledRef.current = index;
-    restingIndex.value = index;
-    progress.value = withTiming(index, {
-      duration: THUMB_SLIDE_MS,
-      easing: THUMB_SLIDE_EASING,
-    });
+    const target = latestIndexRef.current;
+    if (__DEV__) {
+      console.log(
+        `[pager ${Date.now() % 100000}] sync effect: index=${target} settledRef=${settledRef.current}` +
+          (settledRef.current === target ? " -> no-op" : " -> animate")
+      );
+    }
+    if (settledRef.current === target) return;
+    settledRef.current = target;
+    restingIndex.set(target);
+    progress.set(
+      withTiming(target, {
+        duration: THUMB_SLIDE_MS,
+        easing: THUMB_SLIDE_EASING,
+      })
+    );
   }, [index, progress, restingIndex]);
 
   const panGesture = useMemo(
@@ -133,11 +182,11 @@ export function useSwipePager({
           const dragged = restingIndex.value - event.translationX / pageWidth;
           const last = pageCount - 1;
           if (dragged < 0) {
-            progress.value = dragged * OVERSCROLL_RESISTANCE;
+            progress.set(dragged * OVERSCROLL_RESISTANCE);
           } else if (dragged > last) {
-            progress.value = last + (dragged - last) * OVERSCROLL_RESISTANCE;
+            progress.set(last + (dragged - last) * OVERSCROLL_RESISTANCE);
           } else {
-            progress.value = dragged;
+            progress.set(dragged);
           }
         })
         .onEnd((event) => {
@@ -147,13 +196,19 @@ export function useSwipePager({
           const direction = Math.sign(flicked ? event.velocityX : covered);
           const from = restingIndex.value;
           const target = Math.min(Math.max(from - (turned ? direction : 0), 0), pageCount - 1);
+          if (__DEV__) {
+            console.log(
+              `[pager] onEnd: from=${from} target=${target} covered=${covered.toFixed(2)} ` +
+                `velocityX=${event.velocityX.toFixed(0)} flicked=${flicked}`
+            );
+          }
           settle(target);
           if (target !== from) {
             // Set here rather than waiting for the commit to come back round
             // through React, so a second swipe started before that lands still
             // measures itself from the page this one is settling on.
-            restingIndex.value = target;
-            runOnJS(commit)(target);
+            restingIndex.set(target);
+            runOnJS(commit)();
           }
         }),
     [pageCount, pageWidth, settle, commit, progress, restingIndex]

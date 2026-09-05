@@ -11,8 +11,9 @@
  * It is intentionally decoupled from the app's (async) theme preference so it
  * never recolours mid-display.
  */
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { Animated, Appearance, Easing, StyleSheet } from 'react-native';
+import { useAnimatedValue } from '@/hooks/useAnimatedValue';
 
 // Mirrors the native splash background colours configured in app.json.
 const SPLASH_LIGHT_BG = '#ffffff';
@@ -31,8 +32,8 @@ type AppSplashProps = {
 };
 
 export default function AppSplash({ active, onHidden, onReady }: AppSplashProps) {
-  const opacity = useRef(new Animated.Value(1)).current;
-  const pulse = useRef(new Animated.Value(0)).current;
+  const opacity = useAnimatedValue(1);
+  const pulse = useAnimatedValue(0);
   const backgroundColor =
     Appearance.getColorScheme() === 'dark' ? SPLASH_DARK_BG : SPLASH_LIGHT_BG;
 

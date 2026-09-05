@@ -2,7 +2,7 @@
  * Layout-level provider that keeps one FiltersModal instance permanently mounted.
  * Screens call openFiltersModal() via the context hook to open it.
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { DateTime } from 'luxon';
 import { useQuery } from '@tanstack/react-query';
@@ -18,22 +18,12 @@ import { getSelectedStatusesFromShowtimeFilter } from '@/components/filters/shar
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
 import { getRuntimeBoundsFromSelections } from '@/components/filters/runtime-range-utils';
 import { useRegisterBlockingOverlay } from '@/utils/blocking-overlays';
+import { FiltersModalContext, type OpenConfig } from '@/components/filters/filters-modal-context';
 
-type OpenConfig = { showGroupByMovie?: boolean; showPresets?: boolean };
-
-type FiltersModalContextValue = {
-  openFiltersModal: (config?: OpenConfig) => void;
-  openCinemaModal: (options?: OpenCinemaModalOptions) => void;
-};
-
-const FiltersModalContext = createContext<FiltersModalContextValue>({
-  openFiltersModal: () => {},
-  openCinemaModal: () => {},
-});
-
-export function useFiltersModal() {
-  return useContext(FiltersModalContext);
-}
+// Re-exported so the many screens that already import the hook from here keep
+// working; the context itself lives in its own module to break the
+// Provider -> FiltersModal -> Provider require cycle.
+export { useFiltersModal } from '@/components/filters/filters-modal-context';
 
 export function FiltersModalProvider({ children }: { children: ReactNode }) {
   const [visible, setVisible] = useState(false);
@@ -156,19 +146,24 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
     setCinemaEditPresetId(null);
   }, []);
   const handleCloseFiltersModal = useCallback(() => setVisible(false), []);
+
+  // Memoised, so opening or closing either sheet doesn't hand every consumer of
+  // this context a new object and re-render the tab screens behind the sheet in
+  // the same commit the sheet is trying to rise in.
+  const value = useMemo(
+    () => ({ openFiltersModal, openCinemaModal }),
+    [openFiltersModal, openCinemaModal]
+  );
   // Only show the back button (→ step back to Filters) when Filters is also open.
   const cinemaModalBack = visible ? handleCloseCinemaModal : undefined;
 
   return (
-    <FiltersModalContext.Provider value={{ openFiltersModal, openCinemaModal }}>
+    <FiltersModalContext.Provider value={value}>
       {children}
-      <CinemaFilterModal
-        visible={cinemaModalVisible}
-        onClose={handleCloseCinemaModal}
-        onBack={cinemaModalBack}
-        initialPage="selection"
-        initialEditPresetId={cinemaEditPresetId}
-      />
+      {/* Order matters and is load-bearing: both sheets warm their portals at
+          mount, in mount order, and the cinema sheet has to draw in front of
+          the filters sheet it opens from — so it must stay below it here. See
+          `components/sheets/sheet-warm-up.ts`. */}
       <FiltersModal
         visible={visible}
         onClose={handleCloseFiltersModal}
@@ -202,6 +197,13 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
         setWatchedOnly={setWatchedOnly}
         showLists
         resultCount={resultCount}
+      />
+      <CinemaFilterModal
+        visible={cinemaModalVisible}
+        onClose={handleCloseCinemaModal}
+        onBack={cinemaModalBack}
+        initialPage="selection"
+        initialEditPresetId={cinemaEditPresetId}
       />
     </FiltersModalContext.Provider>
   );

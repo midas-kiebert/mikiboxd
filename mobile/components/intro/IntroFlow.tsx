@@ -36,6 +36,7 @@ import { useThemeColors } from "@/hooks/use-theme-color";
 import { closeAllBlockingOverlays } from "@/utils/blocking-overlays";
 import { completeIntroPages, endIntro, INTRO_PAGE_ORDER } from "@/utils/intro";
 import { triggerSelectionHaptic } from "@/utils/long-press";
+import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
 /** Space above and below the progress/skip row, on top of the safe area. */
 const CHROME_VERTICAL_PADDING = 12;
@@ -63,15 +64,15 @@ export default function IntroFlow() {
   // would be pointing at the wrong button until the new measurement lands.
   const [tourTargetRect, setTourTargetRect] = useState<SpotlightRect | null>(null);
 
-  const layerOpacity = useRef(new Animated.Value(1)).current;
-  const chromeOpacity = useRef(new Animated.Value(0)).current;
+  const layerOpacity = useAnimatedValue(1);
+  const chromeOpacity = useAnimatedValue(0);
   // The first page is painted outright, not faded in. The Modal takes the
   // screen instantly and fills it with `containerOpaque`, so a page starting at
   // zero meant a beat of bare background before anything appeared — read as the
   // walkthrough flashing up, vanishing and coming back. Only the page *changes*
   // below are animated; `hasEnteredRef` is what tells the two apart.
-  const pageOpacity = useRef(new Animated.Value(1)).current;
-  const pageShift = useRef(new Animated.Value(0)).current;
+  const pageOpacity = useAnimatedValue(1);
+  const pageShift = useAnimatedValue(0);
   const hasEnteredRef = useRef(false);
   // Guards the exit against a second tap landing mid-fade.
   const isLeavingRef = useRef(false);

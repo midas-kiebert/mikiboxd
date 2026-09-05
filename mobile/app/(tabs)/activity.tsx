@@ -29,14 +29,13 @@
  * swipe was meant to avoid.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { StyleSheet, TouchableOpacity, View, useWindowDimensions } from "react-native";
+import { FlatList, StyleSheet, TouchableOpacity, View, useWindowDimensions } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { GestureDetector } from "react-native-gesture-handler";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useIsFocused } from "@react-navigation/native";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { MeService } from "shared";
+import { MeService, type ShowtimePublic } from "shared";
 import { useFetchMainPageShowtimes } from "shared/hooks/useFetchMainPageShowtimes";
 import { useFetchAgenda } from "shared/hooks/useFetchAgenda";
 import { useFetchFriends } from "shared/hooks/useFetchFriends";
@@ -45,7 +44,9 @@ import CinevilleCardButton from "@/components/cineville/CinevilleCardButton";
 import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
 import TabScreenSkeleton from "@/components/layout/TabScreenSkeleton";
 import { tabContentHoldMs } from "@/components/tab-bar";
+import { SHOWTIMES_FIRST_PAGE_LIMIT } from "@/components/feeds/feed-paging";
 import { useDeferredMount } from "@/utils/use-deferred-mount";
+import { useSettledFocus } from "@/utils/use-settled-focus";
 import TopBar from "@/components/layout/TopBar";
 import { ThemedText } from "@/components/themed-text";
 import SignedOutPanel from "@/components/auth/SignedOutPanel";
@@ -56,6 +57,7 @@ import { useSwipePager } from "@/hooks/useSwipePager";
 import { useIsSignedIn } from "@/utils/auth-session";
 import { buildSnapshotTime, useSnapshotRefresh } from "@/utils/reset-infinite-query";
 import { triggerSelectionHaptic } from "@/utils/long-press";
+import { useRegisterTabReselect } from "@/components/tab-bar";
 
 /** What signing in would put on this tab, in the order it would appear. */
 const ACTIVITY_HIGHLIGHTS = [
@@ -86,13 +88,12 @@ function ActivityScreen() {
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const queryClient = useQueryClient();
-  const isFocused = useIsFocused();
+  const isFocused = useSettledFocus();
   const { width: pageWidth } = useWindowDimensions();
   // A feed of who's doing what is a feed about accounts, so there is nothing
   // here for a guest — same shape as Friends, which stays in the bar and
   // explains itself instead of disappearing.
   const isSignedIn = useIsSignedIn();
-  const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
 
   const { mode: deepLinkMode } = useLocalSearchParams<{ mode?: string | string[] }>();
   const requestedMode = useMemo((): ActivityMode | null => {
@@ -102,11 +103,13 @@ function ActivityScreen() {
       : null;
   }, [deepLinkMode]);
   const [mode, setMode] = useState<ActivityMode>(requestedMode ?? "all");
-
-  useEffect(() => {
-    if (requestedMode === null) return;
-    setMode(requestedMode);
-  }, [requestedMode]);
+  const [prevRequestedMode, setPrevRequestedMode] = useState(requestedMode);
+  if (requestedMode !== prevRequestedMode) {
+    setPrevRequestedMode(requestedMode);
+    if (requestedMode !== null) {
+      setMode(requestedMode);
+    }
+  }
 
   const modeIndex = Math.max(
     0,
@@ -161,11 +164,31 @@ function ActivityScreen() {
     onIndexChange: handleChangeIndex,
     pageWidth,
   });
-  goToPageRef.current = goTo;
+  useEffect(() => {
+    goToPageRef.current = goTo;
+  });
 
   const pagerStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: -progress.value * pageWidth }],
   }));
+
+  // Each page registers its own scroll/reload functions here (keyed by its
+  // mode) so the tab-bar reselect handler below can reach whichever one is
+  // currently on screen without the three feeds sharing a query/snapshot.
+  const pageControlsRef = useRef<
+    Partial<Record<ActivityMode, { scrollToTop: () => void; reload: () => void }>>
+  >({});
+  const registerPageControls = useCallback(
+    (pageMode: ActivityMode, controls: { scrollToTop: () => void; reload: () => void }) => {
+      pageControlsRef.current[pageMode] = controls;
+    },
+    []
+  );
+  useRegisterTabReselect("activity", () => {
+    const controls = pageControlsRef.current[mode];
+    controls?.scrollToTop();
+    controls?.reload();
+  });
 
   // Render/output using the state and derived values prepared above.
   if (!isSignedIn) {
@@ -195,16 +218,16 @@ function ActivityScreen() {
         <GestureDetector gesture={panGesture}>
           <Animated.View
             style={[styles.pager, { width: pageWidth * MODE_OPTIONS.length }, pagerStyle]}
+            renderToHardwareTextureAndroid
           >
             {MODE_OPTIONS.map((option) => (
               <View key={option.value} style={{ width: pageWidth }}>
                 <ActivityPage
                   mode={option.value}
                   isFocused={isFocused}
-                  snapshotTime={snapshotTime}
-                  setSnapshotTime={setSnapshotTime}
                   colors={colors}
                   styles={styles}
+                  registerControls={registerPageControls}
                 />
               </View>
             ))}
@@ -220,10 +243,12 @@ function ActivityScreen() {
 type ActivityPageProps = {
   mode: ActivityMode;
   isFocused: boolean;
-  snapshotTime: string;
-  setSnapshotTime: (snapshotTime: string) => void;
   colors: ThemeColors;
   styles: ReturnType<typeof createStyles>;
+  registerControls: (
+    mode: ActivityMode,
+    controls: { scrollToTop: () => void; reload: () => void }
+  ) => void;
 };
 
 /**
@@ -234,18 +259,19 @@ type ActivityPageProps = {
  * concerned — a page being dragged into view has to already hold its own feed.
  * The two `useFetch…` hooks are called unconditionally and one of them is left
  * disabled, since which page this is never changes for the life of the mount.
+ *
+ * `snapshotTime` lives here rather than on the screen above for the same
+ * reason: all three pages are mounted at once, and it is part of every query
+ * key. A snapshot shared across pages would mean a pull-to-refresh on one
+ * moving the other two's queries to an empty key too — reloading all three
+ * feeds for a refresh of one.
  */
-function ActivityPage({
-  mode,
-  isFocused,
-  snapshotTime,
-  setSnapshotTime,
-  colors,
-  styles,
-}: ActivityPageProps) {
+function ActivityPage({ mode, isFocused, colors, styles, registerControls }: ActivityPageProps) {
   const router = useRouter();
   const isYou = mode === "you";
   const isFriendsOnly = mode === "friends";
+  const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
+  const listRef = useRef<FlatList<ShowtimePublic>>(null);
 
   const filters = useMemo(
     () => ({
@@ -258,6 +284,7 @@ function ActivityPage({
 
   const mainQuery = useFetchMainPageShowtimes({
     limit: 20,
+    firstPageLimit: SHOWTIMES_FIRST_PAGE_LIMIT,
     snapshotTime,
     filters,
     enabled: isFocused && !isYou,
@@ -269,6 +296,7 @@ function ActivityPage({
   // no toggle for it any more.
   const agendaQuery = useFetchAgenda({
     limit: 20,
+    firstPageLimit: SHOWTIMES_FIRST_PAGE_LIMIT,
     snapshotTime,
     includeInterested: true,
     includeInvited: true,
@@ -279,7 +307,18 @@ function ActivityPage({
     () => (isYou ? agendaQuery.data : mainQuery.data)?.pages.flat() ?? [],
     [isYou, agendaQuery.data, mainQuery.data]
   );
-  const isLoading = isYou ? agendaQuery.isLoading : mainQuery.isLoading;
+  // A query that has not been switched on yet is neither loading nor empty as
+  // far as react-query is concerned: it has no data and no fetch in flight. It
+  // is loading — the fetch is owed. Without this the page renders its "nothing
+  // lined up" copy for the beat between the tab appearing and `useSettledFocus`
+  // letting the query go, and the loading panel arrives *after* the empty
+  // state, which reads as the screen changing its mind.
+  //
+  // `data === undefined`, not an empty list: a query that has fetched and come
+  // back with nothing really is empty, and must keep saying so while the tab is
+  // in the background rather than flashing the panel on the way back to it.
+  const isAwaitingFocus = !isFocused && (isYou ? agendaQuery.data : mainQuery.data) === undefined;
+  const isLoading = (isYou ? agendaQuery.isLoading : mainQuery.isLoading) || isAwaitingFocus;
   const isFetching = isYou ? agendaQuery.isFetching : mainQuery.isFetching;
   const isFetchingNextPage = isYou ? agendaQuery.isFetchingNextPage : mainQuery.isFetchingNextPage;
   const hasNextPage = isYou ? agendaQuery.hasNextPage : mainQuery.hasNextPage;
@@ -287,12 +326,44 @@ function ActivityPage({
 
   const { refreshing, handleRefresh } = useSnapshotRefresh({ setSnapshotTime, isFetching });
 
+  // A refresh triggered without the user's finger on the glass — this one —
+  // occasionally leaves iOS's RefreshControl's own scroll-position compensation
+  // stuck: it makes room for the spinner up front but doesn't always give it
+  // back once `refreshing` drops, leaving the list a few points short of 0.
+  // Re-snapping once the reload lands (see `reload` below) fixes it; ordinary
+  // pull-to-refresh isn't affected, so it isn't hooked in here. Animated, and
+  // fired the moment `refreshing` drops rather than after a wait: in the
+  // normal case the list is already at 0 from `scrollToTop` below, so this
+  // glides nowhere and is invisible; only the rare stuck case actually moves.
+  const pendingScrollResetRef = useRef(false);
+  useEffect(() => {
+    if (!pendingScrollResetRef.current || refreshing) return;
+    pendingScrollResetRef.current = false;
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+  }, [refreshing]);
+
+  useEffect(() => {
+    registerControls(mode, {
+      scrollToTop: () => listRef.current?.scrollToOffset({ offset: 0, animated: true }),
+      reload: () => {
+        pendingScrollResetRef.current = true;
+        handleRefresh();
+      },
+    });
+  }, [mode, registerControls, handleRefresh]);
+
   // Distinguishes "you have no friends yet" from "your friends have nothing
   // on right now" — the empty state and its CTA differ between the two. Not
   // needed for "You", which has its own, friend-independent empty state.
-  const { data: friends, isFetching: isFetchingFriends } = useFetchFriends({ enabled: !isYou });
+  // `isLoading`, never `isFetching`: react-query only re-renders for the result
+  // fields a component actually reads, and `isFetching` moves on *every* fetch of
+  // the shared friends query — including the one the showtime sheet starts when
+  // it opens, which re-rendered all three pages of this pager twice per open for
+  // ~400ms of work behind a sheet nobody was looking at. `isLoading` is
+  // `isFetching && data === undefined`, which is exactly what this needed
+  // anyway, and it does not move on a background refetch.
+  const { data: friends, isLoading: isLoadingFriends } = useFetchFriends({ enabled: !isYou });
   const hasFriends = (friends?.length ?? 0) > 0;
-  const isLoadingFriends = isFetchingFriends && friends === undefined;
 
   const goToAddFriends = () => {
     triggerSelectionHaptic();
@@ -337,14 +408,14 @@ function ActivityPage({
   const emptyExtra = isYou ? (
     <View style={styles.emptyActionRow}>
       <ThemedText style={styles.emptyExtraText}>
-        See what's playing and mark something you're going to.
+        See what&apos;s playing and mark something you&apos;re going to.
       </ThemedText>
       {browseShowtimesButton}
     </View>
   ) : isLoadingFriends ? null : hasFriends ? (
     <View style={styles.emptyActionRow}>
       <ThemedText style={styles.emptyExtraText}>
-        Nobody's marked a screening going or interested yet.
+        Nobody&apos;s marked a screening going or interested yet.
       </ThemedText>
       <View style={styles.emptyActionButtonRow}>
         {mode === "all" ? browseShowtimesButton : null}
@@ -354,7 +425,7 @@ function ActivityPage({
   ) : (
     <View style={styles.emptyActionRow}>
       <ThemedText style={styles.emptyExtraText}>
-        Add friends to see what they're going to.
+        Add friends to see what they&apos;re going to.
       </ThemedText>
       <View style={styles.emptyActionButtonRow}>
         {mode === "all" ? browseShowtimesButton : null}
@@ -365,13 +436,15 @@ function ActivityPage({
 
   return (
     <ShowtimesListContent
+      listRef={listRef}
       showtimes={showtimes}
       isLoading={isLoading}
       isFetching={isFetching}
       isFetchingNextPage={isFetchingNextPage}
       hasNextPage={hasNextPage}
       onLoadMore={() => {
-        if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+        if (!hasNextPage || isFetchingNextPage) return false;
+        return fetchNextPage();
       }}
       refreshing={refreshing}
       onRefresh={handleRefresh}

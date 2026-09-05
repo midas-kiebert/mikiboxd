@@ -14,7 +14,8 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, AppState, Linking } from "react-native";
-import * as Notifications from "expo-notifications";
+import { Notifications } from '@/utils/notifications-module';
+import type * as NotificationsTypes from 'expo-notifications';
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type NotificationChannel, MeService, type UserUpdate } from "shared/client";
 import useAuth from "shared/hooks/useAuth";
@@ -181,11 +182,11 @@ export const openSystemSettings = async (): Promise<void> => {
 
 export type SystemNotificationPermission = {
   /** Null until the first read resolves. */
-  status: Notifications.PermissionStatus | null;
+  status: NotificationsTypes.PermissionStatus | null;
   isGranted: boolean;
   /** False once the user has refused and the OS will not prompt again. */
   canAskAgain: boolean;
-  apply: (permissions: Notifications.NotificationPermissionsStatus) => void;
+  apply: (permissions: NotificationsTypes.NotificationPermissionsStatus) => void;
 };
 
 /**
@@ -198,10 +199,10 @@ export type SystemNotificationPermission = {
  * worse than no UI at all.
  */
 export const useSystemNotificationPermission = (): SystemNotificationPermission => {
-  const [status, setStatus] = useState<Notifications.PermissionStatus | null>(null);
+  const [status, setStatus] = useState<NotificationsTypes.PermissionStatus | null>(null);
   const [canAskAgain, setCanAskAgain] = useState(true);
 
-  const apply = useCallback((permissions: Notifications.NotificationPermissionsStatus) => {
+  const apply = useCallback((permissions: NotificationsTypes.NotificationPermissionsStatus) => {
     setStatus(permissions.status);
     setCanAskAgain(permissions.canAskAgain);
   }, []);
@@ -229,7 +230,7 @@ export const useSystemNotificationPermission = (): SystemNotificationPermission 
 export type NotificationPreferencesController = {
   toggles: NotificationToggleDescriptor[];
   /** Null until the first permission read resolves. */
-  permissionStatus: Notifications.PermissionStatus | null;
+  permissionStatus: NotificationsTypes.PermissionStatus | null;
   isSystemPermissionGranted: boolean;
   /** False once the user has refused and the OS will not prompt again. */
   canAskSystemPermission: boolean;

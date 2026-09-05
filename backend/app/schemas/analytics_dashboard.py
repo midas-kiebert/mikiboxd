@@ -8,6 +8,7 @@ class OpensByDayUser(SQLModel):
     user_id: UUID
     user_email: str
     platform: str | None
+    app_version: str | None
     count: int
 
 

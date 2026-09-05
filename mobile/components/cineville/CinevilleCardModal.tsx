@@ -56,10 +56,17 @@ export default function CinevilleCardModal({
       // every pixel it can get, and there is no half-open state worth resting
       // in — a swipe down is only ever meant to close it.
       snapPoints={FULL_HEIGHT_SNAP_POINTS}
-      // Nothing here is expensive to build, so the sheet is thrown away on close
-      // to keep its portal slot fresh — it can be opened from a tab that has
-      // other sheets of its own.
-      dismissWhenClosed
+      // Built up front rather than on the first tap. This sheet is held up to a
+      // scanner at a door, so the one open that has to be quick is often the
+      // first one of the session — and building it on demand cost 330ms before
+      // it began to move, with the JS thread completely idle throughout. It is
+      // never opened on top of another sheet, so warming it carries no
+      // stacking constraint; it only has to keep its own place in the queue.
+      warmUpOnMount
+      // Nor is its content deferred: a barcode and a few lines cannot cost the
+      // sheet its rise, and holding them back would only mean the pass — the
+      // entire point of the sheet — shows up late.
+      deferContent={false}
     >
       <BottomSheetScrollView
         contentContainerStyle={[styles.content, { paddingBottom: bottomInset + 24 }]}

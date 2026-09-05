@@ -72,7 +72,7 @@ import { useSwipePager } from '@/hooks/useSwipePager';
 import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
 import { triggerSelectionHaptic } from '@/utils/long-press';
 import TabScreenSkeleton from '@/components/layout/TabScreenSkeleton';
-import { tabContentHoldMs } from '@/components/tab-bar';
+import { tabContentHoldMs, useRegisterTabReselect } from '@/components/tab-bar';
 import { useDeferredMount } from '@/utils/use-deferred-mount';
 
 /** What signing in would put on this tab, in the order it would appear. */
@@ -151,11 +151,13 @@ function FriendsScreen() {
   // Friends first: it is what almost every visit is for, and it is where a
   // pending request now surfaces without having to be looked for.
   const [mode, setMode] = useState<FriendsMode>(requestedMode ?? 'friends');
-
-  useEffect(() => {
-    if (requestedMode === null) return;
-    setMode(requestedMode);
-  }, [requestedMode]);
+  const [prevRequestedMode, setPrevRequestedMode] = useState(requestedMode);
+  if (requestedMode !== prevRequestedMode) {
+    setPrevRequestedMode(requestedMode);
+    if (requestedMode !== null) {
+      setMode(requestedMode);
+    }
+  }
 
   const isDiscovering = mode === 'discover';
   const modeIndex = Math.max(
@@ -189,10 +191,15 @@ function FriendsScreen() {
   // Not gated on the mode any more: the two modes are pages of one pager, and
   // the Friends page has to already hold its rows when the finger drags it into
   // view rather than filling in behind the swipe.
-  const { data: friendsData, isFetching: isFetchingFriends } = useFetchFriends({
+  // `isLoading`, never `isFetching`: react-query only re-renders for the result
+  // fields a component actually reads, and `isFetching` moves on every fetch of
+  // these shared queries — including the ones other screens start. Reading it
+  // here re-rendered this whole screen twice on each showtime-sheet open, from
+  // behind the sheet. `isLoading` only moves while there is no data yet.
+  const { data: friendsData, isLoading: isLoadingFriends } = useFetchFriends({
     enabled: isSignedIn,
   });
-  const { data: receivedRequests, isFetching: isFetchingReceived } = useFetchReceivedRequests({
+  const { data: receivedRequests, isLoading: isLoadingReceived } = useFetchReceivedRequests({
     enabled: isSignedIn,
   });
   const { data: sentRequests } = useFetchSentRequests({
@@ -260,7 +267,7 @@ function FriendsScreen() {
     hasUserSearch && sections.every((section) => section.data.length === 0);
 
   const isLoadingFriendsView =
-    (isFetchingFriends || isFetchingReceived) && friends.length === 0 && received.length === 0;
+    (isLoadingFriends || isLoadingReceived) && friends.length === 0 && received.length === 0;
 
   // Whichever list is on screen, waiting on its first rows. `refreshing` is
   // deliberately not in here: ThemedRefreshControl's own spinner already says
@@ -277,9 +284,10 @@ function FriendsScreen() {
   );
 
   const searchPlaceholder = isDiscovering ? 'Search everyone' : 'Search your friends';
+  const currentUserId = currentUser?.id;
   const inviteUrl = useMemo(
-    () => (currentUser?.id ? buildFriendInviteUrl(currentUser.id) : null),
-    [currentUser?.id]
+    () => (currentUserId ? buildFriendInviteUrl(currentUserId) : null),
+    [currentUserId]
   );
   const inviteUsername = useMemo(
     () => currentUser?.display_name?.trim() || null,
@@ -320,6 +328,23 @@ function FriendsScreen() {
   // `onIndexChange`, so it cannot close over the pager it is being built with.
   const goToPageRef = useRef<((index: number) => void) | null>(null);
 
+  // Scroll targets for the tab-bar reselect action — whichever page is
+  // currently selected.
+  const sectionListRef = useRef<SectionList<UserWithFriendStatus, FriendsSection>>(null);
+  const discoverListRef = useRef<FlatList<UserWithFriendStatus>>(null);
+  useRegisterTabReselect('friends', () => {
+    if (isDiscovering) {
+      discoverListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    } else if (sections.length > 0) {
+      sectionListRef.current?.scrollToLocation({
+        sectionIndex: 0,
+        itemIndex: 0,
+        animated: true,
+        viewPosition: 0,
+      });
+    }
+  });
+
   const handleChangeMode = useCallback((next: FriendsMode) => {
     // Start the pages moving here rather than from the render this causes:
     // until that commit lands, nothing driven by React state has moved. A
@@ -346,7 +371,9 @@ function FriendsScreen() {
     onIndexChange: handleChangeIndex,
     pageWidth,
   });
-  goToPageRef.current = goTo;
+  useEffect(() => {
+    goToPageRef.current = goTo;
+  });
 
   const pagerStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: -progress.value * pageWidth }],
@@ -385,6 +412,7 @@ function FriendsScreen() {
   // render now rather than one being chosen — see the pager below.
   const friendsPage = (
     <SectionList
+      ref={sectionListRef}
       // Not cleared for a refresh: ThemedRefreshControl's own spinner
       // already says a reload is running, and the rows it replaces stay
       // up until the fresh ones land.
@@ -469,6 +497,7 @@ function FriendsScreen() {
 
   const discoverPage = (
     <FlatList
+      ref={discoverListRef}
       data={displayedUsers}
       keyExtractor={(item) => `user-${item.id}`}
       contentContainerStyle={[styles.content, pullToRefreshContentStyle]}
@@ -549,6 +578,7 @@ function FriendsScreen() {
         <GestureDetector gesture={panGesture}>
           <Animated.View
             style={[styles.pager, { width: pageWidth * MODE_OPTIONS.length }, pagerStyle]}
+            renderToHardwareTextureAndroid
           >
             <View style={{ width: pageWidth }}>{friendsPage}</View>
             <View style={{ width: pageWidth }}>{discoverPage}</View>
@@ -579,7 +609,7 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     // has to clip it — on Android nothing else does.
     listWrapper: { flex: 1, overflow: 'hidden' },
     pager: { flex: 1, flexDirection: 'row' },
-    loadingOverlay: { ...StyleSheet.absoluteFillObject },
+    loadingOverlay: { ...StyleSheet.absoluteFill },
     modeRow: {
       paddingHorizontal: 16,
       paddingTop: 12,
@@ -670,7 +700,7 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     // reserved load-more row or nothing at all — neither needs its own
     // clearance on top of that.
     inviteFooterNoResults: {
-      paddingTop: 0,
+      paddingTop: 12,
     },
     inviteCard: {
       borderRadius: 12,

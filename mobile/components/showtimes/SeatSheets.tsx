@@ -89,8 +89,12 @@ const SeatSheets = memo(
     useImperativeHandle(
       ref,
       () => ({
-        openPicker: () => setOpenSheet("picker"),
-        openPreview: () => setOpenSheet("preview"),
+        openPicker: () => {
+          setOpenSheet("picker");
+        },
+        openPreview: () => {
+          setOpenSheet("preview");
+        },
         close,
       }),
       [close]

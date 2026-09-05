@@ -8,9 +8,8 @@
  * position. Saved presets themselves are applied from the top bar
  * (SavedPresetChips in PresetsRow), not from in here.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   StyleSheet,
   TouchableOpacity,
   View,
@@ -50,7 +49,7 @@ import FilterMoviesSection from "@/components/filters/FilterMoviesSection";
 import FilterSection, { FilterInlineRow, FilterNavRow, FilterSubLabel } from "@/components/filters/FilterSection";
 import SegmentedControl, { type SegmentedOption } from "@/components/ui/SegmentedControl";
 import AppBottomSheet from "@/components/sheets/AppBottomSheet";
-import { useFiltersModal } from "@/components/filters/FiltersModalProvider";
+import { useFiltersModal } from "@/components/filters/filters-modal-context";
 import type { OpenCinemaModalOptions } from "@/components/filters/CinemaFilterModal";
 import useTrackEvent from "shared/hooks/useTrackEvent";
 
@@ -185,7 +184,6 @@ export default function FiltersModal({
   const { bottom: bottomInset } = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const queryClient = useQueryClient();
-  const scrollViewRef = useRef<any>(null);
   const { openCinemaModal: providerOpenCinemaModal } = useFiltersModal();
   const openCinemaModal = onOpenCinemaModal ?? providerOpenCinemaModal;
   const [specificDatesVisible, setSpecificDatesVisible] = useState(false);
@@ -201,25 +199,6 @@ export default function FiltersModal({
     if (isSignedIn) trackEvent("filter_applied");
     onClose();
   }, [isSignedIn, trackEvent, onClose]);
-
-  // contentMounted: false on first open (shows spinner while content renders),
-  // then permanently true so subsequent opens show content immediately.
-  const [contentMounted, setContentMounted] = useState(false);
-  const contentMountedRef = useRef(false);
-
-  useEffect(() => {
-    if (!visible) return;
-    scrollViewRef.current?.scrollTo({ y: 0, animated: false });
-    if (!contentMountedRef.current) {
-      // Defer heavy content render until after the sheet has mounted with the spinner
-      // and the slide-up animation is underway. setTimeout(50) fires in a separate
-      // React batch so the spinner actually renders first.
-      setTimeout(() => {
-        contentMountedRef.current = true;
-        setContentMounted(true);
-      }, 50);
-    }
-  }, [visible]);
 
   const { data: allCinemas = [] } = useFetchCinemas();
   // The cinema list is public; the account's saved picks and named presets are
@@ -405,23 +384,28 @@ export default function FiltersModal({
 
   return (
     <>
-        <AppBottomSheet visible={visible} onClose={handleClose} title="Filters">
+        <AppBottomSheet
+          visible={visible}
+          onClose={handleClose}
+          title="Filters"
+          loadingLabel="Loading filters…"
+          // Warmed so it never pays for its own mount on an open — and warmed
+          // *before* CinemaFilterModal, which has to draw in front of it. See
+          // `sheet-warm-up`; the order is the order the two components mount.
+          warmUpOnMount
+        >
           {/* @gorhom/portal (used by the bottom sheet) does not forward React
               context, so re-provide the QueryClient for hooks rendered inside. */}
           <QueryClientProvider client={queryClient}>
+          {/* Freshly mounted on every open — AppBottomSheet holds the body back
+              until the sheet is up and drops it again after the close — so the
+              sheet always starts at the top with no scroll reset of its own. */}
           <BottomSheetScrollView
-            ref={scrollViewRef}
             style={styles.scroll}
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-  {!contentMounted ? (
-              <View style={{ alignItems: "center", paddingVertical: 60 }}>
-                <ActivityIndicator size="large" color={colors.tint} />
-              </View>
-            ) : (<>
-
               {/* Cinemas: presets already live in the main page's cinema dropdown,
                   so this row only ever opens the cinema selection modal. */}
               {showCinemas && (
@@ -587,8 +571,6 @@ export default function FiltersModal({
                 Clear filters
               </ThemedText>
             </TouchableOpacity>
-
-          </>)}
         </BottomSheetScrollView>
 
         {/* Pinned footer: the actions stay reachable at any scroll position,
@@ -640,7 +622,10 @@ export default function FiltersModal({
           )}
           <TouchableOpacity
             style={styles.viewResultsButton}
-            onPress={handleClose}
+            onPress={() => {
+              triggerSelectionHaptic();
+              handleClose();
+            }}
             activeOpacity={0.85}
           >
             {resultCount !== undefined ? (

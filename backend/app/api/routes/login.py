@@ -85,6 +85,7 @@ def login_access_token(
         user_id=user.id,
         name=AnalyticsEventName.LOGIN,
         platform=request.headers.get("X-Client-Platform"),
+        app_version=request.headers.get("X-Client-Version"),
     )
     session.commit()
     return _build_token(user.id)
@@ -143,6 +144,7 @@ def login_social_token(
         user_id=user.id,
         name=AnalyticsEventName.LOGIN,
         platform=request.headers.get("X-Client-Platform"),
+        app_version=request.headers.get("X-Client-Version"),
     )
     session.commit()
     # Strictly "this account has no username yet" — which, given

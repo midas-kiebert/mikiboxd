@@ -102,6 +102,10 @@ module.exports = ({ config }) => {
     [
       "expo-build-properties",
       {
+        android: {
+          enableMinifyInReleaseBuilds: true,
+          enableShrinkResourcesInReleaseBuilds: true,
+        },
         ios: {
           useModularHeaders: true,
           extraPods: [

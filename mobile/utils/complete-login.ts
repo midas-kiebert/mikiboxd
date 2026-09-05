@@ -1,4 +1,4 @@
-import type { Router } from 'expo-router'
+import type { ImperativeRouter } from 'expo-router'
 import { MeService } from 'shared'
 import { registerPushTokenForCurrentDevice } from '@/utils/push-notifications'
 import { markSignedIn } from '@/utils/auth-session'
@@ -15,7 +15,7 @@ import { isIntroOwed, startIntroIfPending } from '@/utils/intro'
 // on a signed-out route (or the reverse) and firing a correcting redirect —
 // the double redirect that used to show up as a login stalling and then
 // flicking through the wrong screen on its way to the right one.
-export async function completeLogin(router: Router) {
+export async function completeLogin(router: ImperativeRouter) {
     // A deep link the user opened while logged out is *not* followed from here.
     // It stays in storage, and the root layout resumes it once the account is
     // real and the intro it may owe is over.

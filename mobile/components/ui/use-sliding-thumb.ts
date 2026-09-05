@@ -34,7 +34,7 @@
  * press: `appliedRef` records where the thumb was last sent, and sending it
  * where it is already going is a no-op rather than a restarted tween.
  */
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { LayoutChangeEvent } from "react-native";
 import {
   Easing,
@@ -42,14 +42,21 @@ import {
   interpolate,
   useAnimatedReaction,
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
   withTiming,
+  type DerivedValue,
   type SharedValue,
 } from "react-native-reanimated";
 
 /** One travel of the thumb, and the crossfade of the labels it passes. */
 export const THUMB_SLIDE_MS = 220;
 export const THUMB_SLIDE_EASING = Easing.out(Easing.cubic);
+
+/** How long after a travel should have ended before it is checked. */
+const SETTLE_GRACE_MS = 80;
+/** Sub-pixel slack, so a float that landed exactly is never "wrong". */
+const SETTLE_EPSILON = 0.01;
 
 export type SegmentLayout = { x: number; width: number };
 
@@ -66,8 +73,12 @@ export type SlidingThumb = {
   thumbX: SharedValue<number>;
   thumbWidth: SharedValue<number>;
   thumbOpacity: SharedValue<number>;
-  /** The selected index as a continuous value: what colours crossfade on. */
-  progress: SharedValue<number>;
+  /**
+   * The thumb's position expressed in segments: what the label crossfade and
+   * the thumb's colour blend read. Derived from `thumbX`, never written — see
+   * the note on it below.
+   */
+  progress: DerivedValue<number>;
 };
 
 export function useSlidingThumb(
@@ -91,14 +102,36 @@ export function useSlidingThumb(
   const thumbX = useSharedValue(0);
   const thumbWidth = useSharedValue(0);
   const thumbOpacity = useSharedValue(0);
-  const progress = useSharedValue(selectedIndex);
   // The same measurements again, on the UI thread, so a driver can be followed
   // to a position *between* two segments without a round trip to JS.
   const layoutXs = useSharedValue<number[]>([]);
   const layoutWidths = useSharedValue<number[]>([]);
 
-  const selectedIndexRef = useRef(selectedIndex);
-  selectedIndexRef.current = selectedIndex;
+  /**
+   * Where the thumb is, counted in segments — 1.5 means halfway between the
+   * second and third.
+   *
+   * Derived from `thumbX` rather than animated alongside it — for *every*
+   * caller, driven or not. It used to be a third `withTiming` started in the
+   * same breath as the position and the width, which made it a *copy* of
+   * something the position already says, and copies drift: if that one
+   * animation did not land while the other two did, the thumb sat correctly
+   * on the new segment while the labels went on crossfading for the old one —
+   * the selected colour on the segment the user had just left, the resting
+   * colour on the one under the thumb. Reading it off `thumbX` instead makes
+   * the two arithmetically incapable of disagreeing, whatever happens to the
+   * animation.
+   *
+   * The externally-driven case used to shortcut this and read
+   * `externalProgress.value` directly instead — a second, independent copy of
+   * "where the thumb is," which is exactly the kind of drift this whole
+   * function exists to rule out. It surfaced as the pill correctly landing on
+   * a segment (driven off `thumbX`, which the reaction below keeps current)
+   * while the label crossfade — reading this externally-driven shortcut —
+   * stayed on the *previous* segment's opacity, showing the resting colour
+   * under a thumb that had already arrived.
+   */
+  const progress = useDerivedValue(() => segmentAtPosition(thumbX.value, layoutXs.value));
 
   const applyTarget = useCallback(
     (index: number, layout: SegmentLayout) => {
@@ -117,18 +150,16 @@ export function useSlidingThumb(
       appliedRef.current = { index, x: layout.x, width: layout.width };
       if (!hasPositioned.current) {
         hasPositioned.current = true;
-        thumbX.value = layout.x;
-        thumbWidth.value = layout.width;
-        progress.value = index;
-        thumbOpacity.value = 1;
+        thumbX.set(layout.x);
+        thumbWidth.set(layout.width);
+        thumbOpacity.set(1);
         return;
       }
       const config = { duration: THUMB_SLIDE_MS, easing: THUMB_SLIDE_EASING };
-      thumbX.value = withTiming(layout.x, config);
-      thumbWidth.value = withTiming(layout.width, config);
-      progress.value = withTiming(index, config);
+      thumbX.set(withTiming(layout.x, config));
+      thumbWidth.set(withTiming(layout.width, config));
     },
-    [isExternallyDriven, progress, thumbOpacity, thumbWidth, thumbX]
+    [isExternallyDriven, thumbOpacity, thumbWidth, thumbX]
   );
 
   const moveTo = useCallback(
@@ -150,18 +181,34 @@ export function useSlidingThumb(
       const next = layoutsRef.current.slice();
       next[index] = { x, width };
       layoutsRef.current = next;
-      layoutXs.value = next.map((layout) => layout?.x ?? 0);
-      layoutWidths.value = next.map((layout) => layout?.width ?? 0);
+      // `Array.from`, not `.map`: a segment whose layout hasn't landed yet
+      // leaves a real hole in `next` (not just an `undefined` element), and
+      // `.map` skips holes rather than visiting them — the hole would survive
+      // into the array reanimated interpolates over, instead of becoming the
+      // `0` fallback below.
+      layoutXs.set(Array.from(next, (layout) => layout?.x ?? 0));
+      layoutWidths.set(Array.from(next, (layout) => layout?.width ?? 0));
+      // `isExternallyDriven` only, same reasoning as the reaction log below:
+      // this hook backs every `SegmentedControl` on screen, and logging all of
+      // them buries the one pager instance we actually care about.
+      if (__DEV__ && isExternallyDriven) {
+        console.log(
+          `[thumb ${Date.now() % 100000}] onSegmentLayout(${index}): x=${x} width=${width} ` +
+            `xs=[${Array.from(next, (l) => l?.x ?? "hole").join(",")}] ` +
+            `widths=[${Array.from(next, (l) => l?.width ?? "hole").join(",")}] ` +
+            `selectedIndex=${selectedIndex}`
+        );
+      }
       // The opening position is taken here rather than from the pass below,
       // which only runs a commit later: that commit is a frame in which the
       // selected label already wears its selected colour with no thumb behind
       // it to be legible against.
-      if (!hasPositioned.current && index === selectedIndexRef.current) {
+      if (!hasPositioned.current && index === selectedIndex) {
         applyTarget(index, { x, width });
       }
       setLayouts(next);
     },
-    [applyTarget]
+    [applyTarget, selectedIndex, layoutWidths, layoutXs]
   );
 
   useLayoutEffect(() => {
@@ -169,6 +216,51 @@ export function useSlidingThumb(
     if (!layout) return;
     applyTarget(selectedIndex, layout);
   }, [layouts, selectedIndex, applyTarget]);
+
+  // A repair pass, because `appliedRef` above is a *mirror* and a mirror can be
+  // wrong.
+  //
+  // The three quantities travel as three independent animations, and the guard
+  // in `applyTarget` refuses to send the thumb anywhere it believes it already
+  // is. So anything that leaves one of them behind — an animation cancelled
+  // under it, a remount part-way through the travel — sticks for good: the
+  // mirror keeps insisting the work was done. The visible form is a control
+  // whose *labels* disagree with its own thumb, since the crossfade reads
+  // `progress` while the thumb reads `thumbX`, and one segment then wears the
+  // selected colour with nothing behind it while the real one stays grey.
+  //
+  // So once the travel is over, check the values themselves rather than the
+  // mirror, and put them where they belong if they are not there. Silent and
+  // free in the normal case: the comparison runs once per change and matches.
+  useEffect(() => {
+    if (isExternallyDriven) return;
+    const layout = layouts[selectedIndex];
+    if (!layout || !hasPositioned.current) return;
+
+    const settle = setTimeout(() => {
+      const isSettled =
+        Math.abs(thumbX.get() - layout.x) < SETTLE_EPSILON &&
+        Math.abs(thumbWidth.get() - layout.width) < SETTLE_EPSILON;
+      if (isSettled) return;
+
+      if (__DEV__) {
+        // The only place this state is observable. If it ever prints, it names
+        // which of the three was left behind and what it was left at.
+        console.warn(
+          `[SlidingThumb] left desynced at index ${selectedIndex}: ` +
+            `x=${thumbX.get()}/${layout.x} width=${thumbWidth.get()}/${layout.width} ` +
+            `opacity=${thumbOpacity.get()}`
+        );
+      }
+
+      appliedRef.current = { index: selectedIndex, x: layout.x, width: layout.width };
+      thumbX.set(layout.x);
+      thumbWidth.set(layout.width);
+      thumbOpacity.set(1);
+    }, THUMB_SLIDE_MS + SETTLE_GRACE_MS);
+
+    return () => clearTimeout(settle);
+  }, [layouts, selectedIndex, isExternallyDriven, thumbOpacity, thumbWidth, thumbX]);
 
   // The whole of the externally driven path, and all of it on the UI thread:
   // the driver moves, the thumb is where it says, in the same frame. Reading
@@ -180,11 +272,20 @@ export function useSlidingThumb(
         ? null
         : { at: externalProgress.value, xs: layoutXs.value, widths: layoutWidths.value },
     (driver) => {
+      // Only ever non-null for a pager-driven control (Activity/Friends), so
+      // this never logs for the many other, unrelated `SegmentedControl`s
+      // (per-friend visibility toggles etc.) that also run this hook.
+      if (__DEV__ && driver !== null) {
+        console.log(
+          `[thumb ${Date.now() % 100000}] reaction: at=${driver.at} ` +
+            `xs=[${driver.xs.join(",")}] widths=[${driver.widths.join(",")}]` +
+            (driver.xs.length === 0 ? " -> skip (no layouts yet)" : " -> apply")
+        );
+      }
       if (driver === null || driver.xs.length === 0) return;
-      thumbX.value = interpolateAcrossSegments(driver.at, driver.xs);
-      thumbWidth.value = interpolateAcrossSegments(driver.at, driver.widths);
-      progress.value = driver.at;
-      thumbOpacity.value = 1;
+      thumbX.set(interpolateAcrossSegments(driver.at, driver.xs));
+      thumbWidth.set(interpolateAcrossSegments(driver.at, driver.widths));
+      thumbOpacity.set(1);
     }
   );
 
@@ -221,6 +322,31 @@ export function useSelectedCopyStyle(thumb: SlidingThumb, index: number) {
   return useAnimatedStyle(() => ({
     opacity: selectedFraction(thumb.progress.value, index) * thumb.thumbOpacity.value,
   }));
+}
+
+/**
+ * The inverse of {@link interpolateAcrossSegments}: a thumb x read back as a
+ * position in segments, so 1.5 is halfway between the second and third.
+ *
+ * Module scope, and written without an inline closure, on purpose: a function
+ * a worklet ends up calling has to have been workletised too, and only the
+ * ones declared out here — like {@link interpolateAcrossSegments} — reliably
+ * are. An arrow created inside the worklet body normally comes along with it,
+ * but a build step that lifts it back out leaves the UI runtime holding a
+ * plain JS function, which it cannot call ("Tried to synchronously call a
+ * Remote function"). Keeping the helper here does not depend on which step did
+ * what.
+ */
+function segmentAtPosition(x: number, xs: readonly number[]): number {
+  "worklet";
+  // `interpolate` needs a strictly increasing input range, which segment x's
+  // are — left to right — once they have all been measured. Until then there
+  // is no position to report, and `thumbOpacity` is still 0, so nothing that
+  // reads this is on screen anyway.
+  if (xs.length < 2) return 0;
+  const indices: number[] = [];
+  for (let index = 0; index < xs.length; index += 1) indices.push(index);
+  return interpolate(x, xs as number[], indices, Extrapolation.CLAMP);
 }
 
 /**

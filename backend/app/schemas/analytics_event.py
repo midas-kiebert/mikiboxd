@@ -16,5 +16,6 @@ class AnalyticsEventPublic(SQLModel):
     id: int
     name: AnalyticsEventName
     platform: str | None
+    app_version: str | None
     properties: dict | None
     created_at: datetime

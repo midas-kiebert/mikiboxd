@@ -13,8 +13,8 @@ import {
   ThemedRefreshControl,
 } from '@/components/themed-refresh-control';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
+import { useSettledFocus } from '@/utils/use-settled-focus';
 import { useRouter } from 'expo-router';
-import { useIsFocused } from '@react-navigation/native';
 import { useFetchMovies, type MovieFilters } from 'shared/hooks/useFetchMovies';
 import type { SearchField } from 'shared/client';
 import type { MovieSummaryPublic } from 'shared';
@@ -73,7 +73,7 @@ export default function MovieScreen() {
   // debounce to remove what the user just deleted would feel broken.
   const effectiveSearchQuery = searchQuery.trim().length > 0 ? debouncedSearchQuery : '';
   const { openFiltersModal } = useFiltersModal();
-  const isFocused = useIsFocused();
+  const isFocused = useSettledFocus();
   // A preset can write `watchlistOnly`/`hideWatched` alone, which reach the
   // query a frame late (see useSharedTabFilters' rAF-deferred "applied"
   // values) — for that one frame `movieFilters` hasn't moved yet, so if the
@@ -116,6 +116,7 @@ export default function MovieScreen() {
     setWatchlistExclude,
     watchedOnly,
     setWatchedOnly,
+    isHydrated,
   } = useSharedTabFilters();
 
   const { user } = useAuth();
@@ -206,7 +207,11 @@ export default function MovieScreen() {
       firstPageLimit: MOVIES_FIRST_PAGE_LIMIT,
       snapshotTime,
       filters: movieFilters,
-      enabled: isFocused,
+      // `isHydrated`: see `useSharedTabFilters` — starting this query before
+      // the session's cinema selection is seeded risks the query key changing
+      // out from under an in-flight "load more" once seeding lands, which can
+      // permanently strand scroll-triggered pagination (`feed-paging.ts`).
+      enabled: isFocused && isHydrated,
     });
 
   const movies = moviesData?.pages.flat() || [];
@@ -237,7 +242,8 @@ export default function MovieScreen() {
   );
 
   const loadMore = useScrollTriggeredLoadMore(() => {
-    if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+    if (!hasNextPage || isFetchingNextPage) return false;
+    return fetchNextPage();
   });
 
   // Always mounted: the footer collapses instead of vanishing, so a loaded
@@ -261,8 +267,11 @@ export default function MovieScreen() {
   // faster than LOADING_LOGO_DELAY_MS even with nothing cached yet, so
   // showing `isLoading` immediately just moved the flash from "quick filter
   // taps" to "quick presets" instead of removing it.
+  // `!isHydrated`: the query above is held off until the session's cinema
+  // selection is seeded, and that wait is exactly as "loading" as a genuine
+  // fetch is — see `isLoading`/`isFetching` treatment above.
   const isFetchEmptyLoading =
-    (isLoading || isFetching) && !refreshing && visibleMovies.length === 0;
+    (isLoading || isFetching || !isHydrated) && !refreshing && visibleMovies.length === 0;
   const showFetchLoadingLogo = useDelayedTrue(
     isFetchEmptyLoading,
     LOADING_LOGO_DELAY_MS,
@@ -421,7 +430,7 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     listWrapper: { flex: 1 },
-    loadingOverlay: { ...StyleSheet.absoluteFillObject },
+    loadingOverlay: { ...StyleSheet.absoluteFill },
     movieFeed: { ...tabletCappedContentStyle, padding: 16 },
     centerContainer: { paddingVertical: 40, alignItems: 'center' },
     emptyText: { fontSize: 16, color: colors.textSecondary },

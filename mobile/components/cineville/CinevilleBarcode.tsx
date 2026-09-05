@@ -52,12 +52,16 @@ export default function CinevilleBarcode({ value, height }: CinevilleBarcodeProp
 
   // Every other element is a bar, starting with the first.
   const bars = useMemo(() => {
+    const result: { x: number; width: number }[] = [];
     let moduleOffset = QUIET_ZONE_MODULES;
-    return encoding.elementWidths.flatMap((elementWidth, index) => {
-      const x = moduleOffset;
+    for (let index = 0; index < encoding.elementWidths.length; index++) {
+      const elementWidth = encoding.elementWidths[index];
+      if (index % 2 === 0) {
+        result.push({ x: moduleOffset, width: elementWidth });
+      }
       moduleOffset += elementWidth;
-      return index % 2 === 0 ? [{ x, width: elementWidth }] : [];
-    });
+    }
+    return result;
   }, [encoding]);
 
   return (

@@ -20,6 +20,7 @@ import { DateTime } from "luxon";
 
 import { ThemedText } from "@/components/themed-text";
 import AppBottomSheet from "@/components/sheets/AppBottomSheet";
+import { triggerSelectionHaptic } from "@/utils/long-press";
 import {
   AMSTERDAM_ZONE,
   RELATIVE_DAY_OPTIONS,
@@ -192,7 +193,9 @@ export default function SpecificDatesModal({
 
   useEffect(() => {
     if (!visible) return;
-    setLocalSelectedDaySet(new Set(canonicalizeDaySelections(selectedDays) ?? []));
+    queueMicrotask(() =>
+      setLocalSelectedDaySet(new Set(canonicalizeDaySelections(selectedDays) ?? []))
+    );
   }, [visible, selectedDays]);
 
   const selectedCalendarDaySet = useMemo(() => {
@@ -224,6 +227,7 @@ export default function SpecificDatesModal({
 
   const handleToggleDay = useCallback(
     (day: string) => {
+      triggerSelectionHaptic();
       setLocalSelectedDaySet((current) => {
         const next = new Set(current);
         const linkedRelativeToken = relativeTokenByIsoDay.get(day);
@@ -244,6 +248,7 @@ export default function SpecificDatesModal({
   // Clears only what this sheet shows; the weekdays picked in the section
   // behind it are not this button's to throw away.
   const handleClearDates = useCallback(() => {
+    triggerSelectionHaptic();
     setLocalSelectedDaySet(
       (current) => new Set(Array.from(current).filter((day) => !isDateSelection(day)))
     );

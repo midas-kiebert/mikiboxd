@@ -19,6 +19,7 @@ import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { getAvatarColors, getAvatarInitial } from "@/utils/avatar-color";
 import { triggerSelectionHaptic } from "@/utils/long-press";
+import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
 const FADE_IN_MS = 140;
 const FADE_OUT_MS = 120;
@@ -48,32 +49,33 @@ export default function InviteBeforePrivateDialog({
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const [isMounted, setIsMounted] = useState(visible);
-  const anim = useRef(new Animated.Value(0)).current;
+  const anim = useAnimatedValue(0);
   const scale = useMemo(
     () => anim.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }),
     [anim]
   );
 
   // Every friend starts checked — the default is to keep everyone who can
-  // currently see the owner's status able to keep seeing it.
+  // currently see the owner's status able to keep seeing it. Reseeded once per
+  // open (the same `visible` transition that flips `isMounted`), so unchecking
+  // a friend mid-session isn't clobbered by an unrelated re-render of `friends`.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  if (visible && !isMounted) {
+    setIsMounted(true);
+    setSelectedIds(new Set(friends.map((friend) => friend.id)));
+  }
   // Guards against a fast double-tap firing onConfirm/onSkip twice before the
   // parent's `visible` prop flips back to false and this dialog starts
   // unmounting — a second confirm would try to invite the same friends again.
   const hasSubmittedRef = useRef(false);
   useEffect(() => {
     if (visible) {
-      setSelectedIds(new Set(friends.map((friend) => friend.id)));
       hasSubmittedRef.current = false;
     }
-    // Only reseed when the dialog opens, so unchecking a friend mid-session
-    // isn't clobbered by an unrelated re-render of `friends`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   useEffect(() => {
     if (visible) {
-      setIsMounted(true);
       anim.setValue(0);
       Animated.timing(anim, {
         toValue: 1,

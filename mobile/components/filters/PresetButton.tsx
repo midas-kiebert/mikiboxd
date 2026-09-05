@@ -196,18 +196,22 @@ export default function PresetButton({
         // Held off until the flash has already opened out and started
         // clearing — see `DIM_DELAY_MS` — so the dim never reads as the thing
         // that cut the flash short.
-        settled.value = withDelay(
-          DIM_DELAY_MS,
-          withTiming(1, { duration: DIM_MS, easing: Easing.out(Easing.quad) })
+        settled.set(
+          withDelay(
+            DIM_DELAY_MS,
+            withTiming(1, { duration: DIM_MS, easing: Easing.out(Easing.quad) })
+          )
         );
         return;
       }
       // A correction, not part of the choreography above: whatever is
       // playing just needs to let go of the satisfied look, right away.
-      settled.value = withTiming(0, {
-        duration: UNSETTLE_FADE_MS,
-        easing: Easing.out(Easing.quad),
-      });
+      settled.set(
+        withTiming(0, {
+          duration: UNSETTLE_FADE_MS,
+          easing: Easing.out(Easing.quad),
+        })
+      );
     },
     [settled]
   );
@@ -240,8 +244,8 @@ export default function PresetButton({
     // disabled — a preset that has just been applied has by definition nothing
     // left to apply — so the button says so on its own rather than waiting to
     // be told, which is what keeps every press identical to every other one.
-    flash.value = 0;
-    flash.value = withTiming(1, FLASH_TIMING);
+    flash.set(0);
+    flash.set(withTiming(1, FLASH_TIMING));
     settleOn(true);
 
     // Next frame, not this one. The apply re-renders both filter rows and the

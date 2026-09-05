@@ -14,6 +14,7 @@ import { ThemedText } from "@/components/themed-text";
 import { type FilterPillLongPressPosition } from "@/components/filters/FilterPills";
 import { normalizeSingleTimeRangeSelection } from "@/components/filters/time-range-utils";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
 type TimeQuickPopoverProps = {
   visible: boolean;
@@ -139,7 +140,7 @@ export default function TimeQuickPopover({
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const modalRootRef = useRef<View | null>(null);
-  const cardOpenProgress = useRef(new Animated.Value(0)).current;
+  const cardOpenProgress = useAnimatedValue(0);
   const [modalRootTop, setModalRootTop] = useState(0);
   const [activeBoundary, setActiveBoundary] = useState<ActiveBoundary>(null);
   const [startSlot, setStartSlot] = useState(0);
@@ -167,9 +168,11 @@ export default function TimeQuickPopover({
     const parsed = parseTimeRangeToSlots(selectedRange);
     startSlotRef.current = parsed.startSlot;
     endSlotRef.current = parsed.endSlot;
-    setStartSlot(parsed.startSlot);
-    setEndSlot(parsed.endSlot);
-    setActiveBoundary(null);
+    queueMicrotask(() => {
+      setStartSlot(parsed.startSlot);
+      setEndSlot(parsed.endSlot);
+      setActiveBoundary(null);
+    });
   }, [normalizedSelectedTimeRanges, visible]);
 
   useEffect(() => {
@@ -468,7 +471,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       flex: 1,
     },
     backdrop: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       backgroundColor: "transparent",
     },
     card: {

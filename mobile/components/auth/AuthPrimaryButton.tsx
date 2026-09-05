@@ -76,7 +76,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       opacity: 0,
     },
     spinnerOverlay: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       alignItems: "center",
       justifyContent: "center",
     },

@@ -35,9 +35,10 @@ export default function IntroFriendsPage({ onDone }: { onDone: () => void }) {
     queryFn: () => MeService.getCurrentUser(),
   });
 
+  const currentUserId = currentUser?.id;
   const inviteUrl = useMemo(
-    () => (currentUser?.id ? buildFriendInviteUrl(currentUser.id) : null),
-    [currentUser?.id]
+    () => (currentUserId ? buildFriendInviteUrl(currentUserId) : null),
+    [currentUserId]
   );
   const inviteUsername = useMemo(
     () => currentUser?.display_name?.trim() || null,

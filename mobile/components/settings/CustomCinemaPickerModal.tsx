@@ -5,7 +5,7 @@
  * hands the caller a raw `cinema_ids` array; nothing here is ever saved as a
  * `CinemaPreset` row.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Modal, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useFetchCinemas } from 'shared/hooks/useFetchCinemas';
 
@@ -38,9 +38,13 @@ export default function CustomCinemaPickerModal({
 
   // Reset to the source's saved selection each time the picker opens, rather
   // than carrying over whatever was left ticked from a previous open/cancel.
-  useEffect(() => {
+  const [lastVisible, setLastVisible] = useState(visible);
+  const [lastInitialCinemaIds, setLastInitialCinemaIds] = useState(initialCinemaIds);
+  if (visible !== lastVisible || initialCinemaIds !== lastInitialCinemaIds) {
+    setLastVisible(visible);
+    setLastInitialCinemaIds(initialCinemaIds);
     if (visible) setSelectedIds(new Set(initialCinemaIds));
-  }, [visible, initialCinemaIds]);
+  }
 
   const handleToggleCinema = useCallback((cinemaId: number) => {
     setSelectedIds((current) => {

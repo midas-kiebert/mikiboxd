@@ -121,8 +121,8 @@ export default function FiltersButton({ onPress, buttonRef, style }: FiltersButt
 
   const handlePress = () => {
     triggerSelectionHaptic();
-    flash.value = 0;
-    flash.value = withTiming(1, FLASH_TIMING);
+    flash.set(0);
+    flash.set(withTiming(1, FLASH_TIMING));
     onPress();
   };
 

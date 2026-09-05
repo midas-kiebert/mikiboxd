@@ -1,11 +1,36 @@
 /**
  * Utility helper for mobile feature logic: Push notifications.
  */
+import { isRunningInExpoGo } from "expo";
 import Constants from "expo-constants";
-import * as Notifications from "expo-notifications";
+import { Notifications } from '@/utils/notifications-module';
+import type * as NotificationsTypes from 'expo-notifications';
 import type { Href } from "expo-router";
 import { Platform } from "react-native";
 import { MeService, ShowtimesService } from "shared";
+
+/**
+ * Whether this build can hold a remote push token at all.
+ *
+ * Expo Go on Android dropped remote notifications in SDK 53, and
+ * expo-notifications does not degrade quietly there: `getDevicePushTokenAsync`,
+ * `getExpoPushTokenAsync` and `addPushTokenListener` throw rather than returning
+ * nothing, and the throw is not deduplicated — those are the repeated
+ * "removed from Expo Go" errors in the Expo Go log.
+ *
+ * So every remote-token path is gated on this rather than wrapped in a
+ * try/catch: there is no token to be had, and asking is an error. Permissions,
+ * channels and categories are not gated, because those still work.
+ *
+ * Distinct from {@link ./notifications-module}, which handles the *import* of
+ * expo-notifications throwing in the same environment — that one is what stops
+ * the app booting; this one only makes the log quiet and the code honest.
+ *
+ * Same shape as `isGoogleSignInAvailable` in {@link ./google-signin}, for the
+ * same reason: the app is meant to stay usable in Expo Go, minus the pieces
+ * Expo Go cannot provide.
+ */
+export const isRemotePushAvailable = !(isRunningInExpoGo() && Platform.OS === "android");
 
 type PushTokenRegistrationState = {
   token: string;
@@ -141,7 +166,7 @@ export function getModalShowtimeIdFromNotification(data: unknown): number | null
 }
 
 export async function handleNotificationQuickAction(
-  response: Notifications.NotificationResponse
+  response: NotificationsTypes.NotificationResponse
 ): Promise<boolean> {
   if (response.actionIdentifier !== SHOWTIME_PING_ACTION_INTERESTED_ID) {
     return false;
@@ -303,17 +328,24 @@ export async function registerPushTokenForCurrentDevice(
       return null;
     }
 
+    // Everything above still works in Expo Go — the channel, the permission and
+    // the prompt — so the guard sits here rather than at the top of the
+    // function: only the token itself is unavailable, and every call below
+    // would throw rather than return nothing. Reads as a device that cannot
+    // hold a token, which is exactly what it is.
+    if (!isRemotePushAvailable) return null;
+
     const projectId = await getProjectId();
     if (!projectId) {
       throw new Error("Missing Expo project ID for push token registration");
     }
     const applicationId = Constants.expoConfig?.android?.package ?? undefined;
 
-    let tokenResult: Notifications.ExpoPushToken;
+    let tokenResult: NotificationsTypes.ExpoPushToken;
 
     if (Platform.OS === "android") {
       // Fail loudly on Android registration issues so we can debug FCM mapping problems.
-      let devicePushToken: Notifications.DevicePushToken;
+      let devicePushToken: NotificationsTypes.DevicePushToken;
       try {
         devicePushToken = await Notifications.getDevicePushTokenAsync();
       } catch (error) {
@@ -409,6 +441,9 @@ export const clearPushTokenRegistrationStateForCurrentUser = (userId?: string): 
 };
 
 export async function unregisterPushTokenForCurrentDevice(): Promise<void> {
+  // No token was ever registered from this build, and reading one would throw.
+  if (!isRemotePushAvailable) return;
+
   try {
     const projectId = await getProjectId();
     if (!projectId) {

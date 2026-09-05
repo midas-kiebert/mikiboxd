@@ -36,6 +36,7 @@ class AnalyticsEvent(SQLModel, table=True):
         ),
     )
     platform: str | None = Field(default=None, max_length=32)
+    app_version: str | None = Field(default=None, max_length=32)
     properties: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
     created_at: dt.datetime = Field(
         default_factory=now_amsterdam_naive, nullable=False, index=True

@@ -461,6 +461,7 @@ export type OpensByDayUser = {
   user_id: string
   user_email: string
   platform: string | null
+  app_version: string | null
   count: number
 }
 

@@ -48,6 +48,7 @@ import { useCurrentFilterPresetState } from "@/hooks/useSharedTabFilters";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 import { useDismissTip } from "@/utils/feature-tips";
 import { useIsSignedIn } from "@/utils/auth-session";
+import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
 /** Identifies the "save what I have right now" row, which has no fixed name. */
 const CURRENT_FILTERS_ROW_ID = "current-filters";
@@ -115,7 +116,7 @@ export default function FilterPresetTip({ isPreview = false, onClose }: FilterPr
   // a preset that needs a Letterboxd username. Fades in and back out on its
   // own rather than opening another dialog, so it never steals focus.
   const [isLetterboxdNoticeVisible, setIsLetterboxdNoticeVisible] = useState(false);
-  const letterboxdNoticeAnim = useRef(new Animated.Value(0)).current;
+  const letterboxdNoticeAnim = useAnimatedValue(0);
   const letterboxdNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showLetterboxdNotice = useCallback(() => {
@@ -215,7 +216,7 @@ export default function FilterPresetTip({ isPreview = false, onClose }: FilterPr
       }
       savePreset(row.id, row.build());
     },
-    [savePreset, showLetterboxdNotice]
+    [savePreset, showLetterboxdNotice, setIsNamingCurrentFilters]
   );
 
   const handleNameCurrentFilters = useCallback(

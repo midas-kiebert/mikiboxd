@@ -13,7 +13,7 @@
  * the showtime tour, and nesting Modals is unreliable on iOS. Callers that need
  * a window of their own (see `IntroFiltersSpotlight`) wrap it in one themselves.
  */
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Animated,
   Easing,
@@ -27,6 +27,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { triggerSelectionHaptic } from "@/utils/long-press";
+import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
 /** A control's position on screen, in window coordinates (`measureInWindow`). */
 export type SpotlightRect = {
@@ -134,11 +135,11 @@ export default function SpotlightOverlay({
   // found, instead of blacking the whole screen out in between. The very first
   // measurement has no previous hole, which is the case the null is really for:
   // better a plain dim than a hole in the wrong place.
-  const lastHoleRef = useRef<typeof measuredHole>(null);
-  useEffect(() => {
-    if (measuredHole) lastHoleRef.current = measuredHole;
-  }, [measuredHole]);
-  const hole = measuredHole ?? lastHoleRef.current;
+  const [lastHole, setLastHole] = useState<typeof measuredHole>(null);
+  if (measuredHole && measuredHole !== lastHole) {
+    setLastHole(measuredHole);
+  }
+  const hole = measuredHole ?? lastHole;
 
   // An auto-placed caption has nowhere to go until the target is measured, so
   // it waits rather than showing up somewhere it will have to move from.
@@ -156,7 +157,7 @@ export default function SpotlightOverlay({
       : { bottom: windowHeight - hole.top + CAPTION_GAP };
   }, [captionPlacement, hole, insets.bottom, insets.top, windowHeight]);
 
-  const pulse = useRef(new Animated.Value(0)).current;
+  const pulse = useAnimatedValue(0);
   useEffect(() => {
     const animation = Animated.loop(
       Animated.sequence([
@@ -182,8 +183,8 @@ export default function SpotlightOverlay({
   // (immediate when pinned to the top), while the ring needs the new control to
   // have been measured — otherwise it would fade up over the previous one.
   const hasMeasuredTarget = measuredHole !== null;
-  const captionEnter = useRef(new Animated.Value(0)).current;
-  const ringEnter = useRef(new Animated.Value(0)).current;
+  const captionEnter = useAnimatedValue(0);
+  const ringEnter = useAnimatedValue(0);
 
   useEffect(() => {
     captionEnter.setValue(0);
@@ -358,7 +359,7 @@ export default function SpotlightOverlay({
           ) : null}
         </>
       ) : (
-        <View style={[styles.dim, StyleSheet.absoluteFillObject]} />
+        <View style={[styles.dim, StyleSheet.absoluteFill]} />
       )}
 
       {isCaptionReady ? (

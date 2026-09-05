@@ -1,9 +1,19 @@
 /**
  * Expo Router root layout. It wires global providers, auth-based redirects, and app-wide API config.
  */
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useRouter, useSegments, usePathname, useRootNavigationState, withLayoutContext } from 'expo-router';
-import { CardStyleInterpolators, createStackNavigator, TransitionPresets, TransitionSpecs } from '@react-navigation/stack';
+import { DarkTheme, DefaultTheme, ThemeProvider } from "expo-router/react-navigation";
+import { useRouter, useSegments, usePathname, useRootNavigationState } from 'expo-router';
+import { Stack as JsStack } from 'expo-router/js-stack';
+// `expo-router/js-stack` is the documented SDK 56 replacement for
+// `@react-navigation/stack`, but it exports only the navigator — the transition
+// configs below are not re-exported from it. They come from the copy of the
+// classic stack that expo-router vendors and that this navigator itself runs
+// on; importing them from a standalone `@react-navigation/stack` would pull a
+// second copy of the library SDK 56 exists to remove.
+import {
+  CardStyleInterpolators,
+  TransitionPresets,
+} from 'expo-router/build/react-navigation/stack';
 import { Appearance, Easing, Linking, LogBox, Platform, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
@@ -17,13 +27,15 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { storage, setStorage } from 'shared/storage';
 import * as SecureStore from 'expo-secure-store';
-import * as Notifications from 'expo-notifications';
+import { Notifications } from '@/utils/notifications-module';
+import type * as NotificationsTypes from 'expo-notifications';
 import * as SystemUI from 'expo-system-ui';
 import * as SplashScreen from 'expo-splash-screen';
 import Constants from 'expo-constants';
 import { getGoogleSignin, isGoogleSignInAvailable } from '@/utils/google-signin';
 import * as Sentry from '@sentry/react-native';
-import { initSentry, reportError } from '@/utils/sentry';
+import { initSentry, isSentryEnabled, reportError } from '@/utils/sentry';
+import { quietKnownWarnings } from '@/utils/quiet-known-warnings';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
@@ -65,6 +77,7 @@ import {
   handleNotificationQuickAction,
   resolveNotificationRoute,
   registerPushTokenForCurrentDevice,
+  isRemotePushAvailable,
 } from '@/utils/push-notifications';
 
 import { MutationCache, QueryCache, QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
@@ -76,14 +89,18 @@ export const unstable_settings = {
   anchor: '(tabs)',
 };
 
-// JavaScript-driven stack (react-navigation's classic Stack) instead of the
-// native stack. The native stack on Android drops the leaving screen's content
-// a frame before its exit animation runs, producing a blank-then-slide flash on
-// back (react-native-screens #489). The JS stack runs the iOS-style card slide
-// and the previous-screen parallax entirely in JS/Reanimated, so content is
-// never cleared early — no blank, identical on iOS and Android.
-const { Navigator: JsStackNavigator } = createStackNavigator();
-const JsStack = withLayoutContext(JsStackNavigator);
+// `JsStack` above is the JavaScript-driven stack (react-navigation's classic
+// Stack) rather than the native one. The native stack on Android drops the
+// leaving screen's content a frame before its exit animation runs, producing a
+// blank-then-slide flash on back (react-native-screens #489). The JS stack runs
+// the iOS-style card slide and the previous-screen parallax entirely in
+// JS/Reanimated, so content is never cleared early — no blank, identical on iOS
+// and Android.
+//
+// Until SDK 56 this had to be built by hand with
+// `withLayoutContext(createStackNavigator().Navigator)`. expo-router now ships
+// exactly that as `Stack` from `expo-router/js-stack` — same navigator, same
+// `Screen`/`Protected` statics — so the hand-rolled version is gone.
 
 // For screens that must appear and leave with no transition at all. Both the
 // interpolator and the spec have to be given: the stack's screenOptions set each
@@ -96,9 +113,14 @@ const INSTANT_SCREEN_OPTIONS = {
   },
 } as const;
 
-// Before any of the module-scope work below, so a failure in it is reported
-// rather than lost — this file's startup path is the one place that reaches
-// into Play Services without a user action behind it.
+// First of all the module-scope work here, so it is in place before anything
+// below can warn. Drops a named handful of third-party messages and nothing
+// else — see the list in the module itself.
+quietKnownWarnings();
+
+// Before the rest of the module-scope work below, so a failure in it is
+// reported rather than lost — this file's startup path is the one place that
+// reaches into Play Services without a user action behind it.
 initSentry();
 
 // Configured once at startup so GoogleSignin.signIn() is ready wherever a
@@ -304,18 +326,139 @@ Notifications.setNotificationHandler({
 
 
 
-function RootLayourContent() {
-  // Current route segments let us detect whether the user is in a protected area.
-  const segments = useSegments();
-  const pathname = usePathname();
-  // Router instance used for in-app navigation actions.
-  const router = useRouter();
+/**
+ * The route guard, and nothing else.
+ *
+ * A component of its own because of what it reads: `useSegments` and
+ * `usePathname` subscribe to the router store, so whatever renders them
+ * re-renders on **every** navigation — a tab switch included. Held inside
+ * `RootLayourContent` that meant the whole shell (the stack navigator and all
+ * its descriptors, the intro and notice hosts, the theme curtain) re-rendered
+ * in the same commit that switches tabs, and the switch is only on screen once
+ * that commit has landed. Out here it renders `null`, so the same subscription
+ * costs one React element.
+ *
+ * Its inputs are read again rather than passed down for the same reason: a prop
+ * would put the subscription back in the parent.
+ */
+function RouteGuard() {
+  const segments = useSegments()
+  const pathname = usePathname()
+  const router = useRouter()
   // `key` is null until the navigator has actually mounted; on a fast cold
   // start `!rootSegment` below isn't enough on its own to catch this, since
   // useSegments() can already report a non-empty path before the Root Layout
   // has finished its first mount, and router.replace() throws if called
   // before then ("Attempted to navigate before mounting the Root Layout").
-  const navigationState = useRootNavigationState();
+  const navigationState = useRootNavigationState()
+  const authStatus = useAuthStatus()
+  const isChecking = authStatus === 'unknown'
+  const isAuthenticated = authStatus === 'signed-in'
+  const isGuest = authStatus === 'guest'
+  const user = useCurrentUser()
+  const owesUsername = useIsUsernameRequired() || isMissingUsername(user)
+
+  // `useSegments` hands back a fresh array every render, so the guard below re-runs
+  // on every render — not just when the route actually changed. A redirect takes a
+  // few renders to land, and each of those renders used to fire the same
+  // `router.replace` again, stacking two or three login screens on top of each other.
+  const issuedRedirectRef = useRef<string | null>(null)
+  const redirectTo = useCallback(
+    (href: '/login' | '/(tabs)' | '/pick-username') => {
+      if (issuedRedirectRef.current === href) return
+      issuedRedirectRef.current = href
+      // Deferred a frame: `navigationState?.key` above can already be
+      // non-null while the native navigator is still mid-mount, and
+      // router.replace() called synchronously in that window throws
+      // "Attempted to navigate before mounting the Root Layout component"
+      // — confirmed reproducing on every cold launch even with that guard
+      // in place. Pushing past the current commit gives it time to finish.
+      requestAnimationFrame(() => router.replace(href))
+    },
+    [router]
+  )
+
+  useEffect(() => {
+    if (isChecking) return
+    // Belt-and-suspenders with the `!rootSegment` check below: `key` is null
+    // until the navigator has actually finished mounting, which is the
+    // precise condition `router.replace` itself cares about — segments can
+    // report a non-empty path slightly before that on a fast cold start.
+    if (!navigationState?.key) return
+
+    const segmentPath = segments as unknown as string[]
+    const rootSegment = segmentPath[0]
+    // No segment means the navigator has not mounted yet, so there is no route
+    // to classify — and nothing may navigate before the root layout is up
+    // (`router.replace` throws outright). This used to be unreachable only by
+    // luck: the session was resolved by an async token read, which always landed
+    // a tick or two after mount. It is read once at module load now, so on a
+    // fast start this effect runs in the very same commit the navigator is
+    // still rendering in, and the "authenticated but not in an auth route"
+    // branch below fired against a navigator that did not exist.
+    if (!rootSegment) return
+
+    // Three explicit lists rather than one and its inverse. A route that is in
+    // none is left alone, which is what `pick-username` needs: it is reached
+    // *while* signing in, so it must neither demand a session it is halfway to
+    // establishing nor be treated as a signed-out screen to be redirected away
+    // from once one exists.
+    //
+    // `browseRoutes` is the catalogue — what is playing, where, and when. It is
+    // the same for everyone and needs no account to be worth reading, so a guest
+    // is let in. `accountRoutes` are the ones *about* a person: they cannot be
+    // rendered for nobody, so they still send a guest to the login screen.
+    //
+    // `ping` sits with the browse routes despite being an invite link, because
+    // the route itself does nothing but bow out (see its screen); the invite is
+    // handled by the effect below, which shows a guest the screening and leaves
+    // accepting it to the sheet's own gate.
+    const browseRoutes = new Set(['(tabs)', 'movie', 'cinema-showtimes', 'ping'])
+    const accountRoutes = new Set(['friend-showtimes', 'add-friend', 'blocked-users', 'default-visibility'])
+    const signedOutRoutes = new Set(['login', 'signup', 'recover-password'])
+    // Protected in release builds — the real flow only ever arrives already
+    // signed in. In dev it stays neutral so the login screen's "Preview
+    // pick-username screen" shortcut, taken while signed out, is not bounced
+    // straight back to /login.
+    if (!__DEV__) accountRoutes.add('pick-username')
+
+    const isBlockedRoute = accountRoutes.has(rootSegment) || (!isGuest && browseRoutes.has(rootSegment))
+
+    if (!isAuthenticated && isBlockedRoute) {
+      // Not signed in, on a route that needs an account.
+      // Remember the deep link (everything except the plain tabs home) so the
+      // login flow can resume it after the user signs in.
+      if (rootSegment !== '(tabs)') {
+        void savePendingDeepLink(pathname)
+      }
+      redirectTo('/login')
+    } else if (isAuthenticated && owesUsername && rootSegment !== 'pick-username') {
+      // The one rule with no exceptions: an account without a username gets no
+      // further than the screen that asks for one — no tabs, no deep link, no
+      // intro. Enforced here rather than only where a social sign-in navigates,
+      // because that is a single decision taken once, and it only has to lose a
+      // race with another redirect (or be force-quit on the way) for an account
+      // to exist that can never be found or recognised by anyone.
+      redirectTo('/pick-username')
+    } else if (isAuthenticated && signedOutRoutes.has(rootSegment)) {
+      redirectTo('/(tabs)')
+    } else {
+      // Landed somewhere this guard is happy with, so the next redirect (a
+      // logout, say) starts from a clean slate.
+      issuedRedirectRef.current = null
+    }
+  }, [isAuthenticated, isGuest, owesUsername, router, segments, pathname, isChecking, navigationState, redirectTo])
+
+  return null
+}
+
+function RootLayourContent() {
+  // Where the route is — segments, pathname, whether the navigator is up — is
+  // deliberately *not* read here. Those subscribe to the router store, so this
+  // component would re-render on every navigation, tab switches included, and
+  // it renders the whole shell. It all lives in `RouteGuard` below instead.
+  // Router instance used for in-app navigation actions.
+  const router = useRouter();
   const colorScheme = useColorScheme();
   const palette = Colors[colorScheme ?? 'light'];
   // Single source of truth for "is there a session", shared with the screens
@@ -436,7 +579,7 @@ function RootLayourContent() {
     // already in cache by the time the picker mounts.
     void prefetchCinemas(queryClient);
     if (!isAuthenticated) {
-      setWarmupDone(true);
+      queueMicrotask(() => setWarmupDone(true));
       return;
     }
     let cancelled = false;
@@ -469,99 +612,9 @@ function RootLayourContent() {
     if (hasUsername(user)) markUsernameResolved()
   }, [user])
 
-  // `useSegments` hands back a fresh array every render, so the guard below re-runs
-  // on every render — not just when the route actually changed. A redirect takes a
-  // few renders to land, and each of those renders used to fire the same
-  // `router.replace` again, stacking two or three login screens on top of each other.
-  const issuedRedirectRef = useRef<string | null>(null)
-  const redirectTo = useCallback(
-    (href: '/login' | '/(tabs)' | '/pick-username') => {
-      if (issuedRedirectRef.current === href) return
-      issuedRedirectRef.current = href
-      // Deferred a frame: `navigationState?.key` above can already be
-      // non-null while the native navigator is still mid-mount, and
-      // router.replace() called synchronously in that window throws
-      // "Attempted to navigate before mounting the Root Layout component"
-      // — confirmed reproducing on every cold launch even with that guard
-      // in place. Pushing past the current commit gives it time to finish.
-      requestAnimationFrame(() => router.replace(href))
-    },
-    [router]
-  )
-
-  useEffect(() => {
-    if (isChecking) return
-    // Belt-and-suspenders with the `!rootSegment` check below: `key` is null
-    // until the navigator has actually finished mounting, which is the
-    // precise condition `router.replace` itself cares about — segments can
-    // report a non-empty path slightly before that on a fast cold start.
-    if (!navigationState?.key) return
-
-    const segmentPath = segments as unknown as string[]
-    const rootSegment = segmentPath[0]
-    // No segment means the navigator has not mounted yet, so there is no route
-    // to classify — and nothing may navigate before the root layout is up
-    // (`router.replace` throws outright). This used to be unreachable only by
-    // luck: the session was resolved by an async token read, which always landed
-    // a tick or two after mount. It is read once at module load now, so on a
-    // fast start this effect runs in the very same commit the navigator is
-    // still rendering in, and the "authenticated but not in an auth route"
-    // branch below fired against a navigator that did not exist.
-    if (!rootSegment) return
-
-    // Three explicit lists rather than one and its inverse. A route that is in
-    // none is left alone, which is what `pick-username` needs: it is reached
-    // *while* signing in, so it must neither demand a session it is halfway to
-    // establishing nor be treated as a signed-out screen to be redirected away
-    // from once one exists.
-    //
-    // `browseRoutes` is the catalogue — what is playing, where, and when. It is
-    // the same for everyone and needs no account to be worth reading, so a guest
-    // is let in. `accountRoutes` are the ones *about* a person: they cannot be
-    // rendered for nobody, so they still send a guest to the login screen.
-    //
-    // `ping` sits with the browse routes despite being an invite link, because
-    // the route itself does nothing but bow out (see its screen); the invite is
-    // handled by the effect below, which shows a guest the screening and leaves
-    // accepting it to the sheet's own gate.
-    const browseRoutes = new Set(['(tabs)', 'movie', 'cinema-showtimes', 'ping'])
-    const accountRoutes = new Set(['friend-showtimes', 'add-friend', 'blocked-users', 'default-visibility'])
-    const signedOutRoutes = new Set(['login', 'signup', 'recover-password'])
-    // Protected in release builds — the real flow only ever arrives already
-    // signed in. In dev it stays neutral so the login screen's "Preview
-    // pick-username screen" shortcut, taken while signed out, is not bounced
-    // straight back to /login.
-    if (!__DEV__) accountRoutes.add('pick-username')
-
-    const isBlockedRoute = accountRoutes.has(rootSegment) || (!isGuest && browseRoutes.has(rootSegment))
-
-    if (!isAuthenticated && isBlockedRoute) {
-      // Not signed in, on a route that needs an account.
-      // Remember the deep link (everything except the plain tabs home) so the
-      // login flow can resume it after the user signs in.
-      if (rootSegment !== '(tabs)') {
-        void savePendingDeepLink(pathname)
-      }
-      redirectTo('/login')
-    } else if (isAuthenticated && owesUsername && rootSegment !== 'pick-username') {
-      // The one rule with no exceptions: an account without a username gets no
-      // further than the screen that asks for one — no tabs, no deep link, no
-      // intro. Enforced here rather than only where a social sign-in navigates,
-      // because that is a single decision taken once, and it only has to lose a
-      // race with another redirect (or be force-quit on the way) for an account
-      // to exist that can never be found or recognised by anyone.
-      redirectTo('/pick-username')
-    } else if (isAuthenticated && signedOutRoutes.has(rootSegment)) {
-      redirectTo('/(tabs)')
-    } else {
-      // Landed somewhere this guard is happy with, so the next redirect (a
-      // logout, say) starts from a clean slate.
-      issuedRedirectRef.current = null
-    }
-  }, [isAuthenticated, isGuest, owesUsername, router, segments, pathname, isChecking, navigationState, redirectTo])
 
   const handleNotificationResponse = useCallback(
-    async (response: Notifications.NotificationResponse) => {
+    async (response: NotificationsTypes.NotificationResponse) => {
       const responseKey = `${response.notification.request.identifier}:${response.actionIdentifier}`
       if (handledNotificationResponsesRef.current.has(responseKey)) {
         return
@@ -782,6 +835,10 @@ function RootLayourContent() {
 
   useEffect(() => {
     if (!isAuthenticated) return;
+    // Expo Go on Android throws from this rather than returning nothing, and
+    // an effect in the root layout throwing takes the whole app down before it
+    // paints — see `isRemotePushAvailable`.
+    if (!isRemotePushAvailable) return;
 
     const pushTokenListener = Notifications.addPushTokenListener(() => {
       void registerPushTokenForCurrentDevice({ userId }).catch((error) => {
@@ -818,17 +875,23 @@ function RootLayourContent() {
           // pushed screens; the anchored (tabs) root has no entry transition.
           ...TransitionPresets.SlideFromRightIOS,
           // The incoming screen mounts fresh on push; the JS-driven slide starts
-          // instantly while its content is still painting, so a same-coloured card
-          // would slide in "empty" and the content would pop in at the end. A short
-          // delay on the open lets React paint the screen's skeleton before the card
-          // begins moving, so you see it slide in fully formed (WhatsApp-style). The
-          // close keeps the default iOS spring — both screens are already painted.
+          // instantly while its content is still painting. Destination screens are
+          // expected to mount a cheap skeleton immediately (see useDeferredMount)
+          // rather than relying on a pre-roll delay here to hide a slow first paint.
+          // The close used to keep react-navigation's `TransitionIOSSpec` — an exact
+          // copy of UIKit's native back-swipe spring — but that spring (mass: 3) is
+          // tuned for a native-driven animation and settles noticeably slower than
+          // the open once run through JS/Reanimated; both screens are already
+          // painted on close, so there's no reason to reach for a spring at all.
           transitionSpec: {
             open: {
               animation: 'timing',
-              config: { duration: 300, delay: 48, easing: Easing.out(Easing.poly(4)) },
+              config: { duration: 300, easing: Easing.out(Easing.poly(4)) },
             },
-            close: TransitionSpecs.TransitionIOSSpec,
+            close: {
+              animation: 'timing',
+              config: { duration: 250, easing: Easing.out(Easing.poly(4)) },
+            },
           },
           cardStyle: { backgroundColor: palette.background },
         }}
@@ -856,6 +919,10 @@ function RootLayourContent() {
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
         </>
       )}
+      {/* Renders nothing — it only watches the route and redirects. Out here
+          rather than inline above so that reading the route does not re-render
+          this whole component on every navigation. */}
+      <RouteGuard />
       {/* Deliberately not gated on the splash being gone. The intro is a Modal,
           so it draws above the splash overlay rather than below it — which is
           the point: on a launch that owes the intro it goes up while the splash
@@ -920,9 +987,9 @@ function RootLayout() {
     // carets, RefreshControl, etc.) follow the app's theme instead of the
     // device's system appearance. Without this, forcing dark mode on a
     // light-mode device leaves those widgets rendering in light mode (a dark,
-    // near-invisible spinner on a dark background). `null` restores following
-    // the system when the user picks "system".
-    Appearance.setColorScheme(themePreference === 'system' ? null : themePreference);
+    // near-invisible spinner on a dark background). `'unspecified'` restores
+    // following the system when the user picks "system".
+    Appearance.setColorScheme(themePreference === 'system' ? 'unspecified' : themePreference);
   }, [themePreference]);
 
   // Render/output using the state and derived values prepared above.
@@ -954,5 +1021,8 @@ function RootLayout() {
 }
 
 // Adds the error boundary that catches render-phase crashes anywhere in the
-// tree. No-op when initSentry() found no DSN.
-export default Sentry.wrap(RootLayout);
+// tree. Only when Sentry was actually initialised: `Sentry.wrap` without a
+// preceding `Sentry.init` cannot close the app-start span it opens, and says so
+// on every launch. Without a DSN — Expo Go, local builds, anyone without Sentry
+// credentials — there is nothing for it to wrap around anyway.
+export default isSentryEnabled ? Sentry.wrap(RootLayout) : RootLayout;

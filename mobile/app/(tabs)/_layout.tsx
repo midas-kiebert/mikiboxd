@@ -6,7 +6,7 @@ import React, { useEffect, useRef } from 'react';
 import { AppState, StyleSheet, Text, View } from 'react-native';
 
 import { useQueryClient } from '@tanstack/react-query';
-import * as Notifications from 'expo-notifications';
+import { Notifications } from '@/utils/notifications-module';
 import { ApiError, MeService } from 'shared';
 import { useFetchReceivedRequests } from 'shared/hooks/useFetchReceivedRequests';
 import { useFetchUnseenShowtimePingCount } from 'shared/hooks/useFetchUnseenShowtimePingCount';
@@ -171,9 +171,9 @@ export default function TabLayout() {
     const maybePromptForNotificationPermission = async () => {
       const currentUserId = String(user.id);
       const hasSwitchedAccount = lastRegisteredUserIdRef.current !== currentUserId;
-      const storageKey = `${NOTIFICATION_PERMISSION_PROMPTED_KEY}:${user.id}`;
+      const storageKey = `${NOTIFICATION_PERMISSION_PROMPTED_KEY}.${user.id}`;
       try {
-        const prefsStorageKey = `${NOTIFICATION_PREFS_INITIALIZED_KEY}:${user.id}`;
+        const prefsStorageKey = `${NOTIFICATION_PREFS_INITIALIZED_KEY}.${user.id}`;
 
         if (hasSwitchedAccount) {
           await storage.removeItem(storageKey);
@@ -221,7 +221,7 @@ export default function TabLayout() {
     if (!user) return;
 
     const maybeInitializeNotificationPreferences = async () => {
-      const storageKey = `${NOTIFICATION_PREFS_INITIALIZED_KEY}:${user.id}`;
+      const storageKey = `${NOTIFICATION_PREFS_INITIALIZED_KEY}.${user.id}`;
       try {
         const alreadyInitialized = await storage.getItem(storageKey);
         if (alreadyInitialized === '1') return;

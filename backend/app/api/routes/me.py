@@ -753,6 +753,10 @@ def record_event(
         user_id=current_user.id,
         name=payload.name,
         platform=request.headers.get("X-Client-Platform"),
+        # Only native builds send this (see OpenAPI.HEADERS in mobile's
+        # app/_layout.tsx); the web frontend never sets it, so it's naturally
+        # None there rather than a stale/misleading value.
+        app_version=request.headers.get("X-Client-Version"),
         properties=payload.properties,
     )
     session.commit()

@@ -15,12 +15,26 @@
  * `loadThemePreference` skips all of it: at startup the native splash is still
  * up, and there is nothing on screen to cover.
  */
-import { useEffect, useState } from 'react';
-import { Appearance, InteractionManager } from 'react-native';
+import { useSyncExternalStore } from 'react';
+import { Appearance, InteractionManager, type ColorSchemeName } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
-type Scheme = 'light' | 'dark';
+export type Scheme = 'light' | 'dark';
+
+/**
+ * A system colour scheme narrowed to one the app can actually paint.
+ *
+ * `Appearance` does not only answer 'light' or 'dark': it reports `null` while
+ * the app is being restored or backgrounded, and its type also admits
+ * 'unspecified'. Neither is a colour, so both fall back to whatever was last
+ * known good rather than to a guess.
+ */
+export const toScheme = (
+  value: ColorSchemeName | null | undefined,
+  fallback: Scheme
+): Scheme =>
+  value === 'light' || value === 'dark' ? value : fallback;
 
 const STORAGE_KEY = 'theme_preference';
 const DEFAULT_PREFERENCE: ThemePreference = 'dark';
@@ -49,8 +63,25 @@ let switchingTo: ThemePreference | null = null;
 const subscribers = new Set<() => void>();
 const switchSubscribers = new Set<() => void>();
 
-const notify = () => subscribers.forEach((fn) => fn());
-const notifySwitching = () => switchSubscribers.forEach((fn) => fn());
+/**
+ * Announces a change to one subscriber list, over a copy of it.
+ *
+ * `Set.forEach` walks the live set, and a listener may subscribe or unsubscribe
+ * as a *side effect* of being called — React unmounting the component that owns
+ * it, most obviously, since re-theming re-renders the whole app. A listener
+ * deleted before the walk reaches it is then never called, and there is no
+ * second announcement: the value has already moved, so it stays missed. That is
+ * a tear, and this store is read twice by the same component often enough to
+ * see one — `SegmentedControl` reads the palette through `useColorScheme`
+ * while its caller reads the preference directly, so a miss on either side left
+ * the control painting one theme's selection in the other theme's colours.
+ */
+const announce = (listeners: Set<() => void>) => {
+  for (const listener of [...listeners]) listener();
+};
+
+const notify = () => announce(subscribers);
+const notifySwitching = () => announce(switchSubscribers);
 
 let applyTimer: ReturnType<typeof setTimeout> | null = null;
 let settleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -73,7 +104,7 @@ export const getThemePreference = (): ThemePreference => current;
  */
 export const getPendingScheme = (): Scheme => {
   const preference = switchingTo ?? current;
-  if (preference === 'system') return Appearance.getColorScheme() ?? 'dark';
+  if (preference === 'system') return toScheme(Appearance.getColorScheme(), 'dark');
   return preference;
 };
 
@@ -124,32 +155,39 @@ export const loadThemePreference = async (): Promise<void> => {
   }
 };
 
-export const useThemePreference = (): [ThemePreference, (p: ThemePreference) => void] => {
-  const [preference, setPreference] = useState<ThemePreference>(current);
-
-  useEffect(() => {
-    const update = () => setPreference(current);
-    subscribers.add(update);
-    return () => {
-      subscribers.delete(update);
-    };
-  }, []);
-
-  return [preference, setThemePreference];
+const subscribe = (onStoreChange: () => void) => {
+  subscribers.add(onStoreChange);
+  return () => {
+    subscribers.delete(onStoreChange);
+  };
 };
+
+const subscribeSwitching = (onStoreChange: () => void) => {
+  switchSubscribers.add(onStoreChange);
+  return () => {
+    switchSubscribers.delete(onStoreChange);
+  };
+};
+
+const getIsSwitching = (): boolean => switchingTo !== null;
+
+/**
+ * The current preference, and the setter that changes it.
+ *
+ * `useSyncExternalStore` rather than a `useState` copy kept in step by hand.
+ * The copy was wrong in two ways that both showed up as wrong colours: it was
+ * seeded a render before the subscription was added, so a component mounting
+ * while `loadThemePreference` announced the stored value kept the *default*
+ * theme for life; and every reader held its own copy, so two readers that
+ * disagreed stayed disagreeing, because a preference is only ever announced
+ * once. React re-reads this snapshot on every render and guarantees one value
+ * across a commit, so neither is expressible.
+ */
+export const useThemePreference = (): [ThemePreference, (p: ThemePreference) => void] => [
+  useSyncExternalStore(subscribe, getThemePreference),
+  setThemePreference,
+];
 
 /** True from the tap until the app has finished wearing the new theme. */
-export const useIsThemeSwitching = (): boolean => {
-  const [isSwitching, setIsSwitching] = useState(switchingTo !== null);
-
-  useEffect(() => {
-    const update = () => setIsSwitching(switchingTo !== null);
-    switchSubscribers.add(update);
-    update();
-    return () => {
-      switchSubscribers.delete(update);
-    };
-  }, []);
-
-  return isSwitching;
-};
+export const useIsThemeSwitching = (): boolean =>
+  useSyncExternalStore(subscribeSwitching, getIsSwitching);

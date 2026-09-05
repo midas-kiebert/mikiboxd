@@ -5,6 +5,13 @@ import { seedShowtimeVisibility } from "./useShowtimeVisibility";
 
 type useFetchAgendaProps = {
     limit?: number;
+    /**
+     * Page size for the first page only. Defaults to `limit`.
+     *
+     * Same reasoning as `useFetchMainPageShowtimes`: the first page is the one
+     * that always runs, and often the only one anyone scrolls to.
+     */
+    firstPageLimit?: number;
     snapshotTime?: string;
     includeInterested?: boolean;
     includeInvited?: boolean;
@@ -14,6 +21,7 @@ type useFetchAgendaProps = {
 export function useFetchAgenda(
     {
         limit,
+        firstPageLimit = limit,
         snapshotTime,
         includeInterested = true,
         includeInvited = true,
@@ -36,7 +44,10 @@ export function useFetchAgenda(
         queryFn: async ({ pageParam = 0 }) => {
             const page = await MeService.getMyAgenda({
                 offset: pageParam,
-                limit: limit,
+                // Offset zero is the first page, and nothing else can be: the
+                // offsets below are cumulative row counts, which only start at
+                // zero before anything has been fetched.
+                limit: pageParam === 0 ? firstPageLimit : limit,
                 snapshotTime: snapshotTime,
                 includeInterested,
                 includeInvited,
@@ -65,8 +76,14 @@ export function useFetchAgenda(
                 pages: dedupedPages,
             };
         },
-        getNextPageParam: (lastPage, allPages) =>
-            lastPage.length === limit ? allPages.length * limit : undefined,
+        // Summed rather than `allPages.length * limit`, which assumes every
+        // page is the same size and would skip or repeat rows the moment the
+        // first one is not. A short page means the end of the results.
+        getNextPageParam: (lastPage, allPages) => {
+            const requested = allPages.length === 1 ? firstPageLimit : limit;
+            if (requested === undefined || lastPage.length < requested) return undefined;
+            return allPages.reduce((total, page) => total + page.length, 0);
+        },
         staleTime: 0,
         gcTime: 5 * 60 * 1000, // 5 minutes
     });

@@ -25,7 +25,7 @@
  * breathing existed: it is unambiguous progress, where the swell is only
  * atmosphere. Callers that already have their own spinner drop it.
  */
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -35,6 +35,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
+import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
 /** Short enough that a wait which never happens is never seen. */
 export const LOADING_LOGO_FADE_IN_MS = 140;
@@ -73,6 +74,12 @@ type LoadingLogoProps = {
    */
   fadeIn?: boolean;
   style?: StyleProp<ViewStyle>;
+  /**
+   * Fired once this has been laid out — i.e. once its views actually exist.
+   * A caller that has to sequence something behind this panel appearing waits
+   * on it; see `useSheetPanelReady` in `sheets/use-sheet-content-ready`.
+   */
+  onLayout?: () => void;
 };
 
 export default function LoadingLogo({
@@ -83,9 +90,10 @@ export default function LoadingLogo({
   hideSpinner = false,
   fadeIn = false,
   style,
+  onLayout,
 }: LoadingLogoProps) {
-  const opacity = useRef(new Animated.Value(fadeIn ? 0 : 1)).current;
-  const breathe = useRef(new Animated.Value(0)).current;
+  const opacity = useAnimatedValue(fadeIn ? 0 : 1);
+  const breathe = useAnimatedValue(0);
 
   useEffect(() => {
     const animation = Animated.loop(
@@ -122,7 +130,7 @@ export default function LoadingLogo({
   });
 
   return (
-    <Animated.View style={[styles.container, style, { opacity }]}>
+    <Animated.View style={[styles.container, style, { opacity }]} onLayout={onLayout}>
       <Animated.Image
         source={require("../../assets/images/splash-icon.png")}
         style={{ width: logoSize, height: logoSize, transform: [{ scale }] }}

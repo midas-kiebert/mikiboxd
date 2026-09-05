@@ -9,7 +9,7 @@
  * "watched" list stays static even then — those friends have already seen the
  * film, so inviting them to a screening of it isn't the point of that list.
  */
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useState } from "react";
 import { Animated, Modal, ScrollView, StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
@@ -20,6 +20,7 @@ import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { getFriendWatchKindMeta, type FriendWatchKind } from "@/components/friends/friend-watch-kind";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
 // RN's built-in Modal `animationType="fade"` has a fixed, slow native duration
 // that can't be tuned via props, so the fade is driven here instead.
@@ -70,7 +71,7 @@ export default function FriendWatchListModal({
   const goToUserPage = useSingleFireNavigation((friendId: string, name: string) =>
     router.push({ pathname: "/friend-showtimes/[id]", params: { id: friendId, name } })
   );
-  const anim = useRef(new Animated.Value(0)).current;
+  const anim = useAnimatedValue(0);
   const scale = useMemo(
     () => anim.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }),
     [anim]
@@ -78,12 +79,18 @@ export default function FriendWatchListModal({
   // Kind *and* friends are kept one beat longer than the props so the closing
   // fade plays out on the list that was open. Callers derive `friends` from
   // `kind`, so on close the incoming list is already the other relationship's —
-  // rendering it would flash the wrong list through the fade. Held in a ref and
+  // rendering it would flash the wrong list through the fade. Held in state and
   // written during render (not in an effect) so the modal's first commit already
   // has its content — mounting a frame late let the fade run out before the
-  // native modal window appeared, which made the popup pop in instead.
-  const lastOpen = useRef<{ kind: FriendWatchKind; friends: UserPublic[] } | null>(null);
-  if (kind) lastOpen.current = { kind, friends };
+  // native modal window appeared, which made the popup pop in instead. React
+  // re-runs the component synchronously on a render-time state update, so this
+  // costs no extra frame over the ref this used to be.
+  const [lastOpen, setLastOpen] = useState<{ kind: FriendWatchKind; friends: UserPublic[] } | null>(
+    null
+  );
+  if (kind && (lastOpen?.kind !== kind || lastOpen?.friends !== friends)) {
+    setLastOpen({ kind, friends });
+  }
   const [isMounted, setIsMounted] = useState(kind !== null);
   if (kind && !isMounted) setIsMounted(true);
 
@@ -108,7 +115,7 @@ export default function FriendWatchListModal({
   }, [kind, anim]);
 
   // Render/output using the state and derived values prepared above.
-  const rendered = lastOpen.current;
+  const rendered = lastOpen;
   if (!isMounted || !rendered) return null;
 
   const renderedFriends = rendered.friends;

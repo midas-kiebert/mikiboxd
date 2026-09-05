@@ -14,7 +14,7 @@
  * hiding a single segmented control behind a caret costs a tap and saves no
  * space, so the label and the control share one line instead.
  */
-import { PropsWithChildren, useCallback, useMemo, useRef, useState } from "react";
+import { PropsWithChildren, useCallback, useMemo, useState } from "react";
 import { Animated, LayoutAnimation, StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
@@ -22,6 +22,7 @@ import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { EXPAND_DURATION_MS, EXPAND_LAYOUT_ANIMATION } from "@/utils/expand-animation";
 import { triggerSelectionHaptic } from "@/utils/long-press";
+import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
 type Props = PropsWithChildren<{
   label: string;
@@ -40,7 +41,7 @@ export default function FilterSection({ label, defaultOpen = false, summary, chi
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   // Caret rotation: 0 = collapsed (0°), 1 = expanded (180°).
-  const caretRotation = useRef(new Animated.Value(defaultOpen ? 1 : 0)).current;
+  const caretRotation = useAnimatedValue(defaultOpen ? 1 : 0);
   const caretSpin = useMemo(
     () => caretRotation.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "180deg"] }),
     [caretRotation]

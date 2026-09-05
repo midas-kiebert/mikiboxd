@@ -4,7 +4,7 @@
  * controlled `visible` prop and handlers from NotificationCenterProvider.
  */
 import { useMemo } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -55,16 +55,20 @@ export default function NotificationCenterSheet({
   const { bottom: bottomInset } = useSafeAreaInsets();
 
   return (
-    <AppBottomSheet visible={visible} onClose={onClose} title="Notifications">
+    <AppBottomSheet
+      visible={visible}
+      onClose={onClose}
+      title="Notifications"
+      // The first load has nothing to show behind it, so it stays on the sheet's
+      // own loading panel rather than swapping one spinner for another.
+      contentReady={!isLoading || items.length > 0 || tips.length > 0}
+      loadingLabel="Loading notifications…"
+    >
       <BottomSheetScrollView
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 24 + bottomInset }]}
         showsVerticalScrollIndicator={false}
       >
-        {isLoading && items.length === 0 && tips.length === 0 ? (
-          <View style={styles.centered}>
-            <ActivityIndicator size="large" color={colors.tint} />
-          </View>
-        ) : items.length === 0 && tips.length === 0 ? (
+        {items.length === 0 && tips.length === 0 ? (
           <View style={styles.centered}>
             <MaterialIcons name="notifications-none" size={40} color={colors.textSecondary} />
             <Text style={styles.emptyText}>You&apos;re all caught up</Text>

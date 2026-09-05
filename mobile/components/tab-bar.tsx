@@ -39,7 +39,7 @@
  * copies are faded past each other. Cheaper than it sounds (two glyphs), and
  * it needs nothing to support animated colour values.
  */
-import { type ReactNode, useLayoutEffect, useRef } from 'react';
+import { type ReactNode, useEffect, useLayoutEffect, useRef } from 'react';
 import { StyleSheet, View, type TextStyle } from 'react-native';
 import { BottomTabBarButtonProps } from "expo-router/js-tabs";
 import { PlatformPressable } from "expo-router/react-navigation";
@@ -139,6 +139,32 @@ let flashStartedAt = 0;
  */
 export function tabContentHoldMs(): number {
   return Math.max(0, flashStartedAt + FLASH_MS - Date.now());
+}
+
+/**
+ * What each tab does when it is pressed while already selected — there is
+ * exactly one tab bar and one set of tab screens per app instance, so a
+ * module-level map is enough; no Context needed to reach `HapticTab` from
+ * wherever each tab screen registers its own handler.
+ */
+const reselectHandlers = new Map<string, () => void>();
+
+/**
+ * Registers what tab `tabKey` does on reselect (tapped while already the
+ * active tab). The handler ref is kept fresh on every render but the map
+ * entry is only touched on mount/unmount, so callers don't need to memoize
+ * the handler themselves.
+ */
+export function useRegisterTabReselect(tabKey: string, handler: () => void) {
+  const handlerRef = useRef(handler);
+  handlerRef.current = handler;
+  useEffect(() => {
+    const wrapped = () => handlerRef.current();
+    reselectHandlers.set(tabKey, wrapped);
+    return () => {
+      reselectHandlers.delete(tabKey);
+    };
+  }, [tabKey]);
 }
 
 const FADE = { duration: HIGHLIGHT_MS, easing: Easing.out(Easing.quad) } as const;
@@ -300,6 +326,14 @@ export function HapticTab({
         props.onPressIn?.(ev);
       }}
       onPress={(ev) => {
+        // Pressing the tab you're already on doesn't navigate anywhere — it
+        // never did anything before this — so it's free to mean something
+        // else instead: whatever that screen registered for reselect.
+        if (isSelected) {
+          reselectHandlers.get(tabKey)?.();
+          return;
+        }
+
         // The bar answers now — it owes the navigator nothing, and this is the
         // only part of the press that is free.
         litTab.set(tabKey);

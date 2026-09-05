@@ -29,13 +29,13 @@
  * swipe was meant to avoid.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { StyleSheet, TouchableOpacity, View, useWindowDimensions } from "react-native";
+import { FlatList, StyleSheet, TouchableOpacity, View, useWindowDimensions } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { GestureDetector } from "react-native-gesture-handler";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { MeService } from "shared";
+import { MeService, type ShowtimePublic } from "shared";
 import { useFetchMainPageShowtimes } from "shared/hooks/useFetchMainPageShowtimes";
 import { useFetchAgenda } from "shared/hooks/useFetchAgenda";
 import { useFetchFriends } from "shared/hooks/useFetchFriends";
@@ -57,6 +57,7 @@ import { useSwipePager } from "@/hooks/useSwipePager";
 import { useIsSignedIn } from "@/utils/auth-session";
 import { buildSnapshotTime, useSnapshotRefresh } from "@/utils/reset-infinite-query";
 import { triggerSelectionHaptic } from "@/utils/long-press";
+import { useRegisterTabReselect } from "@/components/tab-bar";
 
 /** What signing in would put on this tab, in the order it would appear. */
 const ACTIVITY_HIGHLIGHTS = [
@@ -171,6 +172,24 @@ function ActivityScreen() {
     transform: [{ translateX: -progress.value * pageWidth }],
   }));
 
+  // Each page registers its own scroll/reload functions here (keyed by its
+  // mode) so the tab-bar reselect handler below can reach whichever one is
+  // currently on screen without the three feeds sharing a query/snapshot.
+  const pageControlsRef = useRef<
+    Partial<Record<ActivityMode, { scrollToTop: () => void; reload: () => void }>>
+  >({});
+  const registerPageControls = useCallback(
+    (pageMode: ActivityMode, controls: { scrollToTop: () => void; reload: () => void }) => {
+      pageControlsRef.current[pageMode] = controls;
+    },
+    []
+  );
+  useRegisterTabReselect("activity", () => {
+    const controls = pageControlsRef.current[mode];
+    controls?.scrollToTop();
+    controls?.reload();
+  });
+
   // Render/output using the state and derived values prepared above.
   if (!isSignedIn) {
     return (
@@ -208,6 +227,7 @@ function ActivityScreen() {
                   isFocused={isFocused}
                   colors={colors}
                   styles={styles}
+                  registerControls={registerPageControls}
                 />
               </View>
             ))}
@@ -225,6 +245,10 @@ type ActivityPageProps = {
   isFocused: boolean;
   colors: ThemeColors;
   styles: ReturnType<typeof createStyles>;
+  registerControls: (
+    mode: ActivityMode,
+    controls: { scrollToTop: () => void; reload: () => void }
+  ) => void;
 };
 
 /**
@@ -242,11 +266,12 @@ type ActivityPageProps = {
  * moving the other two's queries to an empty key too — reloading all three
  * feeds for a refresh of one.
  */
-function ActivityPage({ mode, isFocused, colors, styles }: ActivityPageProps) {
+function ActivityPage({ mode, isFocused, colors, styles, registerControls }: ActivityPageProps) {
   const router = useRouter();
   const isYou = mode === "you";
   const isFriendsOnly = mode === "friends";
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
+  const listRef = useRef<FlatList<ShowtimePublic>>(null);
 
   const filters = useMemo(
     () => ({
@@ -300,6 +325,32 @@ function ActivityPage({ mode, isFocused, colors, styles }: ActivityPageProps) {
   const fetchNextPage = isYou ? agendaQuery.fetchNextPage : mainQuery.fetchNextPage;
 
   const { refreshing, handleRefresh } = useSnapshotRefresh({ setSnapshotTime, isFetching });
+
+  // A refresh triggered without the user's finger on the glass — this one —
+  // occasionally leaves iOS's RefreshControl's own scroll-position compensation
+  // stuck: it makes room for the spinner up front but doesn't always give it
+  // back once `refreshing` drops, leaving the list a few points short of 0.
+  // Re-snapping once the reload lands (see `reload` below) fixes it; ordinary
+  // pull-to-refresh isn't affected, so it isn't hooked in here. Animated, and
+  // fired the moment `refreshing` drops rather than after a wait: in the
+  // normal case the list is already at 0 from `scrollToTop` below, so this
+  // glides nowhere and is invisible; only the rare stuck case actually moves.
+  const pendingScrollResetRef = useRef(false);
+  useEffect(() => {
+    if (!pendingScrollResetRef.current || refreshing) return;
+    pendingScrollResetRef.current = false;
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+  }, [refreshing]);
+
+  useEffect(() => {
+    registerControls(mode, {
+      scrollToTop: () => listRef.current?.scrollToOffset({ offset: 0, animated: true }),
+      reload: () => {
+        pendingScrollResetRef.current = true;
+        handleRefresh();
+      },
+    });
+  }, [mode, registerControls, handleRefresh]);
 
   // Distinguishes "you have no friends yet" from "your friends have nothing
   // on right now" — the empty state and its CTA differ between the two. Not
@@ -385,6 +436,7 @@ function ActivityPage({ mode, isFocused, colors, styles }: ActivityPageProps) {
 
   return (
     <ShowtimesListContent
+      listRef={listRef}
       showtimes={showtimes}
       isLoading={isLoading}
       isFetching={isFetching}

@@ -154,5 +154,22 @@ export function useScrollTriggeredLoadMore(
     attempt();
   }, [attempt]);
 
-  return { onScrollBeginDrag, onEndReached };
+  /**
+   * Puts this back to its just-mounted state: nothing scrolled, nothing owed.
+   *
+   * A refresh (pull-to-refresh or a tab-bar reselect) replaces the list with a
+   * fresh first page, which is exactly the "just landed" situation this hook
+   * exists to protect — a short page reads as "the end" the moment it lands.
+   * Without this, `hasScrolled` stays true forever after the *first* drag a
+   * list ever sees (the pull gesture that started the refresh counts), so
+   * every refresh after that one is free to trigger a real page fetch the
+   * instant its fresh — and possibly short — first page lands, which showed up
+   * as a spinner flashing on for a beat right after the pull-to-refresh one.
+   */
+  const reset = useCallback(() => {
+    hasScrolled.current = false;
+    owed.current = false;
+  }, []);
+
+  return { onScrollBeginDrag, onEndReached, reset };
 }

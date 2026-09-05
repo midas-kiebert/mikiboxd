@@ -2,7 +2,7 @@
  * Mobile showtimes feature component: Showtimes Screen.
  */
 import React from "react";
-import { FlatList, StyleSheet, View } from "react-native";
+import { Dimensions, FlatList, StyleSheet, View } from "react-native";
 import {
   pullToRefreshContentStyle,
   pullToRefreshScrollProps,
@@ -39,6 +39,13 @@ import ListLoadingLogo from "@/components/layout/ListLoadingLogo";
 import { tabletCappedContentStyle } from "@/constants/tablet-layout";
 import { LOADING_LOGO_DELAY_MS, LOADING_LOGO_COOLDOWN_MS } from "@/constants/loading-logo";
 
+/**
+ * How tall the stand-in for an empty/refreshing list's content is kept — see
+ * `renderEmpty` below. Roughly a screenful, same as a real empty state would
+ * occupy, so the scroll content never actually collapses during a refresh.
+ */
+const EMPTY_PLACEHOLDER_MIN_HEIGHT = Dimensions.get("window").height;
+
 type ShowtimesListContentProps = {
   showtimes: ShowtimePublic[];
   isLoading: boolean;
@@ -74,6 +81,8 @@ type ShowtimesListContentProps = {
    * instead of passing it here hits exactly that bug.
    */
   immediateEmptyLoading?: boolean;
+  /** Lets a caller scroll the list from outside (e.g. a tab-bar reselect). */
+  listRef?: React.Ref<FlatList<ShowtimePublic>>;
 };
 
 export function ShowtimesListContent({
@@ -91,6 +100,7 @@ export function ShowtimesListContent({
   inheritFiltersOnMovieNav = false,
   listHeader,
   immediateEmptyLoading = false,
+  listRef,
 }: ShowtimesListContentProps) {
   const router = useRouter();
   const goToMovieFromLongPress = useSingleFireNavigation((showtime: ShowtimePublic) =>
@@ -195,7 +205,16 @@ export function ShowtimesListContent({
     // the pull gesture's own spinner already covers that, and this would
     // otherwise flash up for an already-empty list mid-refresh even though
     // the loading panel is deliberately skipped for that case.
-    if (isEmptyLoading || refreshing) return null;
+    //
+    // A stand-in view rather than `null`: a refresh moves the query to a
+    // snapshot key with nothing cached, so the list is genuinely empty for
+    // the whole refetch — and an *empty* content container (no rows, no
+    // `ListEmptyComponent`) is what let iOS's RefreshControl render a
+    // duplicate spinner mid-scrollbox while pulling, a known RCTRefreshControl
+    // quirk when the scroll content collapses while it's active. Keeping the
+    // content roughly a screenful, same as a real empty state would be, avoids
+    // that collapse.
+    if (isEmptyLoading || refreshing) return <View style={styles.emptyPlaceholder} />;
     return (
       <View style={styles.centerContainer}>
         <ThemedText style={styles.emptyText}>{emptyText}</ThemedText>
@@ -207,14 +226,39 @@ export function ShowtimesListContent({
   // Reports whether the page was actually asked for, and hands back its
   // promise: a debt this cannot spend has to stay owed, and one whose fetch
   // fails has to become owed again — see `feed-paging`.
+  //
+  // `refreshing` is also checked: a refresh moves the query to a snapshot key
+  // with nothing cached, so for a beat the list is genuinely empty — which
+  // `onEndReached` reads as "the end", right as the pull gesture that started
+  // the refresh has already armed the scroll-triggered debounce. Without this,
+  // that combination started a real `fetchNextPage()` for a list that was
+  // about to be replaced anyway, showing a second, lower spinner alongside the
+  // pull-to-refresh one at the top.
   const loadMore = useScrollTriggeredLoadMore(() => {
-    if (!hasNextPage || isFetchingNextPage) return false;
+    if (refreshing || !hasNextPage || isFetchingNextPage) return false;
     return onLoadMore();
   });
+
+  // A refresh replaces the list with a fresh first page — exactly the
+  // "just mounted" situation `useScrollTriggeredLoadMore` exists to protect.
+  // Without re-arming it here, the debounce stays permanently spent after the
+  // very first drag this list ever saw (the pull gesture that starts a
+  // refresh counts as one), so the fresh page's `onEndReached` — which fires
+  // the moment a short page lands, before the render showing `refreshing` as
+  // false has even committed — goes straight through to a real
+  // `fetchNextPage()`, flashing the footer spinner on for a beat.
+  const wasRefreshingRef = React.useRef(refreshing);
+  React.useEffect(() => {
+    if (refreshing && !wasRefreshingRef.current) {
+      loadMore.reset();
+    }
+    wasRefreshingRef.current = refreshing;
+  }, [refreshing, loadMore.reset]);
 
   return (
     <View style={styles.container}>
       <FlatList
+        ref={listRef}
         data={data}
         renderItem={renderItem}
         keyExtractor={byIdKeyExtractor}
@@ -572,5 +616,8 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     emptyText: {
       fontSize: 16,
       color: colors.textSecondary,
+    },
+    emptyPlaceholder: {
+      minHeight: EMPTY_PLACEHOLDER_MIN_HEIGHT,
     },
   });

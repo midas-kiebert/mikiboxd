@@ -13,7 +13,6 @@ import { Stack as JsStack } from 'expo-router/js-stack';
 import {
   CardStyleInterpolators,
   TransitionPresets,
-  TransitionSpecs,
 } from 'expo-router/build/react-navigation/stack';
 import { Appearance, Easing, Linking, LogBox, Platform, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -876,17 +875,23 @@ function RootLayourContent() {
           // pushed screens; the anchored (tabs) root has no entry transition.
           ...TransitionPresets.SlideFromRightIOS,
           // The incoming screen mounts fresh on push; the JS-driven slide starts
-          // instantly while its content is still painting, so a same-coloured card
-          // would slide in "empty" and the content would pop in at the end. A short
-          // delay on the open lets React paint the screen's skeleton before the card
-          // begins moving, so you see it slide in fully formed (WhatsApp-style). The
-          // close keeps the default iOS spring — both screens are already painted.
+          // instantly while its content is still painting. Destination screens are
+          // expected to mount a cheap skeleton immediately (see useDeferredMount)
+          // rather than relying on a pre-roll delay here to hide a slow first paint.
+          // The close used to keep react-navigation's `TransitionIOSSpec` — an exact
+          // copy of UIKit's native back-swipe spring — but that spring (mass: 3) is
+          // tuned for a native-driven animation and settles noticeably slower than
+          // the open once run through JS/Reanimated; both screens are already
+          // painted on close, so there's no reason to reach for a spring at all.
           transitionSpec: {
             open: {
               animation: 'timing',
-              config: { duration: 300, delay: 48, easing: Easing.out(Easing.poly(4)) },
+              config: { duration: 300, easing: Easing.out(Easing.poly(4)) },
             },
-            close: TransitionSpecs.TransitionIOSSpec,
+            close: {
+              animation: 'timing',
+              config: { duration: 250, easing: Easing.out(Easing.poly(4)) },
+            },
           },
           cardStyle: { backgroundColor: palette.background },
         }}

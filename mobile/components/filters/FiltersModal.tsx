@@ -622,7 +622,10 @@ export default function FiltersModal({
           )}
           <TouchableOpacity
             style={styles.viewResultsButton}
-            onPress={handleClose}
+            onPress={() => {
+              triggerSelectionHaptic();
+              handleClose();
+            }}
             activeOpacity={0.85}
           >
             {resultCount !== undefined ? (

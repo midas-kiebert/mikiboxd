@@ -15,12 +15,14 @@ def create_event(
     user_id: UUID,
     name: AnalyticsEventName,
     platform: str | None,
+    app_version: str | None = None,
     properties: dict | None = None,
 ) -> AnalyticsEvent:
     event = AnalyticsEvent(
         user_id=user_id,
         name=name,
         platform=platform,
+        app_version=app_version,
         properties=properties,
     )
     session.add(event)
@@ -41,8 +43,9 @@ def count_by_name(
 
 def count_opens_by_day_and_user(
     *, session: Session, since: datetime
-) -> list[tuple[datetime, UUID, str, str | None, int]]:
-    """One row per (day, user, platform) with how many times they opened the app/site.
+) -> list[tuple[datetime, UUID, str, str | None, str | None, int]]:
+    """One row per (day, user, platform, app_version) with how many times they
+    opened the app/site.
 
     Counts both LOGIN (credential sign-in) and APP_OPEN (silent re-auth on an
     already-authenticated launch) so the dashboard reflects actual usage, not
@@ -57,6 +60,7 @@ def count_opens_by_day_and_user(
             AnalyticsEvent.user_id,
             User.email,
             AnalyticsEvent.platform,
+            AnalyticsEvent.app_version,
             func.count(),
         )
         .join(User, User.id == AnalyticsEvent.user_id)
@@ -66,7 +70,13 @@ def count_opens_by_day_and_user(
             ),
             col(AnalyticsEvent.created_at) >= since,
         )
-        .group_by(day, AnalyticsEvent.user_id, User.email, AnalyticsEvent.platform)
+        .group_by(
+            day,
+            AnalyticsEvent.user_id,
+            User.email,
+            AnalyticsEvent.platform,
+            AnalyticsEvent.app_version,
+        )
         .order_by(day.desc(), User.email)
     )
     return list(session.exec(stmt).all())

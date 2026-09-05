@@ -72,7 +72,7 @@ import { useSwipePager } from '@/hooks/useSwipePager';
 import { resetInfiniteQuery } from '@/utils/reset-infinite-query';
 import { triggerSelectionHaptic } from '@/utils/long-press';
 import TabScreenSkeleton from '@/components/layout/TabScreenSkeleton';
-import { tabContentHoldMs } from '@/components/tab-bar';
+import { tabContentHoldMs, useRegisterTabReselect } from '@/components/tab-bar';
 import { useDeferredMount } from '@/utils/use-deferred-mount';
 
 /** What signing in would put on this tab, in the order it would appear. */
@@ -328,6 +328,23 @@ function FriendsScreen() {
   // `onIndexChange`, so it cannot close over the pager it is being built with.
   const goToPageRef = useRef<((index: number) => void) | null>(null);
 
+  // Scroll targets for the tab-bar reselect action — whichever page is
+  // currently selected.
+  const sectionListRef = useRef<SectionList<UserWithFriendStatus, FriendsSection>>(null);
+  const discoverListRef = useRef<FlatList<UserWithFriendStatus>>(null);
+  useRegisterTabReselect('friends', () => {
+    if (isDiscovering) {
+      discoverListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    } else if (sections.length > 0) {
+      sectionListRef.current?.scrollToLocation({
+        sectionIndex: 0,
+        itemIndex: 0,
+        animated: true,
+        viewPosition: 0,
+      });
+    }
+  });
+
   const handleChangeMode = useCallback((next: FriendsMode) => {
     // Start the pages moving here rather than from the render this causes:
     // until that commit lands, nothing driven by React state has moved. A
@@ -395,6 +412,7 @@ function FriendsScreen() {
   // render now rather than one being chosen — see the pager below.
   const friendsPage = (
     <SectionList
+      ref={sectionListRef}
       // Not cleared for a refresh: ThemedRefreshControl's own spinner
       // already says a reload is running, and the rows it replaces stay
       // up until the fresh ones land.
@@ -479,6 +497,7 @@ function FriendsScreen() {
 
   const discoverPage = (
     <FlatList
+      ref={discoverListRef}
       data={displayedUsers}
       keyExtractor={(item) => `user-${item.id}`}
       contentContainerStyle={[styles.content, pullToRefreshContentStyle]}
@@ -681,7 +700,7 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     // reserved load-more row or nothing at all — neither needs its own
     // clearance on top of that.
     inviteFooterNoResults: {
-      paddingTop: 0,
+      paddingTop: 12,
     },
     inviteCard: {
       borderRadius: 12,

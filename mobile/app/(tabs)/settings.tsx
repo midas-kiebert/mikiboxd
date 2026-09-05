@@ -44,12 +44,17 @@ import * as Clipboard from 'expo-clipboard';
 import { ThemedText } from '@/components/themed-text';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import TopBar from '@/components/layout/TopBar';
+import { useRegisterTabReselect } from '@/components/tab-bar';
 import { type ThemePreference, useThemePreference } from '@/utils/theme-preference';
 import {
   restoreDismissedTips,
   useDismissedTipCount,
   useFeatureTipsEnabled,
 } from '@/utils/feature-tips';
+import {
+  setRemoveInterestedReminderEnabled,
+  useRemoveInterestedReminderEnabled,
+} from '@/utils/interested-elsewhere-reminder';
 import { startIntro } from '@/utils/intro';
 import { markSignedOut, useIsSignedIn } from '@/utils/auth-session';
 import useAuth from 'shared/hooks/useAuth';
@@ -114,6 +119,7 @@ function SettingsScreen() {
   const [themePreference, setThemePreference] = useThemePreference();
   const [featureTipsEnabled, setFeatureTipsEnabled] = useFeatureTipsEnabled();
   const dismissedTipCount = useDismissedTipCount();
+  const removeInterestedReminderEnabled = useRemoveInterestedReminderEnabled();
   // Router instance used for in-app navigation actions.
   const router = useRouter();
   // React Query client used for cache updates and invalidation.
@@ -199,6 +205,10 @@ function SettingsScreen() {
   // The ScrollView is scrolled to the end once the danger zone expands, so the
   // newly revealed card is never left cut off below the fold.
   const scrollViewRef = useRef<ScrollView>(null);
+  // Tapping the Settings tab again while already on it just snaps back to the top.
+  useRegisterTabReselect('settings', () => {
+    scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+  });
   // Where the Letterboxd card sits in the scroll content, captured on layout
   // so the "no watchlist connected" digest warning can jump straight to it
   // instead of leaving someone to hunt for it themselves.
@@ -897,6 +907,23 @@ function SettingsScreen() {
                 </ThemedText>
               </TouchableOpacity>
             ) : null}
+          </View>
+          <View style={styles.card}>
+            <View style={styles.notificationToggleHeader}>
+              <View style={styles.notificationToggleTextContainer}>
+                <ThemedText style={styles.notificationToggleTitle}>
+                  Clear "interested" when you go
+                </ThemedText>
+                <ThemedText style={styles.notificationToggleDescription}>
+                  When you mark a showtime "going", ask to remove "interested" from other
+                  showtimes of the same movie.
+                </ThemedText>
+              </View>
+              <AppSwitch
+                value={removeInterestedReminderEnabled}
+                onValueChange={setRemoveInterestedReminderEnabled}
+              />
+            </View>
           </View>
         </View>
         ) : null}

@@ -7,7 +7,10 @@
  * Pass a persistenceKey (e.g. route id) to skip deferral on re-mounts — this
  * prevents the exit animation from flashing a blank/skeleton state when
  * react-native-screens briefly re-mounts the screen at the start of a back
- * transition.
+ * transition. "Seen" only survives a short window past unmount, just long
+ * enough to cover that remount — a genuinely new visit later (a fresh push
+ * to the same route) still defers, rather than rendering the expensive
+ * content synchronously on the push that is supposed to stay light.
  *
  * `minDelay` holds the content back for at least that long *after*
  * interactions settle, for callers whose shell is announced by an animation
@@ -20,6 +23,14 @@ import { useEffect, useState } from "react";
 import { InteractionManager } from "react-native";
 
 const mountedKeys = new Set<string>();
+// Keyed the same as mountedKeys. A pending timeout means that key's unmount is
+// provisional — still within the back-transition remount window — so it has
+// not actually been forgotten yet.
+const pendingForgets = new Map<string, ReturnType<typeof setTimeout>>();
+// Long enough to cover react-native-screens' back-transition remount (near
+// instant), short enough that a real later visit to the same route still
+// defers.
+const FORGET_DELAY_MS = 300;
 
 export function useDeferredMount(
   persistenceKey?: string,
@@ -27,6 +38,24 @@ export function useDeferredMount(
 ): boolean {
   const alreadySeen = persistenceKey != null && mountedKeys.has(persistenceKey);
   const [ready, setReady] = useState(alreadySeen);
+
+  useEffect(() => {
+    if (persistenceKey != null) {
+      const pending = pendingForgets.get(persistenceKey);
+      if (pending) {
+        clearTimeout(pending);
+        pendingForgets.delete(persistenceKey);
+      }
+    }
+    return () => {
+      if (persistenceKey == null) return;
+      const timer = setTimeout(() => {
+        mountedKeys.delete(persistenceKey);
+        pendingForgets.delete(persistenceKey);
+      }, FORGET_DELAY_MS);
+      pendingForgets.set(persistenceKey, timer);
+    };
+  }, [persistenceKey]);
 
   useEffect(() => {
     if (alreadySeen) return;

@@ -2,7 +2,7 @@
  * Expo Router screen/module for (tabs) / index. It controls navigation and screen-level state for this route.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, StyleSheet, View } from 'react-native';
+import { Dimensions, FlatList, StyleSheet, View } from 'react-native';
 import {
   pullToRefreshContentStyle,
   pullToRefreshScrollProps,
@@ -18,7 +18,7 @@ import { useRouter } from 'expo-router';
 import { useFetchMainPageShowtimes } from 'shared/hooks/useFetchMainPageShowtimes';
 import { useFetchMovies, type MovieFilters } from 'shared/hooks/useFetchMovies';
 import type { SearchField } from 'shared/client';
-import type { MovieSummaryPublic } from 'shared';
+import type { MovieSummaryPublic, ShowtimePublic } from 'shared';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import useAuth from 'shared/hooks/useAuth';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
@@ -64,6 +64,7 @@ import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 import { useSingleFireNavigation } from '@/hooks/useSingleFireNavigation';
 import { buildSnapshotTime, useSnapshotRefresh } from '@/utils/reset-infinite-query';
+import { useRegisterTabReselect } from '@/components/tab-bar';
 
 // One request per pause in typing, not one per keystroke — five requests for
 // "alkmaar" racing each other otherwise, and whichever lands last (not
@@ -118,6 +119,13 @@ const hasVisitedTab = (state: TabNavigatorState | undefined, name: string): bool
 const SHOWTIME_MODAL_OPTIONS = { inheritFilters: true } as const;
 
 const SEARCH_DEBOUNCE_MS = 280;
+
+/**
+ * How tall the stand-in for an empty/refreshing movies grid is kept — see
+ * `renderMoviesEmpty`. Roughly a screenful, so the scroll content never
+ * actually collapses during a refresh.
+ */
+const EMPTY_PLACEHOLDER_MIN_HEIGHT = Dimensions.get('window').height;
 
 function MainShowtimesScreen() {
   const colors = useThemeColors();
@@ -187,6 +195,10 @@ function MainShowtimesScreen() {
   }, [tabNavigation]);
   // The intro's last step highlights this screen's Filters button in place.
   const filtersButtonRef = useRef<View>(null);
+  // Scroll targets for the tab-bar reselect action (tapping Showtimes while
+  // already on it) — whichever of the two feeds is currently rendered below.
+  const moviesListRef = useRef<FlatList<MovieSummaryPublic>>(null);
+  const showtimesListRef = useRef<FlatList<ShowtimePublic>>(null);
   const introPhase = useIntroPhase();
   const isAnyBlockingOverlayOpen = useIsAnyBlockingOverlayOpen();
 
@@ -382,7 +394,11 @@ function MainShowtimesScreen() {
   );
 
   const loadMoreMovies = useScrollTriggeredLoadMore(() => {
-    if (!moviesHasNextPage || moviesFetchingNextPage) return false;
+    // `refreshing` (declared below): a refresh moves the query to a snapshot
+    // key with nothing cached, so for a beat the list is genuinely empty,
+    // which `onEndReached` reads as "the end" — see the matching guard in
+    // `ShowtimesScreen.tsx` for why that must not start a real page fetch.
+    if (refreshing || !moviesHasNextPage || moviesFetchingNextPage) return false;
     return moviesFetchNextPage();
   });
 
@@ -419,6 +435,55 @@ function MainShowtimesScreen() {
     setSnapshotTime,
     isFetching: showtimesFetching || moviesFetching,
   });
+
+  // A refresh replaces the movies grid with a fresh first page — exactly the
+  // "just mounted" situation `useScrollTriggeredLoadMore` exists to protect.
+  // Without re-arming it here, the debounce stays permanently spent after the
+  // very first drag this list ever saw, so the fresh page's `onEndReached`
+  // goes straight through to a real `fetchNextPage()`, flashing the footer
+  // spinner on for a beat. (`ShowtimesListContent` does the equivalent for the
+  // showtimes-mode feed internally.)
+  const wasRefreshingRef = useRef(refreshing);
+  useEffect(() => {
+    if (refreshing && !wasRefreshingRef.current) {
+      loadMoreMovies.reset();
+    }
+    wasRefreshingRef.current = refreshing;
+  }, [refreshing, loadMoreMovies.reset]);
+
+  // A refresh triggered without the user's finger on the glass — this one —
+  // occasionally leaves iOS's RefreshControl's own scroll-position compensation
+  // stuck: it makes room for the spinner up front but doesn't always give it
+  // back once `refreshing` drops, leaving the list a few points short of 0.
+  // The pull-to-refresh gesture itself isn't affected (there the offset is
+  // already wherever the finger left it), so this only re-snaps after a
+  // reselect-triggered reload. Animated, and fired the moment `refreshing`
+  // drops rather than after a wait: in the normal case the list is already at
+  // 0 from the initial scroll in `handleTabReselect`, so this glides nowhere
+  // and is invisible; only the rare stuck case actually moves, and doing that
+  // smoothly is far less jarring than the instant jump this replaced.
+  const pendingScrollResetRef = useRef(false);
+  useEffect(() => {
+    if (!pendingScrollResetRef.current || refreshing) return;
+    pendingScrollResetRef.current = false;
+    (appliedGroupByMovie ? moviesListRef : showtimesListRef).current?.scrollToOffset({
+      offset: 0,
+      animated: true,
+    });
+  }, [refreshing, appliedGroupByMovie]);
+
+  // Tapping the Showtimes tab again while already on it: scroll whichever
+  // feed is on screen back to the top and reload it, the same way a
+  // pull-to-refresh does (no extra loading screen — just fresh rows).
+  const handleTabReselect = useCallback(() => {
+    (appliedGroupByMovie ? moviesListRef : showtimesListRef).current?.scrollToOffset({
+      offset: 0,
+      animated: true,
+    });
+    pendingScrollResetRef.current = true;
+    handleRefresh();
+  }, [appliedGroupByMovie, handleRefresh]);
+  useRegisterTabReselect('index', handleTabReselect);
 
   const handleApplyPreset = (preset: DisplayPreset) => {
     setFeedHoldUntil(Date.now() + FILTER_ROW_SETTLE_MS);
@@ -568,7 +633,12 @@ function MainShowtimesScreen() {
     // the pull gesture's own spinner already covers that, and this would
     // otherwise flash up for an already-empty list mid-refresh even though
     // the loading panel is deliberately skipped for that case.
-    if (isMoviesEmptyLoading || refreshing) return null;
+    //
+    // A stand-in view rather than `null` while empty/refreshing — see the
+    // matching comment in `ShowtimesScreen.tsx`'s `renderEmpty`: an empty
+    // content container during a refresh is what let iOS's RefreshControl
+    // render a duplicate spinner mid-scrollbox.
+    if (isMoviesEmptyLoading || refreshing) return <View style={styles.emptyPlaceholder} />;
     return (
       <ThemedView style={styles.centerContainer}>
         <ThemedText style={styles.emptyText}>No movies found</ThemedText>
@@ -595,6 +665,7 @@ function MainShowtimesScreen() {
       {appliedGroupByMovie ? (
         <View style={styles.listWrapper}>
           <FlatList
+            ref={moviesListRef}
             data={visibleMovies}
             renderItem={renderMovie}
             keyExtractor={byIdKeyExtractor}
@@ -621,6 +692,7 @@ function MainShowtimesScreen() {
         </View>
       ) : (
         <ShowtimesListContent
+          listRef={showtimesListRef}
           showtimes={visibleShowtimes}
           isLoading={showtimesLoading || isAwaitingShowtimes}
           isFetching={showtimesFetching}
@@ -661,6 +733,7 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     movieFeed: { ...tabletCappedContentStyle, padding: 16 },
     centerContainer: { paddingVertical: 40, alignItems: 'center' },
     emptyText: { fontSize: 16, color: colors.textSecondary },
+    emptyPlaceholder: { minHeight: EMPTY_PLACEHOLDER_MIN_HEIGHT },
   });
 
 /**

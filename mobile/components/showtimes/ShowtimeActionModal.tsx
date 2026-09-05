@@ -60,10 +60,12 @@ import { QueryClientProvider, useMutation, useQuery, useQueryClient } from "@tan
 import { DateTime } from "luxon";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
+  MoviesService,
   ShowtimesService,
   type GoingStatus,
   type MeGetCurrentUserResponse,
   type SentShowtimePingPublic,
+  type ShowtimeInMoviePublic,
   type ShowtimePublic,
   type ShowtimeSeatAvailabilityPublic,
   type UserPublic,
@@ -100,6 +102,8 @@ import FriendListRow, {
 } from "@/components/friends/FriendListRow";
 import FriendWatchListModal from "@/components/friends/FriendWatchListModal";
 import InviteBeforePrivateDialog from "@/components/showtimes/InviteBeforePrivateDialog";
+import RemoveInterestedElsewhereDialog from "@/components/showtimes/RemoveInterestedElsewhereDialog";
+import { isRemoveInterestedReminderEnabled } from "@/utils/interested-elsewhere-reminder";
 import SeatSheets, { type SeatSheetsHandle } from "@/components/showtimes/SeatSheets";
 import { getSeatFieldMaxLength, getSeatInputConfig, validateSeatFieldValue } from "@/components/showtimes/seat-input";
 import SheetBackdrop from "@/components/sheets/SheetBackdrop";
@@ -447,6 +451,15 @@ export default function ShowtimeActionModal({
   // The status the user tapped, held while the hidden-friends dialog is up
   // so it can be applied once they've decided whether to invite anyone.
   const [pendingGoingStatus, setPendingGoingStatus] = useState<GoingStatus | null>(null);
+  // Other showtimes of the same movie the viewer had marked "interested",
+  // surfaced right after marking this one "going" so the stale marks can be
+  // cleared. The lookup runs in the background (see `checkInterestedElsewhere`)
+  // rather than gating the tap, so the going status is already applied by the
+  // time this dialog, if any, shows up — there's nothing pending to resume.
+  const [interestedElsewhereCandidates, setInterestedElsewhereCandidates] = useState<
+    ShowtimeInMoviePublic[]
+  >([]);
+  const [isInterestedElsewhereVisible, setIsInterestedElsewhereVisible] = useState(false);
   // Same custom fade, plus a subtle scale-in for the confirm card.
   const dismissDialogAnim = useAnimatedValue(0);
   const dismissDialogScale = useMemo(
@@ -1307,9 +1320,11 @@ export default function ShowtimeActionModal({
     }).start();
   }, [isDismissInviteDialogVisible, dismissDialogAnim]);
 
-  const handleStatusPress = async (going: GoingStatus) => {
-    if (!showtime || isUpdatingStatus) return;
-    triggerSelectionHaptic();
+  // Second half of the going/interested flow: the hidden-friends check, then
+  // finally the status update itself. Split out so it can run either right
+  // away or after the interested-elsewhere dialog above it has resolved.
+  const continueStatusPressAfterInterestedElsewhereCheck = async (going: GoingStatus) => {
+    if (!showtime) return;
 
     // Only relevant when the viewer isn't already going/interested — the
     // switch between those two doesn't change who can see them, so there's
@@ -1336,6 +1351,82 @@ export default function ShowtimeActionModal({
     }
 
     onUpdateStatus(going);
+  };
+
+  // Runs unawaited from handleStatusPress so the tap that marks a showtime
+  // "going" is never held up waiting on this — the status change proceeds
+  // immediately, and this only surfaces a dialog after the fact if it turns
+  // out there's something to clear.
+  const checkInterestedElsewhere = async (attendingShowtime: ShowtimePublic) => {
+    try {
+      if (!(await isRemoveInterestedReminderEnabled())) return;
+      const otherShowtimes = await queryClient.fetchQuery({
+        queryKey: ["movies", attendingShowtime.movie.id, "showtimes", "attendingStatuses"],
+        queryFn: () =>
+          MoviesService.readMovieShowtimes({
+            id: attendingShowtime.movie.id,
+            selectedStatuses: ["GOING", "INTERESTED"],
+            // This is about the viewer's own marks across every cinema
+            // they've ever selected one at, not the feed scoped to their
+            // usual-cinemas display filter — see `_skips_cinema_default`.
+            allCinemas: true,
+            limit: 50,
+          }),
+      });
+      const others = otherShowtimes.filter((other) => other.id !== attendingShowtime.id);
+      // Another showtime already going for this movie means going to several
+      // showings is intentional — nothing stale to clear.
+      const hasOtherGoing = others.some((other) => other.viewer?.going === "GOING");
+      const interestedElsewhere = hasOtherGoing
+        ? []
+        : others.filter((other) => other.viewer?.going === "INTERESTED");
+      if (interestedElsewhere.length > 0) {
+        setInterestedElsewhereCandidates(interestedElsewhere);
+        setIsInterestedElsewhereVisible(true);
+      }
+    } catch {
+      // Best-effort background check — nothing to fall back to.
+    }
+  };
+
+  const handleStatusPress = async (going: GoingStatus) => {
+    if (!showtime || isUpdatingStatus) return;
+    triggerSelectionHaptic();
+
+    // Only relevant the moment the viewer marks a showtime "going" for the
+    // first time — switching an already-going showtime, or just marking one
+    // "interested", isn't the moment to nag about other "interested" marks.
+    const wasAlreadyGoing = showtime.viewer?.going === "GOING";
+    if (going === "GOING" && !wasAlreadyGoing) {
+      void checkInterestedElsewhere(showtime);
+    }
+
+    await continueStatusPressAfterInterestedElsewhereCheck(going);
+  };
+
+  const handleInterestedElsewhereSkip = () => {
+    setIsInterestedElsewhereVisible(false);
+    setInterestedElsewhereCandidates([]);
+  };
+
+  const handleInterestedElsewhereConfirm = async (selectedIds: number[]) => {
+    setIsInterestedElsewhereVisible(false);
+    setInterestedElsewhereCandidates([]);
+    for (const showtimeId of selectedIds) {
+      try {
+        await ShowtimesService.updateShowtimeSelection({
+          showtimeId,
+          requestBody: { going_status: "NOT_GOING" },
+        });
+      } catch {
+        // Best-effort, same as the hidden-friends invite loop below.
+      }
+    }
+    if (selectedIds.length > 0) {
+      queryClient.invalidateQueries({ queryKey: ["showtimes"] });
+      queryClient.invalidateQueries({ queryKey: ["movie"] });
+      queryClient.invalidateQueries({ queryKey: ["movies"] });
+    }
   };
 
   const handleHiddenAttendingFriendsSkip = useCallback(() => {
@@ -2892,6 +2983,13 @@ export default function ShowtimeActionModal({
         message={`These friends are already going or interested, but won't be able to see that you're ${
           pendingGoingStatus === "GOING" ? "going" : "interested"
         } unless you invite them.`}
+      />
+
+      <RemoveInterestedElsewhereDialog
+        visible={isInterestedElsewhereVisible}
+        showtimes={interestedElsewhereCandidates}
+        onConfirm={handleInterestedElsewhereConfirm}
+        onSkip={handleInterestedElsewhereSkip}
       />
       </QueryClientProvider>
     </BottomSheetModal>

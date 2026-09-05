@@ -87,9 +87,10 @@ def get_overview(*, session: Session, window_days: int = 30) -> AnalyticsOvervie
             user_id=user_id,
             user_email=user_email,
             platform=platform,
+            app_version=app_version,
             count=count,
         )
-        for day, user_id, user_email, platform, count in analytics_event_crud.count_opens_by_day_and_user(
+        for day, user_id, user_email, platform, app_version, count in analytics_event_crud.count_opens_by_day_and_user(
             session=session, since=since
         )
     ]

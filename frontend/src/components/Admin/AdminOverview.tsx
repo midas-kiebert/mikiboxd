@@ -118,6 +118,7 @@ const AdminOverview = () => {
             <Table.ColumnHeader>Day</Table.ColumnHeader>
             <Table.ColumnHeader>User</Table.ColumnHeader>
             <Table.ColumnHeader>Platform</Table.ColumnHeader>
+            <Table.ColumnHeader>Version</Table.ColumnHeader>
             <Table.ColumnHeader>Count</Table.ColumnHeader>
           </Table.Row>
         </Table.Header>
@@ -127,6 +128,7 @@ const AdminOverview = () => {
               <Table.Cell>{row.day}</Table.Cell>
               <Table.Cell>{row.user_email}</Table.Cell>
               <Table.Cell>{row.platform ?? "unknown"}</Table.Cell>
+              <Table.Cell>{row.app_version ?? "—"}</Table.Cell>
               <Table.Cell>{row.count}</Table.Cell>
             </Table.Row>
           ))}

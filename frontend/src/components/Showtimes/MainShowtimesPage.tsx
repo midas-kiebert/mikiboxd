@@ -14,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Box, Button, Center, Flex, Spinner, Text } from "@chakra-ui/react"
 import type { ShowtimePublic } from "shared"
 
+import FeedFilterRail from "@/components/Feed/FeedFilterRail"
 import FeedLayout from "@/components/Feed/FeedLayout"
 import FeedToolbar from "@/components/Feed/FeedToolbar"
 import ShowtimeCard from "@/components/Showtimes/ShowtimeCard"
@@ -55,6 +56,7 @@ const MainShowtimesPage = () => {
 
   return (
     <FeedLayout
+      rail={<FeedFilterRail params={feed.params} onChange={feed.setParams} />}
       toolbar={
         <FeedToolbar
           params={feed.params}

@@ -381,6 +381,7 @@ Legend:
 
 ## Frontend — Components
 - [x] `Feed/FeedLayout.tsx` — The three-column shell every feed screen sits in (filter rail / list / detail panel) and the only file that positions anything, including clearing the fixed sidebar and bottom nav. Changing the web layout is an edit here and nowhere else, which is the point: the app hides filters behind a button and the showtime sheet behind a full screen because a phone has one column, and neither constraint applies here
+- [x] `Feed/FeedFilterRail.tsx` — The filter rail beside the feed: day tokens, time of day, watchlist/watched, and city-grouped cinemas, all visible and one click away. The app hides the same controls behind a button, a sheet and a section header because a phone has one column; the six actions that costs become one here. Adding a dimension is a section in this file — the state, URL spelling and API mapping are already in `feed-params.ts`
 - [x] `Feed/FeedToolbar.tsx` — Search, search field, the viewer's own status filter, group-by-film and a reset. Purely presentational; every value and setter comes from `useShowtimesFeed`
 - [x] `Showtimes/ShowtimeDetailPanel.tsx` — The panel that opens beside the feed for the selected showtime: status, subtitles, friends, ticket link. Docked rather than a centred dialog so the list stays visible while you act on one row. Status buttons stay visible for guests and gate on press
 

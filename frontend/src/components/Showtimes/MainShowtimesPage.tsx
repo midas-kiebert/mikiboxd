@@ -1,72 +1,126 @@
-import Page from "@/components/Common/Page"
-import { Showtimes } from "@/components/Showtimes/Showtimes"
-import useInfiniteScroll from "@/hooks/useInfiniteScroll"
-import { Center, Spinner } from "@chakra-ui/react"
-import { DateTime } from "luxon"
 /**
- * Showtimes feature component: Main Showtimes Page.
+ * The website's home feed.
+ *
+ * It used to be hardcoded to the viewer's own going + interested showtimes,
+ * which meant a signed-in visitor with an empty agenda got an empty homepage and
+ * there was no way to browse the programme at all. It now defaults to
+ * everything, with the old view available as a filter.
+ *
+ * The page owns only which showtime is selected. Filter state and data come
+ * from `useShowtimesFeed`, and every pixel of geometry from `FeedLayout` — so
+ * this file stays short and layout changes do not touch it.
  */
-import { useRef, useState } from "react"
-import type { GoingStatus } from "shared"
-import { useFetchMainPageShowtimes } from "shared/hooks/useFetchMainPageShowtimes"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { Box, Button, Center, Flex, Spinner, Text } from "@chakra-ui/react"
+import type { ShowtimePublic } from "shared"
 
-const DEFAULT_SELECTED_STATUSES: GoingStatus[] = ["GOING", "INTERESTED"]
+import FeedLayout from "@/components/Feed/FeedLayout"
+import FeedToolbar from "@/components/Feed/FeedToolbar"
+import ShowtimeCard from "@/components/Showtimes/ShowtimeCard"
+import ShowtimeDetailPanel from "@/components/Showtimes/ShowtimeDetailPanel"
+import { useShowtimesFeed } from "@/features/showtimes/useShowtimesFeed"
+import useInfiniteScroll from "@/hooks/useInfiniteScroll"
+import { useIsMobile } from "@/hooks/useIsMobile"
 
 const MainShowtimesPage = () => {
-  // Read flow: prepare derived values/handlers first, then return component JSX.
-  const limit = 20
-  const [snapshotTime] = useState(() =>
-    DateTime.now()
-      .setZone("Europe/Amsterdam")
-      .toFormat("yyyy-MM-dd'T'HH:mm:ss"),
-  )
+  // Read flow: route state and data hooks first, then handlers, then page JSX.
+  const feed = useShowtimesFeed()
+  const isMobile = useIsMobile()
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
-  // Default to the "Interested" feed (going + interested) to avoid fetching the full showtimes catalogue.
-  const selectedStatuses = DEFAULT_SELECTED_STATUSES
-
-  // Data hooks keep this module synced with backend data and shared cache state.
-  const {
-    data,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    isLoading,
-    isFetching,
-  } = useFetchMainPageShowtimes({
-    limit: limit,
-    snapshotTime,
-    filters: { selectedStatuses },
-  })
+  const [selectedId, setSelectedId] = useState<number | null>(null)
 
   useInfiniteScroll({
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
+    fetchNextPage: feed.fetchNextPage,
+    hasNextPage: feed.hasNextPage,
+    isFetchingNextPage: feed.isFetchingNextPage,
     loadMoreRef,
-    rootMargin: "200px",
+    rootMargin: "400px",
   })
 
-  const showtimes = data?.pages.flat() ?? []
+  // A showtime that has scrolled out of the filtered result set should not keep
+  // a panel open beside a feed that no longer contains it.
+  const selected =
+    feed.showtimes.find((showtime) => showtime.id === selectedId) ?? null
+  useEffect(() => {
+    if (selectedId !== null && !selected && !feed.isLoading) {
+      setSelectedId(null)
+    }
+  }, [selectedId, selected, feed.isLoading])
 
-  if ((isLoading || isFetching) && !isFetchingNextPage) {
-    return (
-      <Center h="100vh">
-        <Spinner size="xl" />
-      </Center>
-    )
-  }
+  const handleSelect = useCallback((showtime: ShowtimePublic) => {
+    setSelectedId((current) => (current === showtime.id ? null : showtime.id))
+  }, [])
 
-  // Render/output using the state and derived values prepared above.
+  const handleClose = useCallback(() => setSelectedId(null), [])
+
   return (
-    <Page>
-      <Showtimes showtimes={showtimes} />
-      {hasNextPage && <div ref={loadMoreRef} style={{ height: "1px" }} />}
-      {isFetchingNextPage && (
-        <div style={{ textAlign: "center", padding: "20px" }}>
-          Loading more showtimes...
-        </div>
-      )}
-    </Page>
+    <FeedLayout
+      toolbar={
+        <FeedToolbar
+          params={feed.params}
+          onChange={feed.setParams}
+          onReset={feed.resetParams}
+          activeFilterCount={feed.activeFilterCount}
+          resultCount={feed.showtimes.length}
+        />
+      }
+      detail={
+        selected ? (
+          <ShowtimeDetailPanel showtime={selected} onClose={handleClose} />
+        ) : null
+      }
+    >
+      {feed.isLoading ? (
+        <Center py={20}>
+          <Spinner size="xl" />
+        </Center>
+      ) : null}
+
+      {feed.isEmpty ? (
+        <Center py={20}>
+          <Flex direction="column" align="center" gap={3}>
+            <Text color="gray.500">
+              {feed.isFilteredEmpty
+                ? "No showtimes match these filters."
+                : "No upcoming showtimes."}
+            </Text>
+            {feed.isFilteredEmpty ? (
+              <Button size="sm" variant="surface" onClick={feed.resetParams}>
+                Clear filters
+              </Button>
+            ) : null}
+          </Flex>
+        </Center>
+      ) : null}
+
+      {feed.showtimes.map((showtime) => (
+        <ShowtimeCard
+          key={showtime.id}
+          showtime={showtime}
+          going_status={showtime.viewer?.going}
+          isSelected={showtime.id === selectedId}
+          onSelect={handleSelect}
+        />
+      ))}
+
+      {/* On a phone there is no room for a docked panel, so the selection opens
+          inline under the row it belongs to until it becomes a drawer. */}
+      {isMobile && selected ? (
+        <Box borderBottomWidth="1px" borderColor="gray.200" p={3}>
+          <ShowtimeDetailPanel showtime={selected} onClose={handleClose} />
+        </Box>
+      ) : null}
+
+      {feed.hasNextPage ? (
+        <div ref={loadMoreRef} style={{ height: "1px" }} />
+      ) : null}
+
+      {feed.isFetchingNextPage ? (
+        <Center py={6}>
+          <Spinner size="sm" />
+        </Center>
+      ) : null}
+    </FeedLayout>
   )
 }
 

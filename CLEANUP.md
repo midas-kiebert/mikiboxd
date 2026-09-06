@@ -329,6 +329,9 @@ Legend:
 ---
 
 ## Frontend — Entry & Config (`frontend/src/`)
+- [x] `features/showtimes/feed-params.ts` — Every filter dimension the feed has, in one place: the URL schema, the defaults, and the mapping into the shared feed hook's arguments via the hoisted `shared/filters` helpers. The full set is declared even where no control exists yet, so building a control later is UI work with no plumbing behind it
+- [x] `features/showtimes/useShowtimesFeed.ts` — The feed as one hook: URL state in, paged showtimes out, plus the snapshot-time refresh. Screens below it can be rearranged freely without touching data or state
+
 - [x] `auth/session.ts` — Who is here, answered synchronously: the token is read once before the first route renders and cached as module state, so `useIsSignedIn()` never makes a screen wait a microtask to decide whether to show account UI. Login/logout reach it through the storage adapter in `main.tsx`, so nothing has to remember to announce a sign-in
 - [x] `auth/useSession.ts` — `useIsSignedIn`, `useRequireAccount` (gate the *action*, sending guests to `/login` with a return path) and `useAccountQueryEnabled` (the `enabled` every `/me/*` query needs so a guest does not 401 on a refetch loop)
 
@@ -377,6 +380,10 @@ Legend:
 ---
 
 ## Frontend — Components
+- [x] `Feed/FeedLayout.tsx` — The three-column shell every feed screen sits in (filter rail / list / detail panel) and the only file that positions anything, including clearing the fixed sidebar and bottom nav. Changing the web layout is an edit here and nowhere else, which is the point: the app hides filters behind a button and the showtime sheet behind a full screen because a phone has one column, and neither constraint applies here
+- [x] `Feed/FeedToolbar.tsx` — Search, search field, the viewer's own status filter, group-by-film and a reset. Purely presentational; every value and setter comes from `useShowtimesFeed`
+- [x] `Showtimes/ShowtimeDetailPanel.tsx` — The panel that opens beside the feed for the selected showtime: status, subtitles, friends, ticket link. Docked rather than a centred dialog so the list stays visible while you act on one row. Status buttons stay visible for guests and gate on press
+
 - [x] `Common/RequireAccount.tsx` — Per-page sign-in panel for the five routes that cannot mean anything without an account (agenda, friends, invites, settings, admin). Replaces the `_layout` `beforeLoad` redirect, which covered the browsing pages too and is what made the whole website account-only
 
 

@@ -329,6 +329,9 @@ Legend:
 ---
 
 ## Frontend — Entry & Config (`frontend/src/`)
+- [x] `auth/session.ts` — Who is here, answered synchronously: the token is read once before the first route renders and cached as module state, so `useIsSignedIn()` never makes a screen wait a microtask to decide whether to show account UI. Login/logout reach it through the storage adapter in `main.tsx`, so nothing has to remember to announce a sign-in
+- [x] `auth/useSession.ts` — `useIsSignedIn`, `useRequireAccount` (gate the *action*, sending guests to `/login` with a return path) and `useAccountQueryEnabled` (the `enabled` every `/me/*` query needs so a guest does not 401 on a refetch loop)
+
 
 - [ ] `main.tsx` — App entry point, React Query setup, Axios interceptors
 - [x] `theme.tsx` — Chakra UI theme: app `semanticTokens` (light+dark) from `theme/tokens.ts`, plus `ui.main` + button recipe
@@ -374,6 +377,8 @@ Legend:
 ---
 
 ## Frontend — Components
+- [x] `Common/RequireAccount.tsx` — Per-page sign-in panel for the five routes that cannot mean anything without an account (agenda, friends, invites, settings, admin). Replaces the `_layout` `beforeLoad` redirect, which covered the browsing pages too and is what made the whole website account-only
+
 
 **Common (shared UI):**
 - [x] `InstallAppGate.tsx` — Wraps the shared-link routes (`/ping`, `/movie`, `/add-friend`): a phone with no web session gets the store instead of a login wall, because an installed app would have intercepted the link before the browser saw it. A panel rather than a redirect — universal links do fall through with the app installed, and a wrong guess must cost one tap, not a store bounce

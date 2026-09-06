@@ -5,6 +5,7 @@ import { Container, Heading, Tabs } from "@chakra-ui/react"
 import { createFileRoute } from "@tanstack/react-router"
 
 import Page from "@/components/Common/Page"
+import RequireAccount from "@/components/Common/RequireAccount"
 import Appearance from "@/components/UserSettings/Appearance"
 import ChangePassword from "@/components/UserSettings/ChangePassword"
 import DeleteAccount from "@/components/UserSettings/DeleteAccount"
@@ -25,8 +26,16 @@ const tabsConfig = [
 ]
 
 export const Route = createFileRoute("/_layout/settings")({
-  component: UserSettings,
+  component: GatedUserSettings,
 })
+
+function GatedUserSettings() {
+  return (
+    <RequireAccount feature="your settings">
+      <UserSettings />
+    </RequireAccount>
+  )
+}
 
 function UserSettings() {
   // Read flow: route state and data hooks first, then handlers, then page JSX.

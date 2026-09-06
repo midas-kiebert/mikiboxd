@@ -2,7 +2,7 @@
  * TanStack Router route module for . It connects URL state to the matching page component.
  */
 import { Flex } from "@chakra-ui/react"
-import { Outlet, createFileRoute, redirect } from "@tanstack/react-router"
+import { Outlet, createFileRoute } from "@tanstack/react-router"
 import { useEffect } from "react"
 
 import BottomNavBar from "@/components/Common/BottomNavBar"
@@ -11,17 +11,18 @@ import Sidebar from "@/components/Common/Sidebar"
 import { PAGE_NOTICE_BANNER_OFFSET_CSS_VAR } from "@/constants"
 import { useIsMobile } from "@/hooks/useIsMobile"
 import { Box } from "@chakra-ui/react"
-import { isLoggedIn } from "shared/hooks/useAuth"
 import useTrackEvent from "shared/hooks/useTrackEvent"
+
+import { primeSession } from "@/auth/session"
 
 export const Route = createFileRoute("/_layout")({
   component: Layout,
+  // Resolve the session before the first child renders, but never redirect on
+  // it: the feed and the film pages are open to guests, and the five pages that
+  // do need an account gate themselves with `RequireAccount`. Priming here is
+  // what lets `useIsSignedIn()` answer synchronously everywhere below.
   beforeLoad: async () => {
-    if (!(await isLoggedIn())) {
-      throw redirect({
-        to: "/login",
-      })
-    }
+    await primeSession()
   },
 })
 
@@ -34,8 +35,8 @@ function Layout() {
   const height = isMobile ? "calc(100% - 60px)" : "100%"
 
   useEffect(() => {
-    // beforeLoad already guarantees a session exists by the time this layout
-    // mounts, so a mount here is a genuine website open (one per page load).
+    // One mount per page load, signed in or not — a guest opening the site is
+    // as much an open as a member is.
     trackEvent("app_open")
   }, [trackEvent])
 

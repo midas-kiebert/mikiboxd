@@ -4,7 +4,17 @@ import PingsPage from "@/components/Pings/PingsPage"
  */
 import { createFileRoute } from "@tanstack/react-router"
 
+import RequireAccount from "@/components/Common/RequireAccount"
+
 //@ts-ignore
 export const Route = createFileRoute("/_layout/pings")({
-  component: PingsPage,
+  component: GatedPingsPage,
 })
+
+function GatedPingsPage() {
+  return (
+    <RequireAccount feature="your invites">
+      <PingsPage />
+    </RequireAccount>
+  )
+}

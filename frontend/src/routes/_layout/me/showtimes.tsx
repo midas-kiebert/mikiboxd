@@ -4,7 +4,17 @@ import MyShowtimesPage from "@/components/Showtimes/MyShowtimesPage"
  */
 import { createFileRoute } from "@tanstack/react-router"
 
+import RequireAccount from "@/components/Common/RequireAccount"
+
 //@ts-ignore
 export const Route = createFileRoute("/_layout/me/showtimes")({
-  component: MyShowtimesPage,
+  component: GatedMyShowtimesPage,
 })
+
+function GatedMyShowtimesPage() {
+  return (
+    <RequireAccount feature="your agenda">
+      <MyShowtimesPage />
+    </RequireAccount>
+  )
+}

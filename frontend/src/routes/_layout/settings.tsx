@@ -11,6 +11,7 @@ import BlockedAccounts from "@/components/UserSettings/BlockedAccounts"
 import ChangePassword from "@/components/UserSettings/ChangePassword"
 import DeleteAccount from "@/components/UserSettings/DeleteAccount"
 import LetterboxdLists from "@/components/UserSettings/LetterboxdLists"
+import WatchlistDigest from "@/components/UserSettings/WatchlistDigest"
 import Notifications from "@/components/UserSettings/Notifications"
 import UserInformation from "@/components/UserSettings/UserInformation"
 import useAuth from "shared/hooks/useAuth"
@@ -19,6 +20,7 @@ const tabsConfig = [
   { value: "my-profile", title: "My profile", component: UserInformation },
   { value: "password", title: "Password", component: ChangePassword },
   { value: "letterboxd", title: "Letterboxd", component: LetterboxdLists },
+  { value: "digest", title: "Digest", component: WatchlistDigest },
   {
     value: "notifications",
     title: "Notifications",

@@ -2,6 +2,7 @@ import FriendBadge from "@/components/Common/FriendBadge"
 import { defaultFeedParams } from "@/features/showtimes/feed-params"
 import { Badge, Box, Flex, Icon, IconButton, Spacer } from "@chakra-ui/react"
 
+import FriendStatusSharingToggle from "@/components/Friends/FriendStatusSharingToggle"
 import UserModerationMenu from "@/components/Friends/UserModerationMenu"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Link as RouterLink } from "@tanstack/react-router"
@@ -225,6 +226,20 @@ const UserCard = ({ user }: UserCardProps) => {
                 : ""
             } */}
       <Spacer />
+      {user.is_friend ? (
+        <Box
+          onClick={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+          }}
+        >
+          <FriendStatusSharingToggle
+            friendId={user.id}
+            friendName={user.display_name ?? "this friend"}
+            sharesStatus={user.shares_status !== false}
+          />
+        </Box>
+      ) : null}
       {badge}
       {button}
       {secondButton}

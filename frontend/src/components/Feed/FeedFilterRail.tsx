@@ -25,6 +25,7 @@ import {
 } from "shared/hooks/useLetterboxdLists"
 
 import { useIsSignedIn } from "@/auth/useSession"
+import CinemaPresets from "@/components/Feed/CinemaPresets"
 import { Checkbox } from "@/components/ui/checkbox"
 import type {
   FeedParams,
@@ -239,6 +240,7 @@ const FeedFilterRail = ({ params, onChange }: FeedFilterRailProps) => {
       </Section>
 
       <Section title="Cinemas">
+        <CinemaPresets params={params} onChange={onChange} />
         {params.cinemas.length ? (
           <Button
             size="xs"

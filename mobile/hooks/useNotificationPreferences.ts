@@ -19,26 +19,23 @@ import type * as NotificationsTypes from 'expo-notifications';
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type NotificationChannel, MeService, type UserUpdate } from "shared/client";
 import useAuth from "shared/hooks/useAuth";
+import {
+  LINKED_PREFERENCE_KEYS,
+  NOTIFICATION_LABELS,
+  normalizeChannel,
+  preferenceToChannelKey,
+  TOGGLE_ORDER,
+  type NotificationChannelPreferenceKey,
+  type NotificationDelivery,
+  type NotificationPreferenceKey,
+} from "shared/notifications/preferences";
 
 import { registerPushTokenForCurrentDevice } from "@/utils/push-notifications";
 
-export type NotificationPreferenceKey =
-  | "notify_on_friend_showtime_match"
-  | "notify_on_friend_requests"
-  | "notify_on_showtime_ping"
-  | "notify_on_interest_reminder"
-  | "notify_on_seat_alert"
-  | "notify_on_sold_out"
-  | "notify_on_showtime_reminder";
-
-export type NotificationChannelPreferenceKey =
-  | "notify_channel_friend_showtime_match"
-  | "notify_channel_friend_requests"
-  | "notify_channel_showtime_ping"
-  | "notify_channel_interest_reminder"
-  | "notify_channel_seat_alert"
-  | "notify_channel_sold_out"
-  | "notify_channel_showtime_reminder";
+export type {
+  NotificationPreferenceKey,
+  NotificationChannelPreferenceKey,
+} from "shared/notifications/preferences";
 
 type NotificationPreferencesState = Record<NotificationPreferenceKey, boolean>;
 type NotificationChannelsState = Record<NotificationChannelPreferenceKey, NotificationChannel>;
@@ -55,7 +52,7 @@ type NotificationChannelSource =
  * two backend fields, but they are one decision, so the UI treats them as one
  * three-way choice and this type is what the list reads and writes.
  */
-export type NotificationDelivery = "off" | NotificationChannel;
+export type { NotificationDelivery } from "shared/notifications/preferences";
 
 /** One row of the list: the preference, its wording and its current setting. */
 export type NotificationToggleDescriptor = {
@@ -72,56 +69,21 @@ export type NotificationToggleDescriptor = {
   delivery: NotificationDelivery;
 };
 
-const DEFAULT_NOTIFICATION_CHANNEL: NotificationChannel = "push";
-
-const preferenceToChannelKey: Record<NotificationPreferenceKey, NotificationChannelPreferenceKey> = {
-  notify_on_friend_showtime_match: "notify_channel_friend_showtime_match",
-  notify_on_friend_requests: "notify_channel_friend_requests",
-  notify_on_showtime_ping: "notify_channel_showtime_ping",
-  notify_on_interest_reminder: "notify_channel_interest_reminder",
-  notify_on_seat_alert: "notify_channel_seat_alert",
-  notify_on_sold_out: "notify_channel_sold_out",
-  notify_on_showtime_reminder: "notify_channel_showtime_reminder",
-};
-
-/**
- * "Almost sold out" and "Sold out" are two backend fields (and two push
- * kinds) but one decision for the user, so notify_on_seat_alert's row also
- * drives notify_on_sold_out and neither is shown separately in TOGGLE_ORDER.
- */
-const LINKED_PREFERENCE_KEYS: Partial<Record<NotificationPreferenceKey, NotificationPreferenceKey[]>> = {
-  notify_on_seat_alert: ["notify_on_sold_out"],
-};
-
-// Labels carry the whole explanation now that the rows are one line each, so
-// they have to stand on their own next to the icon.
-const TOGGLE_COPY: Record<
+// Only the icons live here now; the labels are shared with the website via
+// `shared/notifications/preferences`, so the two clients cannot end up calling
+// the same preference different things.
+const TOGGLE_ICONS: Record<
   NotificationPreferenceKey,
-  Pick<NotificationToggleDescriptor, "label" | "icon">
+  NotificationToggleDescriptor["icon"]
 > = {
-  notify_on_friend_showtime_match: { label: "Friend activity", icon: "groups" },
-  notify_on_showtime_ping: { label: "Invites", icon: "mail" },
-  notify_on_interest_reminder: { label: "Interest reminders", icon: "alarm" },
-  notify_on_seat_alert: { label: "Seat availability", icon: "local-fire-department" },
-  notify_on_sold_out: { label: "Sold out", icon: "event-busy" },
-  notify_on_friend_requests: { label: "Friend requests", icon: "person-add" },
-  notify_on_showtime_reminder: { label: "Reminders from friends", icon: "notifications-active" },
+  notify_on_friend_showtime_match: "groups",
+  notify_on_showtime_ping: "mail",
+  notify_on_interest_reminder: "alarm",
+  notify_on_seat_alert: "local-fire-department",
+  notify_on_sold_out: "event-busy",
+  notify_on_friend_requests: "person-add",
+  notify_on_showtime_reminder: "notifications-active",
 };
-
-// Fixed display order, which is not the declaration order of the copy above.
-// notify_on_sold_out is deliberately absent: it rides along with
-// notify_on_seat_alert via LINKED_PREFERENCE_KEYS instead of its own row.
-const TOGGLE_ORDER: readonly NotificationPreferenceKey[] = [
-  "notify_on_friend_showtime_match",
-  "notify_on_showtime_ping",
-  "notify_on_showtime_reminder",
-  "notify_on_interest_reminder",
-  "notify_on_seat_alert",
-  "notify_on_friend_requests",
-];
-
-const normalizeChannel = (channel: NotificationChannel | null | undefined): NotificationChannel =>
-  channel === "email" ? "email" : DEFAULT_NOTIFICATION_CHANNEL;
 
 export const buildNotificationPreferencesState = (
   source: NotificationPreferenceSource
@@ -407,8 +369,8 @@ export const useNotificationPreferences = (): NotificationPreferencesController 
     () =>
       TOGGLE_ORDER.map((key) => ({
         key,
-        label: TOGGLE_COPY[key].label,
-        icon: TOGGLE_COPY[key].icon,
+        label: NOTIFICATION_LABELS[key],
+        icon: TOGGLE_ICONS[key],
         delivery: preferences[key] ? channels[preferenceToChannelKey[key]] : "off",
       })),
     [channels, preferences]

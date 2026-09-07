@@ -6,8 +6,8 @@
  */
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { DateTime } from "luxon";
 import type { NotificationFeedItem } from "shared";
+import { getNotificationCopy } from "shared/notifications/feed-copy";
 
 import NotificationRowLayout from "@/components/notifications/NotificationRowLayout";
 import { useThemeColors } from "@/hooks/use-theme-color";
@@ -24,29 +24,6 @@ type NotificationRowProps = {
   isDeclining: boolean;
 };
 
-const actorName = (item: NotificationFeedItem): string =>
-  item.actor?.display_name?.trim() || "A friend";
-
-// The feed item doesn't carry the going/interested status directly, so derive it
-// from the showtime's friend lists (the actor appears in one of them).
-const actorStatus = (item: NotificationFeedItem): "going" | "interested" | null => {
-  const actorId = item.actor?.id;
-  const showtime = item.showtime;
-  if (!actorId || !showtime) return null;
-  if (showtime.viewer?.friends_going?.some((u) => u.id === actorId)) return "going";
-  if (showtime.viewer?.friends_interested?.some((u) => u.id === actorId)) return "interested";
-  return null;
-};
-
-const formatShowtimeSubtitle = (item: NotificationFeedItem, prefix?: string): string | null => {
-  const showtime = item.showtime;
-  if (!showtime) return prefix ?? null;
-  const dt = DateTime.fromISO(showtime.datetime);
-  const dateTime = dt.isValid ? `${dt.toFormat("ccc, LLL d")} · ${dt.toFormat("HH:mm")}` : null;
-  const parts = [prefix, dateTime, showtime.cinema.name].filter(Boolean);
-  return parts.length > 0 ? parts.join(" · ") : null;
-};
-
 type Presentation = {
   icon: React.ComponentProps<typeof MaterialIcons>["name"];
   accent: ThemeColors["blue"];
@@ -54,71 +31,28 @@ type Presentation = {
   subtitle: string | null;
 };
 
-const buildPresentation = (item: NotificationFeedItem, colors: ThemeColors): Presentation => {
-  const name = actorName(item);
-  const movie = item.showtime?.movie.title ?? null;
-  const status = actorStatus(item);
-  const statusVerb = status === "going" ? "is going to" : "is interested in";
+/**
+ * Icon and accent per type. The wording is shared with the website via
+ * `shared/notifications/feed-copy`, so the two clients cannot describe the same
+ * event differently.
+ */
+const PRESENTATION: Record<
+  NotificationFeedItem["type"],
+  { icon: Presentation["icon"]; accent: (colors: ThemeColors) => ThemeColors["blue"] }
+> = {
+  friend_showtime_match: { icon: "groups", accent: (c) => c.teal },
+  invite_response: { icon: "mark-email-read", accent: (c) => c.blue },
+  showtime_invite: { icon: "mail", accent: (c) => c.blue },
+  friend_request_received: { icon: "person-add", accent: (c) => c.purple },
+  friend_request_accepted: { icon: "how-to-reg", accent: (c) => c.green },
+  seats_running_out: { icon: "local-fire-department", accent: (c) => c.orange },
+  sold_out: { icon: "event-busy", accent: (c) => c.redDeep },
+  seats_released: { icon: "confirmation-number", accent: (c) => c.green },
+};
 
-  switch (item.type) {
-    case "friend_showtime_match":
-      return {
-        icon: "groups",
-        accent: colors.teal,
-        title: movie ? `${name} ${statusVerb} ${movie}` : `${name} ${statusVerb === "is going to" ? "is going" : "is interested"}`,
-        subtitle: formatShowtimeSubtitle(item),
-      };
-    case "invite_response":
-      return {
-        icon: "mark-email-read",
-        accent: colors.blue,
-        title: movie ? `${name} ${statusVerb} ${movie}` : `${name} ${statusVerb === "is going to" ? "is going" : "is interested"}`,
-        subtitle: formatShowtimeSubtitle(item, "Replied to your invite"),
-      };
-    case "showtime_invite":
-      return {
-        icon: "mail",
-        accent: colors.blue,
-        title: movie ? `${name} invited you to ${movie}` : `${name} invited you`,
-        subtitle: formatShowtimeSubtitle(item),
-      };
-    case "friend_request_received":
-      return {
-        icon: "person-add",
-        accent: colors.purple,
-        title: `${name} sent you a friend request`,
-        subtitle: null,
-      };
-    case "friend_request_accepted":
-      return {
-        icon: "how-to-reg",
-        accent: colors.green,
-        title: `${name} accepted your friend request`,
-        subtitle: null,
-      };
-    // The two items nobody caused: the cinema's own seat count moved.
-    case "seats_running_out":
-      return {
-        icon: "local-fire-department",
-        accent: colors.orange,
-        title: movie ? `${movie} is nearly sold out` : "Nearly sold out",
-        subtitle: formatShowtimeSubtitle(item),
-      };
-    case "sold_out":
-      return {
-        icon: "event-busy",
-        accent: colors.redDeep,
-        title: movie ? `${movie} is sold out` : "Sold out",
-        subtitle: formatShowtimeSubtitle(item),
-      };
-    case "seats_released":
-      return {
-        icon: "confirmation-number",
-        accent: colors.green,
-        title: movie ? `Tickets available for ${movie}` : "Tickets available",
-        subtitle: formatShowtimeSubtitle(item),
-      };
-  }
+const buildPresentation = (item: NotificationFeedItem, colors: ThemeColors): Presentation => {
+  const { icon, accent } = PRESENTATION[item.type];
+  return { icon, accent: accent(colors), ...getNotificationCopy(item) };
 };
 
 export default function NotificationRow({

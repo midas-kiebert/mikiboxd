@@ -13,7 +13,7 @@ const items = [
   { icon: FiHome, title: "Dashboard", path: "/" },
   { icon: FiFilm, title: "Movies", path: "/movies" },
   { icon: FaUserFriends, title: "Friends", path: "/friends" },
-  { icon: FiBell, title: "Invites", path: "/pings" },
+  { icon: FiBell, title: "Activity", path: "/pings" },
 ]
 
 const BottomNavBar = () => {

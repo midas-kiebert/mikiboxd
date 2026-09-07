@@ -9,13 +9,16 @@ import { FaRegCalendar } from "react-icons/fa6"
 import { FiBell, FiFilm, FiHome, FiSettings, FiShield } from "react-icons/fi"
 
 import type { MeGetCurrentUserResponse } from "shared"
+import { useFetchNotificationUnseenCount } from "shared/hooks/useFetchNotificationUnseenCount"
+
+import { useIsSignedIn } from "@/auth/useSession"
 
 const items = [
   { icon: FiHome, title: "Dashboard", path: "/" },
   { icon: FiFilm, title: "Movies", path: "/movies" },
   { icon: FaRegCalendar, title: "Agenda", path: "/me/showtimes" },
   { icon: FaUserFriends, title: "Friends", path: "/friends" },
-  { icon: FiBell, title: "Invites", path: "/pings" },
+  { icon: FiBell, title: "Activity", path: "/pings" },
   { icon: FiSettings, title: "User Settings", path: "/settings" },
 ]
 
@@ -29,6 +32,12 @@ const SidebarItems = ({ onClose }: SidebarItemsProps) => {
   const currentUser = queryClient.getQueryData<MeGetCurrentUserResponse>([
     "currentUser",
   ])
+  // The count endpoint has existed all along and the website never showed it,
+  // so an invite waiting for you was invisible until you went looking.
+  const isSignedIn = useIsSignedIn()
+  const { data: unseenCount } = useFetchNotificationUnseenCount({
+    enabled: isSignedIn,
+  })
   const finalItems = currentUser?.is_superuser
     ? [...items, { icon: FiShield, title: "Admin", path: "/admin" }]
     : items
@@ -46,6 +55,19 @@ const SidebarItems = ({ onClose }: SidebarItemsProps) => {
       >
         <Icon as={icon} alignSelf="center" />
         <Text ml={2}>{title}</Text>
+        {path === "/pings" && unseenCount ? (
+          <Box
+            ml="auto"
+            bg="app.notificationBadge"
+            color="white"
+            borderRadius="full"
+            px={2}
+            fontSize="xs"
+            fontWeight="bold"
+          >
+            {unseenCount}
+          </Box>
+        ) : null}
       </Flex>
     </RouterLink>
   ))

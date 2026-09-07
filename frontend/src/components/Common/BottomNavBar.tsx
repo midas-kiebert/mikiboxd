@@ -43,7 +43,7 @@ const BottomNavBar = () => {
   return (
     <Box
       position="fixed"
-      bg="gray.100"
+      bg="bg.subtle"
       bottom={0}
       zIndex={10}
       // minW="xs"

@@ -61,7 +61,7 @@ const Section = ({
   children,
 }: { title: string; children: ReactNode }) => (
   <Box>
-    <Heading size="xs" textTransform="uppercase" color="gray.500" mb={2}>
+    <Heading size="xs" textTransform="uppercase" color="fg.muted" mb={2}>
       {title}
     </Heading>
     <Stack gap={1}>{children}</Stack>
@@ -209,7 +209,7 @@ const FeedFilterRail = ({ params, onChange }: FeedFilterRailProps) => {
           ))}
         </Flex>
         {params.languages.length > 1 ? (
-          <Text fontSize="xs" color="gray.500">
+          <Text fontSize="xs" color="fg.muted">
             Showing films in either language.
           </Text>
         ) : null}
@@ -249,13 +249,13 @@ const FeedFilterRail = ({ params, onChange }: FeedFilterRailProps) => {
             Clear {params.cinemas.length} selected
           </Button>
         ) : (
-          <Text fontSize="xs" color="gray.500">
+          <Text fontSize="xs" color="fg.muted">
             Nothing selected — showing your usual cinemas.
           </Text>
         )}
         {[...cinemasByCity.entries()].map(([city, cityCinemas]) => (
           <Box key={city} mt={2}>
-            <Text fontSize="xs" fontWeight="semibold" color="gray.600" mb={1}>
+            <Text fontSize="xs" fontWeight="semibold" color="fg.muted" mb={1}>
               {city}
             </Text>
             <Stack gap={0.5}>

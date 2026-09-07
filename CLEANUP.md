@@ -329,6 +329,7 @@ Legend:
 ---
 
 ## Frontend — Entry & Config (`frontend/src/`)
+- [x] `theme/tokens.ts` — The app's palette turned into Chakra semantic tokens, derived from `shared/theme/colors.ts` at load rather than copied, so a colour cannot drift between the two clients. Overrides Chakra's own `bg`/`fg`/`border` so stock components inherit dark mode instead of every screen handling it, and exposes the rest as `app.*`
 - [x] `features/showtimes/feed-params.ts` — Every filter dimension the feed has, in one place: the URL schema, the defaults, and the mapping into the shared feed hook's arguments via the hoisted `shared/filters` helpers. The full set is declared even where no control exists yet, so building a control later is UI work with no plumbing behind it
 - [x] `features/showtimes/useFeedParams.ts` — The URL-state half of a feed, shared by the showtimes and films feeds so neither owns a private copy of the parsing and switching pages carries your filters across
 - [x] `features/showtimes/useMoviesFeed.ts` — The films feed, the same shape as `useShowtimesFeed` over the same URL state, so a screen can be written against either without knowing which it got

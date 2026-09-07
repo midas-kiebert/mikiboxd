@@ -27,7 +27,7 @@ const DatetimeCard = ({ showtime }: DatetimeCardProps) => {
     <VStack gap={0} align="center" justify="center" width={width} height="100%">
       <Text
         fontSize={isMobile ? "2xs" : "xs"}
-        color="gray.500"
+        color="fg.muted"
         textTransform="uppercase"
         lineHeight={"3"}
       >
@@ -37,16 +37,16 @@ const DatetimeCard = ({ showtime }: DatetimeCardProps) => {
         fontSize={isMobile ? "2xl" : "3xl"}
         fontWeight="bold"
         lineHeight={"0.7"}
-        color="green.700"
+        color="app.green.secondary"
       >
         {day}
       </Text>
-      <Text fontSize={isMobile ? "2xs" : "xs"} color="gray.600">
+      <Text fontSize={isMobile ? "2xs" : "xs"} color="fg.muted">
         {month}
       </Text>
       <Text
         fontSize={isMobile ? "sm" : "xl"}
-        color="gray.800"
+        color="fg"
         fontWeight="semibold"
         lineHeight={"1.2"}
         fontFamily={"monospace"}

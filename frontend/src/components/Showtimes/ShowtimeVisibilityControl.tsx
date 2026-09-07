@@ -59,7 +59,7 @@ const ShowtimeVisibilityControl = ({
   // Render/output using the state and derived values prepared above.
   return (
     <Stack gap={2}>
-      <Text fontSize="sm" fontWeight="semibold" color="gray.600">
+      <Text fontSize="sm" fontWeight="semibold" color="fg.muted">
         Who can see this
       </Text>
 
@@ -77,7 +77,7 @@ const ShowtimeVisibilityControl = ({
               <Radio key={mode} value={mode}>
                 <Box>
                   <Text fontSize="sm">{copy.label}</Text>
-                  <Text fontSize="xs" color="gray.500">
+                  <Text fontSize="xs" color="fg.muted">
                     {copy.description}
                   </Text>
                 </Box>
@@ -88,7 +88,7 @@ const ShowtimeVisibilityControl = ({
       </RadioGroup>
 
       <Flex>
-        <Text fontSize="xs" color="gray.500">
+        <Text fontSize="xs" color="fg.muted">
           Friends you invited, and friends who invited you, can always see this.
         </Text>
       </Flex>

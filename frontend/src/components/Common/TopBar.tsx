@@ -24,7 +24,7 @@ const TopBar = ({ children }: Props) => {
       left={{ base: "0", md: SIDEBAR_WIDTH }}
       right="0"
       zIndex={1200}
-      bg="gray.50"
+      bg="bg.panel"
       px={4}
       py={2}
       display="flex"

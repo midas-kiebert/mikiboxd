@@ -97,9 +97,9 @@ const ShowtimeDetailPanel = ({
         <Text fontWeight="semibold">
           {days(datetime).format("ddd D MMMM, HH:mm")}
         </Text>
-        <Text color="gray.600">{showtime.cinema.name}</Text>
+        <Text color="fg.muted">{showtime.cinema.name}</Text>
         {showtime.room ? (
-          <Text color="gray.500" fontSize="sm">
+          <Text color="fg.muted" fontSize="sm">
             {showtime.room}
           </Text>
         ) : null}
@@ -116,7 +116,7 @@ const ShowtimeDetailPanel = ({
       ) : null}
 
       <Stack gap={2}>
-        <Text fontSize="sm" fontWeight="semibold" color="gray.600">
+        <Text fontSize="sm" fontWeight="semibold" color="fg.muted">
           Your status
         </Text>
         <Flex gap={2}>
@@ -138,7 +138,7 @@ const ShowtimeDetailPanel = ({
 
       {friendsGoing.length || friendsInterested.length ? (
         <Stack gap={1}>
-          <Text fontSize="sm" fontWeight="semibold" color="gray.600">
+          <Text fontSize="sm" fontWeight="semibold" color="fg.muted">
             Friends
           </Text>
           {friendsGoing.length ? (

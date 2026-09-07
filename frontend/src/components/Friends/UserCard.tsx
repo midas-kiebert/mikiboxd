@@ -175,7 +175,7 @@ const UserCard = ({ user }: UserCardProps) => {
       </IconButton>
     )
   } else {
-    bgColor = "gray.50"
+    bgColor = "bg.panel"
     button = (
       <IconButton
         aria-label="Add friend"
@@ -215,7 +215,7 @@ const UserCard = ({ user }: UserCardProps) => {
                 (user.letterboxd_username)
                 ? <Text
                     fontSize="0.8em"
-                    color="gray.500"
+                    color="fg.muted"
                 >
                     ({user.letterboxd_username})
                 </Text>

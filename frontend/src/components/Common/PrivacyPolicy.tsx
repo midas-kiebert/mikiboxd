@@ -37,7 +37,7 @@ const PrivacyPolicy = () => {
         <Heading size="xl" mb={2}>
           Privacy Policy
         </Heading>
-        <Text fontSize="sm" color="gray.500" mb={8}>
+        <Text fontSize="sm" color="fg.muted" mb={8}>
           Last updated 18 August 2026
         </Text>
 

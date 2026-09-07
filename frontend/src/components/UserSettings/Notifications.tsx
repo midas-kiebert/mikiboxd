@@ -46,7 +46,7 @@ const Notifications = () => {
         Notifications
       </Heading>
       <VStack align="start" gap={4} w={{ base: "100%", md: "sm" }}>
-        <Text color="gray.500">
+        <Text color="fg.muted">
           Receive a push notification when a friend marks themselves as going or
           interested in a showtime you also selected.
         </Text>

@@ -22,9 +22,9 @@ type ShowtimeCardProps = {
 
 /** The row's ground colour, which is how the viewer's own status reads at a glance. */
 const statusBackground = (status: GoingStatus | undefined): string => {
-  if (status === "GOING") return "green.200"
-  if (status === "INTERESTED") return "orange.200"
-  return "gray.50"
+  if (status === "GOING") return "app.green.primary"
+  if (status === "INTERESTED") return "app.orange.primary"
+  return "bg.panel"
 }
 
 const ShowtimeCard = ({
@@ -51,10 +51,10 @@ const ShowtimeCard = ({
       cursor={isInteractive ? "pointer" : "default"}
       bg={statusBackground(going_status)}
       borderBottom="1px solid"
-      borderColor="gray.200"
+      borderColor="border"
       borderLeftWidth="3px"
-      borderLeftColor={isSelected ? "green.600" : "transparent"}
-      _hover={isInteractive ? { filter: "brightness(0.97)" } : undefined}
+      borderLeftColor={isSelected ? "app.green.secondary" : "transparent"}
+      _hover={isInteractive ? { bg: "bg.muted" } : undefined}
       py={3}
       px={2}
       height={`${HEIGHT}px`}

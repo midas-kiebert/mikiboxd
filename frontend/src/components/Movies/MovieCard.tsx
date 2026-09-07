@@ -14,7 +14,7 @@ type MovieCardProps = {
 const goingBgMap: Record<string, string> = {
   GOING: "green.200",
   INTERESTED: "orange.200",
-  NOT_GOING: "gray.50",
+  NOT_GOING: "bg.panel",
 }
 
 const MovieCard = React.memo(function MovieCard({ movie }: MovieCardProps) {
@@ -23,7 +23,7 @@ const MovieCard = React.memo(function MovieCard({ movie }: MovieCardProps) {
       <Flex
         bg={goingBgMap[movie.viewer?.going ?? "NOT_GOING"]}
         borderBottom={"1px solid"}
-        borderColor={"gray.200"}
+        borderColor={"border"}
         py={3}
         px={2}
         height={{ base: "125px", md: "250px" }}

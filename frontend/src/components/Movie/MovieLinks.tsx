@@ -16,9 +16,9 @@ export default function MovieLinks({ imdb, letterboxd }: MovieLinksProps) {
       {letterboxd && (
         <Badge
           text={"Letterboxd"}
-          bgColor="gray.700"
+          bgColor="fg"
           textColor="white"
-          hoverColor="gray.800"
+          hoverColor="fg"
           textSize="9px"
           url={letterboxd}
         />
@@ -26,9 +26,9 @@ export default function MovieLinks({ imdb, letterboxd }: MovieLinksProps) {
       {imdb && (
         <Badge
           text={"IMDB"}
-          bgColor="gray.700"
+          bgColor="fg"
           textColor="white"
-          hoverColor="gray.800"
+          hoverColor="fg"
           textSize="9px"
           url={imdb}
         />

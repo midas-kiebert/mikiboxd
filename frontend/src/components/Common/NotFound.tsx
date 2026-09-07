@@ -36,7 +36,7 @@ const NotFound = () => {
 
         <Text
           fontSize="lg"
-          color="gray.600"
+          color="fg.muted"
           mb={4}
           textAlign="center"
           zIndex={1}

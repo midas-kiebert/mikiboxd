@@ -41,7 +41,7 @@ const RequireAccount = ({ feature, children }: RequireAccountProps) => {
         <Text fontSize="xl" fontWeight="bold">
           Sign in to see {feature}
         </Text>
-        <Text color="gray.500">
+        <Text color="fg.muted">
           You can browse showtimes and films without an account. {feature} needs
           one.
         </Text>

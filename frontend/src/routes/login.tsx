@@ -102,7 +102,7 @@ function Login() {
         <Text fontSize="2xl" fontWeight="bold" textAlign="center">
           MiKiNO
         </Text>
-        <Text color="gray.500" textAlign="center" mb={2}>
+        <Text color="fg.muted" textAlign="center" mb={2}>
           Discover what's playing at cinemas in your city, and coordinate
           showtimes with friends.
         </Text>

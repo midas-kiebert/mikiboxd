@@ -81,7 +81,7 @@ const MainShowtimesPage = () => {
       {feed.isEmpty ? (
         <Center py={20}>
           <Flex direction="column" align="center" gap={3}>
-            <Text color="gray.500">
+            <Text color="fg.muted">
               {feed.isFilteredEmpty
                 ? "No showtimes match these filters."
                 : "No upcoming showtimes."}
@@ -108,7 +108,7 @@ const MainShowtimesPage = () => {
       {/* On a phone there is no room for a docked panel, so the selection opens
           inline under the row it belongs to until it becomes a drawer. */}
       {isMobile && selected ? (
-        <Box borderBottomWidth="1px" borderColor="gray.200" p={3}>
+        <Box borderBottomWidth="1px" borderColor="border" p={3}>
           <ShowtimeDetailPanel showtime={selected} onClose={handleClose} />
         </Box>
       ) : null}

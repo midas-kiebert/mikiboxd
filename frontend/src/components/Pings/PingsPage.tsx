@@ -181,13 +181,13 @@ const PingsPage = () => {
           direction="column"
           align="center"
           gap={2}
-          bg="gray.50"
+          bg="bg.panel"
           p={6}
           borderRadius="md"
           borderWidth="1px"
         >
           <Text fontWeight="600">No invites yet.</Text>
-          <Text fontSize="sm" color="gray.600">
+          <Text fontSize="sm" color="fg.muted">
             When friends invite you to a showtime, it will show up here.
           </Text>
         </Flex>
@@ -198,9 +198,9 @@ const PingsPage = () => {
               key={ping.showtimeId}
               borderWidth="1px"
               borderRadius="md"
-              borderColor="gray.200"
+              borderColor="border"
               overflow="hidden"
-              bg="white"
+              bg="bg.panel"
             >
               <RouterLink
                 to="/movie/$movieId"
@@ -219,14 +219,14 @@ const PingsPage = () => {
                 justify="space-between"
                 align="center"
                 borderTopWidth="1px"
-                borderColor="gray.200"
-                bg={ping.hasUnseen ? "green.50" : "gray.50"}
+                borderColor="border"
+                bg={ping.hasUnseen ? "green.50" : "bg.panel"}
               >
                 <Box>
-                  <Text fontSize="xs" color="gray.500">
+                  <Text fontSize="xs" color="fg.muted">
                     {formatPingSenderSummary(ping.senders)}
                   </Text>
-                  <Text fontSize="xs" color="gray.500">
+                  <Text fontSize="xs" color="fg.muted">
                     Latest invite:{" "}
                     {DateTime.fromISO(ping.latestPingCreatedAt).toFormat(
                       "ccc, LLL d • HH:mm",

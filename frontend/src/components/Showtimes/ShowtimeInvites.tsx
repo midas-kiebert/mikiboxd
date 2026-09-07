@@ -80,7 +80,7 @@ const ShowtimeInvites = ({ showtimeId }: ShowtimeInvitesProps) => {
   // Render/output using the state and derived values prepared above.
   return (
     <Stack gap={2}>
-      <Text fontSize="sm" fontWeight="semibold" color="gray.600">
+      <Text fontSize="sm" fontWeight="semibold" color="fg.muted">
         Invite friends
       </Text>
 
@@ -95,7 +95,7 @@ const ShowtimeInvites = ({ showtimeId }: ShowtimeInvitesProps) => {
       ) : null}
 
       {friends?.length === 0 ? (
-        <Text fontSize="sm" color="gray.500">
+        <Text fontSize="sm" color="fg.muted">
           Add friends to invite them to a showtime.
         </Text>
       ) : null}
@@ -117,7 +117,7 @@ const ShowtimeInvites = ({ showtimeId }: ShowtimeInvitesProps) => {
                   {name}
                 </Text>
                 {ping ? (
-                  <Text fontSize="xs" color="gray.500">
+                  <Text fontSize="xs" color="fg.muted">
                     {ping.seen_at ? "Seen" : "Invited"}
                   </Text>
                 ) : null}

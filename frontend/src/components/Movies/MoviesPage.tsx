@@ -85,7 +85,7 @@ const MoviesPage = () => {
       {feed.isEmpty ? (
         <Center py={20}>
           <Flex direction="column" align="center" gap={3}>
-            <Text color="gray.500">
+            <Text color="fg.muted">
               {feed.isFilteredEmpty
                 ? "No films match these filters."
                 : "No films showing."}

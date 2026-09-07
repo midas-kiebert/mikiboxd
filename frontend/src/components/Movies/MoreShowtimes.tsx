@@ -23,7 +23,7 @@ const MoreShowtimes = ({
   // Read flow: prepare derived values/handlers first, then return component JSX.
   return (
     <Box maxH={"2em"}>
-      <Text color={"gray.500"}>
+      <Text color={"fg.muted"}>
         {lastShowtime && additional_showtime_count > 0 ? (
           <>
             +{additional_showtime_count}

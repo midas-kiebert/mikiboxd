@@ -38,13 +38,13 @@ export function ShowtimeRow({ showtime, onOpen }: ShowtimeRowProps) {
       justify="space-between"
       py={1}
       borderBottom="1px solid"
-      borderColor="gray.200"
+      borderColor="border"
       bg={
         going === "GOING"
           ? "green.300"
           : going === "INTERESTED"
             ? "orange.300"
-            : "white"
+            : "bg.panel"
       }
       _hover={{
         bg:
@@ -52,7 +52,7 @@ export function ShowtimeRow({ showtime, onOpen }: ShowtimeRowProps) {
             ? "green.200"
             : going === "INTERESTED"
               ? "orange.200"
-              : "gray.50",
+              : "bg.panel",
       }}
       transition="background 0.2s ease"
       onClick={() => onOpen(showtime)}

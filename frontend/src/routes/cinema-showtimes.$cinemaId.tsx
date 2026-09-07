@@ -26,7 +26,7 @@ function CinemaShowtimesLinkPage() {
           showtimes from here instead.
         </Text>
 
-        <Text color="gray.500" fontSize="sm">
+        <Text color="fg.muted" fontSize="sm">
           Link target: <strong>/{cinemaId}</strong>
         </Text>
 

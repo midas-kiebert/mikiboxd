@@ -22,7 +22,7 @@ export default function OriginalTitle({ originalTitle }: OriginalTitleProps) {
         overflow={"hidden"}
         textOverflow={"ellipsis"}
         fontStyle={"italic"}
-        color={"gray.600"}
+        color={"fg.muted"}
         fontFamily={"serif"}
         opacity={0.75}
       >

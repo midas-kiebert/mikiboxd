@@ -13,7 +13,12 @@ export function CustomProvider(props: PropsWithChildren) {
   // Read flow: prepare derived values/handlers first, then return component JSX.
   return (
     <ChakraProvider value={system}>
-      <ColorModeProvider defaultTheme="light">
+      {/*
+        `system` follows the OS until the visitor picks a side in Settings ->
+        Appearance, which is the behaviour the app has. It used to be pinned to
+        light with no way to change it.
+      */}
+      <ColorModeProvider defaultTheme="system" enableSystem>
         {props.children}
       </ColorModeProvider>
       <Toaster />

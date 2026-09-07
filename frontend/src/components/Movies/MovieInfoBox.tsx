@@ -16,7 +16,7 @@ type MovieInfoBoxProps = {
 const goingBorderMap: Record<string, string> = {
   GOING: "green.500",
   INTERESTED: "orange.500",
-  NOT_GOING: "gray.300",
+  NOT_GOING: "border",
 }
 
 export default function MovieInfoBox({ movie }: MovieInfoBoxProps) {

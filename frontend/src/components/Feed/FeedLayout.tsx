@@ -63,7 +63,7 @@ const FeedLayout = ({ rail, toolbar, children, detail }: FeedLayoutProps) => {
           w={`${RAIL_WIDTH}px`}
           flexShrink={0}
           borderRightWidth="1px"
-          borderColor="gray.200"
+          borderColor="border"
           position="sticky"
           top={0}
           alignSelf="flex-start"
@@ -83,7 +83,7 @@ const FeedLayout = ({ rail, toolbar, children, detail }: FeedLayoutProps) => {
             zIndex={5}
             bg="bg"
             borderBottomWidth="1px"
-            borderColor="gray.200"
+            borderColor="border"
             px={{ base: 2, md: 4 }}
             py={2}
           >
@@ -107,7 +107,7 @@ const FeedLayout = ({ rail, toolbar, children, detail }: FeedLayoutProps) => {
           w={`${DETAIL_WIDTH}px`}
           flexShrink={0}
           borderLeftWidth="1px"
-          borderColor="gray.200"
+          borderColor="border"
           position="sticky"
           top={0}
           alignSelf="flex-start"

@@ -33,7 +33,7 @@ const ShowtimeList = ({ showtimes }: ShowtimeListProps) => {
             overflow={"hidden"}
           >
             • {formatTime(s.datetime)}{" "}
-            <Box as="span" color="gray.500" ml={1}>
+            <Box as="span" color="fg.muted" ml={1}>
               <CinemaBadge cinema={s.cinema} />
             </Box>
           </Text>

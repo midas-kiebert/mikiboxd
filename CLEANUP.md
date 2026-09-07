@@ -383,6 +383,9 @@ Legend:
 ---
 
 ## Frontend — Components
+- [x] `Friends/UserModerationMenu.tsx` — Block and report on any user row. Blocking does not confirm, because the moment you want to block someone is not the moment to be asked twice; `UserSettings/BlockedAccounts.tsx` is what makes that safe. Swallows the click so opening it inside a friend card's link does not navigate
+- [x] `UserSettings/BlockedAccounts.tsx` — The blocked list and unblock, as a Settings tab. Without it a block is irreversible from the website
+
 - [x] `Feed/FeedLayout.tsx` — The three-column shell every feed screen sits in (filter rail / list / detail panel) and the only file that positions anything, including clearing the fixed sidebar and bottom nav. Changing the web layout is an edit here and nowhere else, which is the point: the app hides filters behind a button and the showtime sheet behind a full screen because a phone has one column, and neither constraint applies here
 - ~~`Movies/Movies.tsx`~~ — deleted (the films list is rendered by `MoviesPage` inside `FeedLayout` now. Took a window-based virtualizer with it, which could not have been working: `_layout` scrolls an inner Box, not the window)
 - ~~`Movies/MoviesTopBar.tsx`~~ — deleted (replaced by the shared `Feed/FeedToolbar`, which both feeds use)
@@ -545,6 +548,7 @@ Legend:
 - [x] `filters/time-range-utils.ts` — Time-of-day range tokens, the hour bounds they resolve to, and their pill labels (moved out of `mobile/components/filters/`, which now re-exports it, so the website shares the same logic)
 - [x] `filters/useDisplayPresets.ts` — Joins the user's saved presets with the premade ones into the single ordered list the presets row renders, and owns favourite/delete mutations (moved out of `mobile/components/filters/`, which now re-exports it, so the website shares the same logic)
 - [x] `filters/preset-apply-signal.ts` — A `useSyncExternalStore` signal fired when a preset is applied, so controls scattered across a screen can react without threading a callback through every level (moved out of `mobile/components/filters/`, which now re-exports it, so the website shares the same logic)
+- [x] `moderation/report-reasons.ts` — The reasons offered when reporting a user. Shared because these labels are what a reviewer sees attached to a report, and two clients wording the same enum differently makes the moderation queue harder to read
 - [x] `notifications/preferences.ts` — Which notification preferences exist, their labels, their display order, and how a row maps onto backend fields. Shared because a row is not always one field: "Seat availability" drives both `notify_on_seat_alert` and `notify_on_sold_out`, and the latter has no row of its own, so a client building the list from field names alone would mean something different by the same label. `buildDeliveryUpdate` is the single write path both clients use
 - [x] `showtimes/visibility-mode.ts` — What each visibility mode promises, in one place because it is a privacy promise: an app and a website wording the same setting differently is how people share more than they meant to. The mobile module keeps only the icon/colour and re-exports the rest
 - [x] `showtimes/seat-floor-plan-layout.ts` — Turns the flat seat list into rows and blocks with aisles, which is the whole geometry of the floor plan (moved out of `mobile/components/showtimes/`, which now re-exports it, so the website shares the same logic)

@@ -1,5 +1,7 @@
 import FriendBadge from "@/components/Common/FriendBadge"
-import { Badge, Flex, Icon, IconButton, Spacer } from "@chakra-ui/react"
+import { Badge, Box, Flex, Icon, IconButton, Spacer } from "@chakra-ui/react"
+
+import UserModerationMenu from "@/components/Friends/UserModerationMenu"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Link as RouterLink } from "@tanstack/react-router"
 /**
@@ -203,7 +205,7 @@ const UserCard = ({ user }: UserCardProps) => {
       display="flex"
       alignItems="center"
       gap={{ base: 2, md: 4 }}
-      bg={bgColor || "white"}
+      bg={bgColor || "bg.panel"}
       maxW={"100%"}
     >
       <FriendBadge
@@ -225,6 +227,20 @@ const UserCard = ({ user }: UserCardProps) => {
       {badge}
       {button}
       {secondButton}
+      {/* A friend's card is wrapped in a link to their agenda, so the menu has
+          to swallow the click or opening it navigates away instead. */}
+      <Box
+        onClick={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+        }}
+      >
+        <UserModerationMenu
+          userId={user.id}
+          userName={user.display_name ?? "this person"}
+          isBlocked={user.is_blocked}
+        />
+      </Box>
     </Flex>
   )
 

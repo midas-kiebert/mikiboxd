@@ -7,6 +7,7 @@ import { createFileRoute } from "@tanstack/react-router"
 import Page from "@/components/Common/Page"
 import RequireAccount from "@/components/Common/RequireAccount"
 import Appearance from "@/components/UserSettings/Appearance"
+import BlockedAccounts from "@/components/UserSettings/BlockedAccounts"
 import ChangePassword from "@/components/UserSettings/ChangePassword"
 import DeleteAccount from "@/components/UserSettings/DeleteAccount"
 import Notifications from "@/components/UserSettings/Notifications"
@@ -22,6 +23,7 @@ const tabsConfig = [
     component: Notifications,
   },
   { value: "appearance", title: "Appearance", component: Appearance },
+  { value: "blocked", title: "Blocked accounts", component: BlockedAccounts },
   { value: "danger-zone", title: "Danger zone", component: DeleteAccount },
 ]
 

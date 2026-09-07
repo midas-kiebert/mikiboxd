@@ -46,8 +46,10 @@ type FeedToolbarProps = {
   /** What `resultCount` counts, for the line under the search box. */
   resultNoun?: string
   /**
-   * Off on the films feed, which is already one row per film — the control
-   * would be a no-op that implies otherwise.
+   * Not currently offered anywhere. Group-by-film is not a filter argument: in
+   * the app it swaps the showtimes endpoint for the movies one and renders film
+   * rows instead, which the web feed does not do yet. A checkbox here would be
+   * a control that silently does nothing, so there isn't one.
    */
   showGroupToggle?: boolean
 }
@@ -60,7 +62,7 @@ const FeedToolbar = ({
   resultCount,
   searchPlaceholder = "Search showtimes…",
   resultNoun = "showing",
-  showGroupToggle = true,
+  showGroupToggle = false,
 }: FeedToolbarProps) => {
   return (
     <Flex direction="column" gap={2}>

@@ -330,6 +330,8 @@ Legend:
 
 ## Frontend — Entry & Config (`frontend/src/`)
 - [x] `features/showtimes/feed-params.ts` — Every filter dimension the feed has, in one place: the URL schema, the defaults, and the mapping into the shared feed hook's arguments via the hoisted `shared/filters` helpers. The full set is declared even where no control exists yet, so building a control later is UI work with no plumbing behind it
+- [x] `features/showtimes/useFeedParams.ts` — The URL-state half of a feed, shared by the showtimes and films feeds so neither owns a private copy of the parsing and switching pages carries your filters across
+- [x] `features/showtimes/useMoviesFeed.ts` — The films feed, the same shape as `useShowtimesFeed` over the same URL state, so a screen can be written against either without knowing which it got
 - [x] `features/showtimes/useShowtimesFeed.ts` — The feed as one hook: URL state in, paged showtimes out, plus the snapshot-time refresh. Screens below it can be rearranged freely without touching data or state
 
 - [x] `auth/session.ts` — Who is here, answered synchronously: the token is read once before the first route renders and cached as module state, so `useIsSignedIn()` never makes a screen wait a microtask to decide whether to show account UI. Login/logout reach it through the storage adapter in `main.tsx`, so nothing has to remember to announce a sign-in
@@ -381,6 +383,8 @@ Legend:
 
 ## Frontend — Components
 - [x] `Feed/FeedLayout.tsx` — The three-column shell every feed screen sits in (filter rail / list / detail panel) and the only file that positions anything, including clearing the fixed sidebar and bottom nav. Changing the web layout is an edit here and nowhere else, which is the point: the app hides filters behind a button and the showtime sheet behind a full screen because a phone has one column, and neither constraint applies here
+- ~~`Movies/Movies.tsx`~~ — deleted (the films list is rendered by `MoviesPage` inside `FeedLayout` now. Took a window-based virtualizer with it, which could not have been working: `_layout` scrolls an inner Box, not the window)
+- ~~`Movies/MoviesTopBar.tsx`~~ — deleted (replaced by the shared `Feed/FeedToolbar`, which both feeds use)
 - [x] `Feed/FeedFilterRail.tsx` — The filter rail beside the feed: day tokens, time of day, length, language, watchlist/watched, city-grouped cinemas and Letterboxd lists (each list a mutually exclusive Only/Hide pair), all visible and one click away. The app hides the same controls behind a button, a sheet and a section header because a phone has one column; the six actions that costs become one here. Adding a dimension is a section in this file — the state, URL spelling and API mapping are already in `feed-params.ts`
 - [x] `Feed/FeedToolbar.tsx` — Search, search field, the viewer's own status filter, group-by-film and a reset. Purely presentational; every value and setter comes from `useShowtimesFeed`
 - [x] `Showtimes/ShowtimeVisibilityControl.tsx` — Per-showtime visibility, shown only once there is a status to hide or show. Copy comes from `shared/showtimes/visibility-mode` so the website cannot describe a privacy setting differently from the app

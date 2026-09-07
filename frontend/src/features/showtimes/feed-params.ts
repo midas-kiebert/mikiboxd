@@ -209,3 +209,14 @@ export const feedParamsToApiFilters = (params: FeedParams) => {
     selectedLanguages: params.languages.length ? params.languages : undefined,
   }
 }
+
+/**
+ * The films feed takes the same dimensions minus the ones that only mean
+ * something for a single screening, so it is the showtimes filters with those
+ * dropped rather than a second mapping that can drift out of step.
+ */
+export const feedParamsToMovieFilters = (params: FeedParams) => {
+  const { allCinemas: _allCinemas, ...movieFilters } =
+    feedParamsToApiFilters(params)
+  return movieFilters
+}

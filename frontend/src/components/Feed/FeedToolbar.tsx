@@ -42,6 +42,14 @@ type FeedToolbarProps = {
   onReset: () => void
   activeFilterCount: number
   resultCount: number
+  searchPlaceholder?: string
+  /** What `resultCount` counts, for the line under the search box. */
+  resultNoun?: string
+  /**
+   * Off on the films feed, which is already one row per film — the control
+   * would be a no-op that implies otherwise.
+   */
+  showGroupToggle?: boolean
 }
 
 const FeedToolbar = ({
@@ -50,6 +58,9 @@ const FeedToolbar = ({
   onReset,
   activeFilterCount,
   resultCount,
+  searchPlaceholder = "Search showtimes…",
+  resultNoun = "showing",
+  showGroupToggle = true,
 }: FeedToolbarProps) => {
   return (
     <Flex direction="column" gap={2}>
@@ -58,9 +69,9 @@ const FeedToolbar = ({
           flex="1"
           minW="200px"
           value={params.q}
-          placeholder="Search showtimes…"
+          placeholder={searchPlaceholder}
           onChange={(event) => onChange({ q: event.target.value })}
-          aria-label="Search showtimes"
+          aria-label={searchPlaceholder}
         />
 
         <NativeSelect.Root size="sm" width="130px">
@@ -101,15 +112,17 @@ const FeedToolbar = ({
       </Flex>
 
       <HStack gap={4} wrap="wrap">
-        <Checkbox
-          checked={params.group}
-          onCheckedChange={(details) => onChange({ group: !!details.checked })}
-        >
-          <Text fontSize="sm">One row per film</Text>
-        </Checkbox>
+        {showGroupToggle ? (
+          <Checkbox
+            checked={params.group}
+            onCheckedChange={(details) => onChange({ group: !!details.checked })}
+          >
+            <Text fontSize="sm">One row per film</Text>
+          </Checkbox>
+        ) : null}
 
         <Text fontSize="sm" color="gray.500">
-          {resultCount} showing
+          {resultCount} {resultNoun}
         </Text>
 
         {activeFilterCount > 0 || params.q ? (

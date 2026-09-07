@@ -1,179 +1,118 @@
-import Page from "@/components/Common/Page"
-import Movies from "@/components/Movies/Movies"
-import MoviesTopBar from "@/components/Movies/MoviesTopBar"
-import useInfiniteScroll from "@/hooks/useInfiniteScroll"
-import { Center, Flex, Spinner } from "@chakra-ui/react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
 /**
- * Movies list feature component: Movies Page.
+ * The films feed.
+ *
+ * Rebuilt on the same three pieces as the showtimes feed — `useMoviesFeed`,
+ * `FeedLayout`, `FeedToolbar`, `FeedFilterRail` — rather than its own state,
+ * its own filter dialog and its own layout. Both pages now filter on the same
+ * eleven dimensions over the same URL state, so switching between them carries
+ * your filters across, which is what `useSharedTabFilters` does in the app.
+ *
+ * The Letterboxd sync that used to fire here on every mount now belongs to
+ * whoever is signed in; see `useMoviesFeed` for the data and this file for
+ * nothing but composition.
  */
-import { getRouteApi } from "@tanstack/react-router"
-import { DateTime } from "luxon"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef } from "react"
+import { Button, Center, Flex, Spinner, Text } from "@chakra-ui/react"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { MeService } from "shared"
-import { useFetchMovies } from "shared/hooks/useFetchMovies"
 
 import { useIsSignedIn } from "@/auth/useSession"
-import type { MovieFilters } from "shared/hooks/useFetchMovies"
-import { useDebounce } from "use-debounce"
-
-type MoviesSearchParams = {
-  query: string
-  watchlistOnly: boolean
-  days: string[]
-}
-
-const moviesRoute = getRouteApi("/_layout/movies")
+import FeedFilterRail from "@/components/Feed/FeedFilterRail"
+import FeedLayout from "@/components/Feed/FeedLayout"
+import FeedToolbar from "@/components/Feed/FeedToolbar"
+import MovieCard from "@/components/Movies/MovieCard"
+import { useMoviesFeed } from "@/features/showtimes/useMoviesFeed"
+import useInfiniteScroll from "@/hooks/useInfiniteScroll"
 
 const MoviesPage = () => {
-  // Read flow: prepare derived values/handlers first, then return component JSX.
-  const limit = 15
-  // Keep one fixed snapshot timestamp so pagination pages stay consistent while scrolling.
-  const [snapshotTime] = useState(() =>
-    DateTime.now()
-      .setZone("Europe/Amsterdam")
-      .toFormat("yyyy-MM-dd'T'HH:mm:ss"),
-  )
-  const loadMoreRef = useRef<HTMLDivElement | null>(null)
-  const search = moviesRoute.useSearch() as MoviesSearchParams
-  const navigate = moviesRoute.useNavigate()
-  const [searchQuery, setSearchQuery] = useState<string>(search.query ?? "")
-  const [debouncedSearchQuery] = useDebounce(searchQuery, 250)
-  const [watchlistOnly, setWatchlistOnly] = useState<boolean>(
-    search.watchlistOnly,
-  )
-  // Convert URL string days to Date objects for the DayFilter
-  const selectedDays = search.days.map((d: string) =>
-    DateTime.fromISO(d).toJSDate(),
-  )
-
-  const handleDaysChange = (days: Date[]) => {
-    // Convert Date objects to ISO strings for the URL
-    const isoDays = days.map((d: Date) => DateTime.fromJSDate(d).toISODate())
-    navigate({
-      search: {
-        query: searchQuery,
-        watchlistOnly,
-        days: isoDays,
-      },
-      replace: true,
-    })
-  }
-
+  // Read flow: route state and data hooks first, then handlers, then page JSX.
+  const feed = useMoviesFeed()
+  const isSignedIn = useIsSignedIn()
   const queryClient = useQueryClient()
+  const loadMoreRef = useRef<HTMLDivElement | null>(null)
+  const hasSynced = useRef(false)
 
-  // Data hooks keep this module synced with backend data and shared cache state.
-  const { mutate: fetchWatchlist } = useMutation({
-    mutationFn: () => MeService.syncWatchlist(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["movies"] })
-    },
+  useInfiniteScroll({
+    fetchNextPage: feed.fetchNextPage,
+    hasNextPage: feed.hasNextPage,
+    isFetchingNextPage: feed.isFetchingNextPage,
+    loadMoreRef,
+    rootMargin: "400px",
   })
 
   // Watched syncs independently of the watchlist: a throttled (429) watchlist
-  // sync must not prevent the watched list from refreshing.
-  const { mutate: fetchWatched } = useMutation({
+  // sync must not stop the watched list refreshing.
+  const { mutate: syncWatchlist } = useMutation({
+    mutationFn: () => MeService.syncWatchlist(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["movies"] }),
+  })
+  const { mutate: syncWatched } = useMutation({
     mutationFn: () => MeService.syncWatched(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["movies"] })
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["movies"] }),
   })
 
-  // Sync watchlist and watched once on initial mount so server state is current.
-  const hasFetched = useRef(false)
-
-  // Both of these write to the account's Letterboxd mirror, so they are for
-  // members only -- a guest browsing films used to fire two 401s on arrival.
-  const isSignedIn = useIsSignedIn()
-
+  // Both write to the account's Letterboxd mirror, so they are for members
+  // only — a guest browsing films used to fire two 401s on arrival.
   useEffect(() => {
-    if (!isSignedIn) return
-    if (hasFetched.current) return
-    fetchWatchlist()
-    fetchWatched()
-    hasFetched.current = true
-  }, [isSignedIn, fetchWatchlist, fetchWatched])
+    if (!isSignedIn || hasSynced.current) return
+    syncWatchlist()
+    syncWatched()
+    hasSynced.current = true
+  }, [isSignedIn, syncWatchlist, syncWatched])
 
-  // Persist search/filter state into the URL so refresh/share keeps the same view.
-  useEffect(() => {
-    const isSame =
-      search.query === debouncedSearchQuery &&
-      search.watchlistOnly === watchlistOnly
-    if (isSame) return
-    navigate({
-      search: {
-        query: debouncedSearchQuery,
-        watchlistOnly: watchlistOnly,
-        days: search.days,
-      },
-      replace: true,
-    })
-  }, [
-    debouncedSearchQuery,
-    watchlistOnly,
-    navigate,
-    search.query,
-    search.watchlistOnly,
-    search.days,
-  ])
-
-  // The fetch hook uses these filters as part of its query key.
-  const filters: MovieFilters = {
-    query: debouncedSearchQuery,
-    watchlistOnly: watchlistOnly,
-    days: selectedDays.map(
-      (d: Date) => DateTime.fromJSDate(d).toISODate() || "",
-    ),
-  }
-
-  const {
-    data,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    isLoading,
-    isFetching,
-  } = useFetchMovies({
-    limit: limit,
-    snapshotTime,
-    filters,
-  })
-
-  useInfiniteScroll({
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    loadMoreRef,
-    // Start prefetching before the user reaches the bottom for smoother infinite scroll.
-    rootMargin: "2000px",
-  })
-
-  // Render/output using the state and derived values prepared above.
   return (
-    <>
-      <Flex>
-        <MoviesTopBar
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          watchlistOnly={watchlistOnly}
-          setWatchlistOnly={setWatchlistOnly}
-          selectedDays={selectedDays}
-          handleDaysChange={handleDaysChange}
+    <FeedLayout
+      rail={<FeedFilterRail params={feed.params} onChange={feed.setParams} />}
+      toolbar={
+        <FeedToolbar
+          params={feed.params}
+          onChange={feed.setParams}
+          onReset={feed.resetParams}
+          activeFilterCount={feed.activeFilterCount}
+          resultCount={feed.movies.length}
+          searchPlaceholder="Search films…"
+          resultNoun="films"
+          showGroupToggle={false}
         />
-      </Flex>
-      <Page>
-        <Movies
-          movies={data?.pages.flat() || []}
-          isLoading={(isLoading || isFetching) && !isFetchingNextPage}
-        />
-        {hasNextPage && <div ref={loadMoreRef} style={{ height: "1px" }} />}
-        {isFetchingNextPage && (
-          <Center mt={4}>
-            <Spinner size="lg" />
-          </Center>
-        )}
-      </Page>
-    </>
+      }
+    >
+      {feed.isLoading ? (
+        <Center py={20}>
+          <Spinner size="xl" />
+        </Center>
+      ) : null}
+
+      {feed.isEmpty ? (
+        <Center py={20}>
+          <Flex direction="column" align="center" gap={3}>
+            <Text color="gray.500">
+              {feed.isFilteredEmpty
+                ? "No films match these filters."
+                : "No films showing."}
+            </Text>
+            {feed.isFilteredEmpty ? (
+              <Button size="sm" variant="surface" onClick={feed.resetParams}>
+                Clear filters
+              </Button>
+            ) : null}
+          </Flex>
+        </Center>
+      ) : null}
+
+      {feed.movies.map((movie) => (
+        <MovieCard key={movie.id} movie={movie} />
+      ))}
+
+      {feed.hasNextPage ? (
+        <div ref={loadMoreRef} style={{ height: "1px" }} />
+      ) : null}
+
+      {feed.isFetchingNextPage ? (
+        <Center py={6}>
+          <Spinner size="sm" />
+        </Center>
+      ) : null}
+    </FeedLayout>
   )
 }
 

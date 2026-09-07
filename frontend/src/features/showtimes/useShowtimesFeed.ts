@@ -1,5 +1,3 @@
-import { useNavigate, useSearch } from "@tanstack/react-router"
-import { DateTime } from "luxon"
 /**
  * The showtimes feed, as one hook: URL state in, paged showtimes out.
  *
@@ -8,18 +6,11 @@ import { DateTime } from "luxon"
  * the point of the split — the layout is expected to change repeatedly, and this
  * file should not have to change with it.
  */
-import { useCallback, useMemo, useState } from "react"
-import { AMSTERDAM_ZONE } from "shared/filters/day-filter-utils"
+import { useMemo } from "react"
 import { useFetchMainPageShowtimes } from "shared/hooks/useFetchMainPageShowtimes"
 
-import {
-  type FeedParams,
-  countActiveFilters,
-  defaultFeedParams,
-  feedParamsToApiFilters,
-  parseFeedParams,
-  stripDefaultFeedParams,
-} from "./feed-params"
+import { defaultFeedParams, feedParamsToApiFilters } from "./feed-params"
+import { useFeedParams } from "./useFeedParams"
 
 /**
  * The first page is the one page everybody loads, and on a filtered feed it is
@@ -30,35 +21,11 @@ import {
 const FIRST_PAGE_LIMIT = 20
 const PAGE_LIMIT = 40
 
-/** Pin "now" for the life of the view so pages cannot drift past each other. */
-const buildSnapshotTime = () =>
-  DateTime.now().setZone(AMSTERDAM_ZONE).toFormat("yyyy-MM-dd'T'HH:mm:ss")
-
 export const useShowtimesFeed = () => {
-  const navigate = useNavigate()
-  const rawSearch = useSearch({ strict: false }) as Record<string, unknown>
-  const [snapshotTime, setSnapshotTime] = useState(buildSnapshotTime)
+  const { params, setParams, resetParams, activeFilterCount, snapshotTime, refresh } =
+    useFeedParams()
 
-  const params = useMemo(() => parseFeedParams(rawSearch), [rawSearch])
   const filters = useMemo(() => feedParamsToApiFilters(params), [params])
-  const activeFilterCount = useMemo(() => countActiveFilters(params), [params])
-
-  /** Patch one or more dimensions; everything else keeps its current value. */
-  const setParams = useCallback(
-    (patch: Partial<FeedParams>) => {
-      const next = { ...params, ...patch }
-      void navigate({
-        to: ".",
-        search: stripDefaultFeedParams(next) as never,
-        replace: true,
-      })
-    },
-    [navigate, params],
-  )
-
-  const resetParams = useCallback(() => {
-    void navigate({ to: ".", search: {} as never, replace: true })
-  }, [navigate])
 
   const query = useFetchMainPageShowtimes({
     limit: PAGE_LIMIT,
@@ -67,15 +34,6 @@ export const useShowtimesFeed = () => {
     filters,
   })
 
-  /**
-   * A refresh has to move the snapshot as well as refetch: leaving it pinned
-   * re-fetches the same frozen window and quietly keeps showing showtimes that
-   * have since started.
-   */
-  const refresh = useCallback(() => {
-    setSnapshotTime(buildSnapshotTime())
-  }, [])
-
   const showtimes = useMemo(() => query.data?.pages.flat() ?? [], [query.data])
 
   return {
@@ -83,12 +41,12 @@ export const useShowtimesFeed = () => {
     setParams,
     resetParams,
     activeFilterCount,
+    refresh,
     showtimes,
     isLoading: query.isLoading,
     isFetchingNextPage: query.isFetchingNextPage,
     hasNextPage: Boolean(query.hasNextPage),
     fetchNextPage: query.fetchNextPage,
-    refresh,
     isEmpty: !query.isLoading && showtimes.length === 0,
     /** True when the feed is empty *because* of a filter, not because the catalogue is. */
     isFilteredEmpty:

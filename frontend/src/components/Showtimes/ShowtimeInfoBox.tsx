@@ -5,6 +5,7 @@ import { useIsMobile } from "@/hooks/useIsMobile"
 import { Flex, Stack } from "@chakra-ui/react"
 import type { ShowtimePublic } from "shared"
 import CinemaBadge from "../Common/CinemaBadge"
+import SeatAvailabilityBadge from "./SeatAvailabilityBadge"
 import FriendBadges from "../Movies/FriendBadges"
 import MovieTitle from "../Movies/MovieTitle"
 
@@ -28,6 +29,7 @@ export default function ShowtimeInfoBox({ showtime }: ShowtimeInfoBoxProps) {
         {/* <Flex gap={2} */}
         <MovieTitle title={showtime.movie.title} />
         <CinemaBadge cinema={showtime.cinema} />
+        <SeatAvailabilityBadge availability={showtime.seat_availability} />
         {/* </Flex> */}
       </Stack>
       <Flex flex="1">

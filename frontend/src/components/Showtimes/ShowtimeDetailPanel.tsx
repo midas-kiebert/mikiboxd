@@ -33,6 +33,7 @@ import type { GoingStatus, ShowtimePublic } from "shared"
 import { ShowtimesService } from "shared/client"
 
 import { useRequireAccount } from "@/auth/useSession"
+import SeatAvailabilitySection from "@/components/Showtimes/SeatAvailabilitySection"
 import ShowtimeInvites from "@/components/Showtimes/ShowtimeInvites"
 import ShowtimeVisibilityControl from "@/components/Showtimes/ShowtimeVisibilityControl"
 
@@ -157,6 +158,8 @@ const ShowtimeDetailPanel = ({
           ) : null}
         </Stack>
       ) : null}
+
+      <SeatAvailabilitySection showtimeId={showtime.id} />
 
       <ShowtimeInvites showtimeId={showtime.id} />
 

@@ -20,9 +20,9 @@ import type { GoingStatus, Language, SearchField } from "shared/client"
 import { resolveDaySelectionsForApi } from "shared/filters/day-filter-utils"
 import { getRuntimeBoundsFromSelections } from "shared/filters/runtime-range-utils"
 import {
+  type SharedTabShowtimeFilter,
   getSelectedStatusesFromShowtimeFilter,
   toSharedTabShowtimeFilter,
-  type SharedTabShowtimeFilter,
 } from "shared/filters/shared-tab-filters"
 
 /** How the watchlist dimension is filtering, if at all. */
@@ -95,17 +95,23 @@ const toNumberArray = (value: unknown): number[] =>
     .map((entry) => Number.parseInt(entry, 10))
     .filter((entry) => Number.isFinite(entry))
 
-const toBoolean = (value: unknown): boolean => value === true || value === "true"
+const toBoolean = (value: unknown): boolean =>
+  value === true || value === "true"
 
-const oneOf = <T extends string>(value: unknown, allowed: T[], fallback: T): T =>
-  allowed.includes(value as T) ? (value as T) : fallback
+const oneOf = <T extends string>(
+  value: unknown,
+  allowed: T[],
+  fallback: T,
+): T => (allowed.includes(value as T) ? (value as T) : fallback)
 
 /**
  * The route's `validateSearch`. Anything unrecognised falls back to its default
  * rather than throwing, so a hand-edited or stale URL degrades to a working
  * feed instead of an error page.
  */
-export const parseFeedParams = (search: Record<string, unknown>): FeedParams => ({
+export const parseFeedParams = (
+  search: Record<string, unknown>,
+): FeedParams => ({
   q: typeof search.q === "string" ? search.q : defaultFeedParams.q,
   field: oneOf(search.field, SEARCH_FIELDS, defaultFeedParams.field),
   days: toStringArray(search.days),
@@ -127,8 +133,8 @@ export const parseFeedParams = (search: Record<string, unknown>): FeedParams => 
   ),
   lists: toStringArray(search.lists),
   excludeLists: toStringArray(search.excludeLists),
-  languages: toStringArray(search.languages).filter((entry): entry is Language =>
-    LANGUAGES.includes(entry as Language),
+  languages: toStringArray(search.languages).filter(
+    (entry): entry is Language => LANGUAGES.includes(entry as Language),
   ),
 })
 
@@ -174,7 +180,9 @@ export const countActiveFilters = (params: FeedParams): number => {
  * the same code the app runs.
  */
 export const feedParamsToApiFilters = (params: FeedParams) => {
-  const { runtimeMin, runtimeMax } = getRuntimeBoundsFromSelections(params.runtime)
+  const { runtimeMin, runtimeMax } = getRuntimeBoundsFromSelections(
+    params.runtime,
+  )
   const selectedStatuses: GoingStatus[] | undefined =
     getSelectedStatusesFromShowtimeFilter(params.status)
 
@@ -195,7 +203,9 @@ export const feedParamsToApiFilters = (params: FeedParams) => {
     hideWatched: params.watched === "hide" || undefined,
     selectedStatuses,
     selectedListIds: params.lists.length ? params.lists : undefined,
-    excludeListIds: params.excludeLists.length ? params.excludeLists : undefined,
+    excludeListIds: params.excludeLists.length
+      ? params.excludeLists
+      : undefined,
     selectedLanguages: params.languages.length ? params.languages : undefined,
   }
 }

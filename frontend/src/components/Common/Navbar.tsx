@@ -4,6 +4,7 @@
 import { Flex, Image, useBreakpointValue } from "@chakra-ui/react"
 import { Link } from "@tanstack/react-router"
 
+import { defaultFeedParams } from "@/features/showtimes/feed-params"
 import Logo from "/assets/images/mikino-logo.png"
 import UserMenu from "./UserMenu"
 
@@ -24,7 +25,7 @@ function Navbar() {
       top={0}
       p={4}
     >
-      <Link to="/">
+      <Link to="/" search={defaultFeedParams}>
         <Image src={Logo} alt="Logo" maxW="3xs" p={2} />
       </Link>
       <Flex gap={2} alignItems="center">

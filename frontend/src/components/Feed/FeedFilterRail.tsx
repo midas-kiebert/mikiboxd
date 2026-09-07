@@ -13,12 +13,12 @@
  */
 import { Box, Button, Flex, Heading, Stack, Text } from "@chakra-ui/react"
 import type { ReactNode } from "react"
-import { useFetchCinemas } from "shared/hooks/useFetchCinemas"
 import {
   RELATIVE_DAY_OPTIONS,
   WEEKDAY_DAY_OPTIONS,
 } from "shared/filters/day-filter-utils"
 import { TIME_FILTER_PRESETS } from "shared/filters/time-filter-presets"
+import { useFetchCinemas } from "shared/hooks/useFetchCinemas"
 
 import { Checkbox } from "@/components/ui/checkbox"
 import type {

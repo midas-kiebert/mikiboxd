@@ -4,6 +4,8 @@
 import { Button, Center, Flex, Text } from "@chakra-ui/react"
 import { Link } from "@tanstack/react-router"
 
+import { defaultFeedParams } from "@/features/showtimes/feed-params"
+
 const NotFound = () => {
   // Read flow: prepare derived values/handlers first, then return component JSX.
   return (
@@ -42,7 +44,7 @@ const NotFound = () => {
           The page you are looking for was not found.
         </Text>
         <Center zIndex={1}>
-          <Link to="/">
+          <Link to="/" search={defaultFeedParams}>
             <Button
               variant="solid"
               colorScheme="teal"

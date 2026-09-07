@@ -9,6 +9,7 @@ import { FaBars } from "react-icons/fa"
 import { FiLogOut } from "react-icons/fi"
 
 import { PAGE_NOTICE_BANNER_OFFSET_CSS_VAR, SIDEBAR_WIDTH } from "@/constants"
+import { defaultFeedParams } from "@/features/showtimes/feed-params"
 import type { MeGetCurrentUserResponse } from "shared"
 import useAuth from "shared/hooks/useAuth"
 import {
@@ -31,7 +32,7 @@ const Sidebar = () => {
   ])
   // Data hooks keep this module synced with backend data and shared cache state.
   const { logout } = useAuth(
-    () => navigate({ to: "/" }), // onLoginSuccess
+    () => navigate({ to: "/", search: defaultFeedParams }), // onLoginSuccess
     () => navigate({ to: "/login" }), // onLogout
   )
   const [open, setOpen] = useState(false)

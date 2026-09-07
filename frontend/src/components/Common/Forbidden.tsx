@@ -4,6 +4,8 @@
 import { Button, Center, Flex, Text } from "@chakra-ui/react"
 import { Link } from "@tanstack/react-router"
 
+import { defaultFeedParams } from "@/features/showtimes/feed-params"
+
 const Forbidden = () => {
   // Read flow: prepare derived values/handlers first, then return component JSX.
   return (
@@ -42,7 +44,7 @@ const Forbidden = () => {
           You are not allowed to be here!
         </Text>
         <Center zIndex={1}>
-          <Link to="/">
+          <Link to="/" search={defaultFeedParams}>
             <Button
               variant="solid"
               colorScheme="teal"

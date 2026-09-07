@@ -1,3 +1,4 @@
+import { useNavigate, useRouterState } from "@tanstack/react-router"
 /**
  * The two hooks every guest-aware screen needs.
  *
@@ -8,7 +9,6 @@
  * pressing it, rather than meeting a screen that hides half of itself.
  */
 import { useCallback, useSyncExternalStore } from "react"
-import { useNavigate, useRouterState } from "@tanstack/react-router"
 
 import { getSignedIn, subscribeToSession } from "./session"
 
@@ -37,7 +37,7 @@ export const useRequireAccount = () => {
 
   return useCallback(() => {
     if (isSignedIn) return true
-    void navigate({ to: "/login", search: { redirect: href } as never })
+    void navigate({ to: "/login", search: { redirect: href } })
     return false
   }, [isSignedIn, navigate, href])
 }

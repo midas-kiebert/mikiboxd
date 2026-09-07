@@ -16,11 +16,7 @@ import { DateTime } from "luxon"
  * Pings feature component: Invites page.
  */
 import { useEffect, useMemo, useState } from "react"
-import {
-  MeService,
-  type ShowtimePublic,
-  type ShowtimePingPublic,
-} from "shared"
+import { MeService, type ShowtimePingPublic, type ShowtimePublic } from "shared"
 import { useFetchShowtimePings } from "shared/hooks/useFetchShowtimePings"
 import ShowtimeCard from "../Showtimes/ShowtimeCard"
 

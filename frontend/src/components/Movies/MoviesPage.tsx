@@ -12,6 +12,8 @@ import { DateTime } from "luxon"
 import { useEffect, useRef, useState } from "react"
 import { MeService } from "shared"
 import { useFetchMovies } from "shared/hooks/useFetchMovies"
+
+import { useIsSignedIn } from "@/auth/useSession"
 import type { MovieFilters } from "shared/hooks/useFetchMovies"
 import { useDebounce } from "use-debounce"
 
@@ -80,12 +82,17 @@ const MoviesPage = () => {
   // Sync watchlist and watched once on initial mount so server state is current.
   const hasFetched = useRef(false)
 
+  // Both of these write to the account's Letterboxd mirror, so they are for
+  // members only -- a guest browsing films used to fire two 401s on arrival.
+  const isSignedIn = useIsSignedIn()
+
   useEffect(() => {
+    if (!isSignedIn) return
     if (hasFetched.current) return
     fetchWatchlist()
     fetchWatched()
     hasFetched.current = true
-  }, [fetchWatchlist, fetchWatched])
+  }, [isSignedIn, fetchWatchlist, fetchWatched])
 
   // Persist search/filter state into the URL so refresh/share keeps the same view.
   useEffect(() => {

@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Field } from "@/components/ui/field"
 import { InputGroup } from "@/components/ui/input-group"
 import { PasswordInput } from "@/components/ui/password-input"
+import { defaultFeedParams } from "@/features/showtimes/feed-params"
 import type { Body_login_login_access_token as AccessToken } from "shared"
 import useAuth, { isLoggedIn } from "shared/hooks/useAuth"
 import Logo from "/assets/images/mikino-logo.png"
@@ -22,11 +23,19 @@ import { emailPattern, passwordRules } from "../utils"
 
 export const Route = createFileRoute("/login")({
   component: Login,
-  beforeLoad: async () => {
+  // `redirect` is where the visitor was when they were asked to sign in --
+  // `useRequireAccount` and `RequireAccount` both set it, so pressing "Going" on
+  // a showtime as a guest returns to that showtime rather than the home feed.
+  validateSearch: (search: Record<string, unknown>) => ({
+    redirect: typeof search.redirect === "string" ? search.redirect : undefined,
+  }),
+  beforeLoad: async ({ search }) => {
     if (await isLoggedIn()) {
-      throw redirect({
-        to: "/",
-      })
+      throw redirect(
+        search.redirect
+          ? { href: search.redirect }
+          : { to: "/", search: defaultFeedParams },
+      )
     }
   },
 })
@@ -34,9 +43,13 @@ export const Route = createFileRoute("/login")({
 function Login() {
   // Read flow: route state and data hooks first, then handlers, then page JSX.
   const navigate = useNavigate()
+  const { redirect: redirectTo } = Route.useSearch()
   // Data hooks keep this module synced with backend data and shared cache state.
   const { loginMutation, error, resetError } = useAuth(
-    () => navigate({ to: "/" }), // onLoginSuccess
+    () =>
+      redirectTo
+        ? navigate({ href: redirectTo })
+        : navigate({ to: "/", search: defaultFeedParams }), // onLoginSuccess
     () => navigate({ to: "/login" }), // onLogout
   )
   const {

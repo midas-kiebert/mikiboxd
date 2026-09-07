@@ -6,6 +6,8 @@ import type { CinemaPublic, CityPublic } from "shared"
 import { MeService, type MeSetCinemaSelectionsData } from "shared/client"
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas"
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas"
+
+import { useIsSignedIn } from "@/auth/useSession"
 import useTrackEvent from "shared/hooks/useTrackEvent"
 import { useDebouncedCallback } from "use-debounce"
 import { DayFilter } from "../Common/DayFilter"
@@ -80,7 +82,12 @@ function groupCinemasByCity(cinemas: CinemaPublic[]) {
 const Filters = ({ selectedDays, handleDaysChange }: FiltersProps) => {
   const { data: cinemas } = useFetchCinemas()
   const groupedCinemas = groupCinemasByCity(cinemas || [])
-  const { data: selectedCinemaIds } = useFetchSelectedCinemas()
+  // A guest has no saved cinema picks to read; asking for them 401s on every
+  // refetch of a page they are entitled to browse.
+  const isSignedIn = useIsSignedIn()
+  const { data: selectedCinemaIds } = useFetchSelectedCinemas({
+    enabled: isSignedIn,
+  })
   const [selectedCinemas, setSelectedCinemas] = useState<number[]>([])
   const [initialized, setInitialized] = useState(false)
   const debouncedMutate = useDebouncedCinemaMutation(500)
@@ -122,7 +129,7 @@ const Filters = ({ selectedDays, handleDaysChange }: FiltersProps) => {
     })
   }
 
-  if (cinemas === undefined || selectedCinemaIds === undefined) {
+  if (cinemas === undefined || (isSignedIn && selectedCinemaIds === undefined)) {
     return <FilterButton disabled={true} />
   }
 

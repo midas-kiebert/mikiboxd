@@ -44,7 +44,7 @@ const ShowtimeCard = ({
   return (
     <Flex
       as={isInteractive ? "button" : "div"}
-      type={isInteractive ? "button" : undefined}
+      {...(isInteractive ? { type: "button" } : {})}
       onClick={isInteractive ? handleSelect : undefined}
       textAlign="left"
       width="100%"

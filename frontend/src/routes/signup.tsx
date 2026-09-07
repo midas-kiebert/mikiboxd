@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Field } from "@/components/ui/field"
 import { InputGroup } from "@/components/ui/input-group"
 import { PasswordInput } from "@/components/ui/password-input"
+import { defaultFeedParams } from "@/features/showtimes/feed-params"
 import {
   confirmPasswordRules,
   emailPattern,
@@ -32,6 +33,7 @@ export const Route = createFileRoute("/signup")({
     if (await isLoggedIn()) {
       throw redirect({
         to: "/",
+        search: defaultFeedParams,
       })
     }
   },

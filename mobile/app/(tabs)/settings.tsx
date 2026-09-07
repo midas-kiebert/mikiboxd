@@ -912,11 +912,11 @@ function SettingsScreen() {
             <View style={styles.notificationToggleHeader}>
               <View style={styles.notificationToggleTextContainer}>
                 <ThemedText style={styles.notificationToggleTitle}>
-                  Clear "interested" when you go
+                  Clear &quot;interested&quot; when you go
                 </ThemedText>
                 <ThemedText style={styles.notificationToggleDescription}>
-                  When you mark a showtime "going", ask to remove "interested" from other
-                  showtimes of the same movie.
+                  When you mark a showtime &quot;going&quot;, ask to remove &quot;interested&quot; from
+                  other showtimes of the same movie.
                 </ThemedText>
               </View>
               <AppSwitch

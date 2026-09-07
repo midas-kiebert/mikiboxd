@@ -7,6 +7,7 @@ import { useNavigate } from "@tanstack/react-router"
 import { FaUserAstronaut } from "react-icons/fa"
 import { FiLogOut, FiUser } from "react-icons/fi"
 
+import { defaultFeedParams } from "@/features/showtimes/feed-params"
 import useAuth from "shared/hooks/useAuth"
 import { MenuContent, MenuItem, MenuRoot, MenuTrigger } from "../ui/menu"
 
@@ -15,7 +16,7 @@ const UserMenu = () => {
   const navigate = useNavigate()
   // Data hooks keep this module synced with backend data and shared cache state.
   const { user, logout } = useAuth(
-    () => navigate({ to: "/" }), // onLoginSuccess
+    () => navigate({ to: "/", search: defaultFeedParams }), // onLoginSuccess
     () => navigate({ to: "/login" }), // onLogout
   )
 

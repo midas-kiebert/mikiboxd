@@ -66,8 +66,7 @@ const TmdbCacheOverrideForm = ({
 
   const { data: results, isFetching } = useQuery({
     queryKey: ["tmdb-cache-search", searchTerm],
-    queryFn: () =>
-      UtilsService.searchTmdbCacheEntries({ title: searchTerm }),
+    queryFn: () => UtilsService.searchTmdbCacheEntries({ title: searchTerm }),
     enabled: searchTerm.trim().length > 0,
   })
 
@@ -93,8 +92,8 @@ const TmdbCacheOverrideForm = ({
     <Stack gap={3} maxW="md">
       <Text fontSize="sm" color="gray.500">
         Search for the exact cache entry a title's showtimes are using, then
-        correct its TMDB ID directly. Every movie/showtime already produced
-        by that entry is reassigned to the corrected ID immediately.
+        correct its TMDB ID directly. Every movie/showtime already produced by
+        that entry is reassigned to the corrected ID immediately.
       </Text>
       <Field label="Title as scraped">
         <Input

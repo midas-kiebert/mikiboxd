@@ -1,3 +1,5 @@
+import { useNavigate, useSearch } from "@tanstack/react-router"
+import { DateTime } from "luxon"
 /**
  * The showtimes feed, as one hook: URL state in, paged showtimes out.
  *
@@ -7,18 +9,16 @@
  * file should not have to change with it.
  */
 import { useCallback, useMemo, useState } from "react"
-import { DateTime } from "luxon"
-import { useNavigate, useSearch } from "@tanstack/react-router"
-import { useFetchMainPageShowtimes } from "shared/hooks/useFetchMainPageShowtimes"
 import { AMSTERDAM_ZONE } from "shared/filters/day-filter-utils"
+import { useFetchMainPageShowtimes } from "shared/hooks/useFetchMainPageShowtimes"
 
 import {
+  type FeedParams,
   countActiveFilters,
   defaultFeedParams,
   feedParamsToApiFilters,
   parseFeedParams,
   stripDefaultFeedParams,
-  type FeedParams,
 } from "./feed-params"
 
 /**
@@ -76,10 +76,7 @@ export const useShowtimesFeed = () => {
     setSnapshotTime(buildSnapshotTime())
   }, [])
 
-  const showtimes = useMemo(
-    () => query.data?.pages.flat() ?? [],
-    [query.data],
-  )
+  const showtimes = useMemo(() => query.data?.pages.flat() ?? [], [query.data])
 
   return {
     params,

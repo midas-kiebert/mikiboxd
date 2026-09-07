@@ -23,9 +23,7 @@ REQUEST_DELAY_SECONDS = 0.05
 def backfill_description() -> None:
     with get_db_context() as session:
         movie_ids = list(
-            session.exec(
-                select(Movie.id).where(col(Movie.description).is_(None))
-            ).all()
+            session.exec(select(Movie.id).where(col(Movie.description).is_(None))).all()
         )
 
     print(f"Backfilling description for {len(movie_ids)} movies")

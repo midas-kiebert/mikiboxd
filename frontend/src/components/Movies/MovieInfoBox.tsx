@@ -42,7 +42,11 @@ export default function MovieInfoBox({ movie }: MovieInfoBoxProps) {
         <OriginalTitle originalTitle={original_title} />
         <CinemaBadges cinemas={cinemas} />
       </Flex>
-      <Separator mt={0.5} mb={2} borderColor={goingBorderMap[movie.viewer?.going ?? "NOT_GOING"]} />
+      <Separator
+        mt={0.5}
+        mb={2}
+        borderColor={goingBorderMap[movie.viewer?.going ?? "NOT_GOING"]}
+      />
       <Flex flex="1">
         <ShowtimeInfo
           showtimes={showtimes}

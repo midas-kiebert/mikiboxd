@@ -192,7 +192,9 @@ def _ingest_eagerly_floor_plans(*, skipped: list[str]) -> int:
     for target in _targets():
         cinema_key = target.cinema_key
         with get_db_context() as session:
-            cinema_id = cinema_crud.get_cinema_id_by_key(session=session, key=cinema_key)
+            cinema_id = cinema_crud.get_cinema_id_by_key(
+                session=session, key=cinema_key
+            )
 
         shows = fetch_eagerly_shows(f"https://{target.site}", feed_cache)
         # Every showtime the feed puts in a room, not just the first: the
@@ -332,16 +334,16 @@ def _ingest_tricket_floor_plans(*, skipped: list[str]) -> int:
             skipped.append(f"{host} (no cinemas.yaml key mapped)")
             continue
         with get_db_context() as session:
-            cinema_id = cinema_crud.get_cinema_id_by_key(session=session, key=cinema_key)
+            cinema_id = cinema_crud.get_cinema_id_by_key(
+                session=session, key=cinema_key
+            )
             screening_ids = _tricket_screening_ids(session=session, host=host)
 
         done: set[str] = set()
         for screening_id in screening_ids:
             if len(done) == len(TRICKET_ROOM_NAMES):
                 break
-            geometry = fetch_tricket_room_geometry(
-                host=host, screening_id=screening_id
-            )
+            geometry = fetch_tricket_room_geometry(host=host, screening_id=screening_id)
             time.sleep(REQUEST_DELAY_SECONDS)
             if geometry is None or geometry.room is None or geometry.room in done:
                 continue
@@ -419,7 +421,9 @@ def _ingest_ticketlab_floor_plans(*, skipped: list[str]) -> int:
             skipped.append(f"{host} (no cinemas.yaml key mapped)")
             continue
         with get_db_context() as session:
-            cinema_id = cinema_crud.get_cinema_id_by_key(session=session, key=cinema_key)
+            cinema_id = cinema_crud.get_cinema_id_by_key(
+                session=session, key=cinema_key
+            )
             links = _ticket_links_for_host(session=session, host=host)
 
         done: set[str] = set()
@@ -494,7 +498,9 @@ def _ingest_activetickets_floor_plans(*, skipped: list[str]) -> int:
             skipped.append(f"{host} (no cinemas.yaml key mapped)")
             continue
         with get_db_context() as session:
-            cinema_id = cinema_crud.get_cinema_id_by_key(session=session, key=cinema_key)
+            cinema_id = cinema_crud.get_cinema_id_by_key(
+                session=session, key=cinema_key
+            )
             links = _ticket_links_for_host(session=session, host=host)
 
         done: set[str] = set()
@@ -554,7 +560,9 @@ def _ingest_ticketmatic_floor_plans(*, skipped: list[str]) -> int:
             skipped.append(f"{host} (no cinemas.yaml key mapped)")
             continue
         with get_db_context() as session:
-            cinema_id = cinema_crud.get_cinema_id_by_key(session=session, key=cinema_key)
+            cinema_id = cinema_crud.get_cinema_id_by_key(
+                session=session, key=cinema_key
+            )
             links = _ticket_links_for_host(session=session, host=host)
 
         done: set[str] = set()

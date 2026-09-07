@@ -91,8 +91,19 @@ export default function InstallAppGate({
 
   return (
     <Center minH="100vh" px={6}>
-      <Flex direction="column" align="center" gap={5} maxW="sm" textAlign="center">
-        <Image src={MIKINO_LOGO_URL} alt="MiKiNO" boxSize={LOGO_SIZE} borderRadius="22%" />
+      <Flex
+        direction="column"
+        align="center"
+        gap={5}
+        maxW="sm"
+        textAlign="center"
+      >
+        <Image
+          src={MIKINO_LOGO_URL}
+          alt="MiKiNO"
+          boxSize={LOGO_SIZE}
+          borderRadius="22%"
+        />
 
         <Text fontSize="2xl" fontWeight="bold">
           {headline}

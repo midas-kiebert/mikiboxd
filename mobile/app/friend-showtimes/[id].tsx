@@ -311,9 +311,8 @@ function FriendShowtimesContent({
   const { refreshing, handleRefresh } = useSnapshotRefresh({ setSnapshotTime, isFetching });
 
   const handleLoadMore = () => {
-    if (hasNextPage && !isFetchingNextPage) {
-      fetchNextPage();
-    }
+    if (!hasNextPage || isFetchingNextPage) return false;
+    return fetchNextPage();
   };
 
   const handleClearAll = () => {

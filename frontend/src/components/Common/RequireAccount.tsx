@@ -31,7 +31,13 @@ const RequireAccount = ({ feature, children }: RequireAccountProps) => {
 
   return (
     <Center minH="60vh" px={6}>
-      <Flex direction="column" align="center" gap={4} maxW="sm" textAlign="center">
+      <Flex
+        direction="column"
+        align="center"
+        gap={4}
+        maxW="sm"
+        textAlign="center"
+      >
         <Text fontSize="xl" fontWeight="bold">
           Sign in to see {feature}
         </Text>
@@ -41,7 +47,7 @@ const RequireAccount = ({ feature, children }: RequireAccountProps) => {
         </Text>
         <Flex gap={3}>
           <Button asChild>
-            <Link to="/login" search={{ redirect: href } as never}>
+            <Link to="/login" search={{ redirect: href }}>
               Log in
             </Link>
           </Button>

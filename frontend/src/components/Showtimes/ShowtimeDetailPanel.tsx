@@ -141,12 +141,16 @@ const ShowtimeDetailPanel = ({
           </Text>
           {friendsGoing.length ? (
             <Text fontSize="sm">
-              Going: {friendsGoing.map((f) => f.display_name ?? "A friend").join(", ")}
+              Going:{" "}
+              {friendsGoing.map((f) => f.display_name ?? "A friend").join(", ")}
             </Text>
           ) : null}
           {friendsInterested.length ? (
             <Text fontSize="sm">
-              Interested: {friendsInterested.map((f) => f.display_name ?? "A friend").join(", ")}
+              Interested:{" "}
+              {friendsInterested
+                .map((f) => f.display_name ?? "A friend")
+                .join(", ")}
             </Text>
           ) : null}
         </Stack>
@@ -154,7 +158,11 @@ const ShowtimeDetailPanel = ({
 
       {showtime.ticket_link ? (
         <Button asChild variant="surface" size="sm">
-          <Link href={showtime.ticket_link} target="_blank" rel="noopener noreferrer">
+          <Link
+            href={showtime.ticket_link}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             Get ticket
           </Link>
         </Button>

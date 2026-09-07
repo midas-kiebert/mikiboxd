@@ -154,12 +154,14 @@ export function ShowtimesListContent({
   // whenever the list shrinks, since that means a fresh load replaced it
   // (a filter/search change) rather than a page being appended to it.
   const initialRowCountRef = React.useRef(0);
-  if (showtimes.length < initialRowCountRef.current) {
-    initialRowCountRef.current = 0;
-  }
-  if (initialRowCountRef.current === 0 && showtimes.length > 0) {
-    initialRowCountRef.current = showtimes.length;
-  }
+  React.useEffect(() => {
+    if (showtimes.length < initialRowCountRef.current) {
+      initialRowCountRef.current = 0;
+    }
+    if (initialRowCountRef.current === 0 && showtimes.length > 0) {
+      initialRowCountRef.current = showtimes.length;
+    }
+  }, [showtimes.length]);
   const renderItem = React.useCallback(
     ({ item, index }: { item: ShowtimePublic; index: number }) => (
       <FeedItemEntrance index={index} stagger={index < initialRowCountRef.current}>

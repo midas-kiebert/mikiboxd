@@ -1,3 +1,4 @@
+import { Box, Button, Center, Flex, Spinner, Text } from "@chakra-ui/react"
 /**
  * The website's home feed.
  *
@@ -11,7 +12,6 @@
  * this file stays short and layout changes do not touch it.
  */
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Box, Button, Center, Flex, Spinner, Text } from "@chakra-ui/react"
 import type { ShowtimePublic } from "shared"
 
 import FeedFilterRail from "@/components/Feed/FeedFilterRail"

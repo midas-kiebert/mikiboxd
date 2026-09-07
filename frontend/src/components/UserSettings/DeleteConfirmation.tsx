@@ -18,6 +18,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import { defaultFeedParams } from "@/features/showtimes/feed-params"
 import useCustomToast from "@/hooks/useCustomToast"
 import { handleError } from "@/utils"
 import { type ApiError, MeService } from "shared"
@@ -35,7 +36,7 @@ const DeleteConfirmation = () => {
     formState: { isSubmitting },
   } = useForm()
   const { logout } = useAuth(
-    () => navigate({ to: "/" }), // onLoginSuccess
+    () => navigate({ to: "/", search: defaultFeedParams }), // onLoginSuccess
     () => navigate({ to: "/login" }), // onLogout
   )
 

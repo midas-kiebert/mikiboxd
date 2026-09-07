@@ -9,6 +9,7 @@ import { FiLock } from "react-icons/fi"
 
 import { Button } from "@/components/ui/button"
 import { PasswordInput } from "@/components/ui/password-input"
+import { defaultFeedParams } from "@/features/showtimes/feed-params"
 import useCustomToast from "@/hooks/useCustomToast"
 import { confirmPasswordRules, handleError, passwordRules } from "@/utils"
 import { type ApiError, LoginService, type NewPassword } from "shared"
@@ -24,6 +25,7 @@ export const Route = createFileRoute("/reset-password")({
     if (await isLoggedIn()) {
       throw redirect({
         to: "/",
+        search: defaultFeedParams,
       })
     }
   },

@@ -14,7 +14,7 @@
 import { useState } from "react"
 import { Button, Flex, IconButton, Input, Portal, Stack, Text } from "@chakra-ui/react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { FiEdit2, FiTrash2 } from "react-icons/fi"
+import { FiEdit2, FiStar, FiTrash2 } from "react-icons/fi"
 import { MeService } from "shared/client"
 import {
   findNamedCinemaPresets,
@@ -73,6 +73,16 @@ const CinemaPresets = ({ params, onChange }: CinemaPresetsProps) => {
     },
   })
 
+  /**
+   * Which preset is "my cinemas" — the one applied at startup. Exactly one is
+   * the favourite, so this is a move rather than a toggle.
+   */
+  const { mutate: makeDefault } = useMutation({
+    mutationFn: (presetId: string) =>
+      MeService.setFavoriteCinemaPreset({ presetId }),
+    onSuccess: refresh,
+  })
+
   const { mutate: remove } = useMutation({
     mutationFn: (presetId: string) =>
       MeService.deleteCinemaPreset({ presetId }),
@@ -126,16 +136,28 @@ const CinemaPresets = ({ params, onChange }: CinemaPresetsProps) => {
                 >
                   <FiEdit2 />
                 </IconButton>
-                {/* The favourite is "my cinemas" — every account has one. */}
+                {/* The favourite is "my cinemas" — every account has exactly
+                    one, so it can be moved but not deleted. */}
                 {preset.is_favorite ? null : (
-                  <IconButton
-                    size="2xs"
-                    variant="ghost"
-                    aria-label={`Delete ${preset.name}`}
-                    onClick={() => remove(preset.id)}
-                  >
-                    <FiTrash2 />
-                  </IconButton>
+                  <>
+                    <IconButton
+                      size="2xs"
+                      variant="ghost"
+                      aria-label={`Make ${preset.name} my cinemas`}
+                      title="Use these at startup"
+                      onClick={() => makeDefault(preset.id)}
+                    >
+                      <FiStar />
+                    </IconButton>
+                    <IconButton
+                      size="2xs"
+                      variant="ghost"
+                      aria-label={`Delete ${preset.name}`}
+                      onClick={() => remove(preset.id)}
+                    >
+                      <FiTrash2 />
+                    </IconButton>
+                  </>
                 )}
               </>
             )}

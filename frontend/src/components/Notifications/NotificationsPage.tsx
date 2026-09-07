@@ -49,13 +49,25 @@ const NotificationsPage = () => {
     queryClient.invalidateQueries({ queryKey: ["users"] })
   }
 
-  // Opening the page is what marks it read, which is what the app does too.
+  /**
+   * Opening the page is what marks it read, which is what the app does too.
+   *
+   * Both counters, because the feed merges both sources: marking only the
+   * notification side left the invite badge lit after you had plainly read the
+   * invite.
+   */
   const { mutate: markSeen } = useMutation({
-    mutationFn: () => MeService.markMyNotificationsSeen(),
-    onSuccess: () =>
+    mutationFn: () =>
+      Promise.all([
+        MeService.markMyNotificationsSeen(),
+        MeService.markMyShowtimePingsSeen(),
+      ]),
+    onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: ["me", "notifications", "unseenCount"],
-      }),
+      })
+      queryClient.invalidateQueries({ queryKey: ["me", "showtimePings"] })
+    },
   })
 
   useEffect(() => {

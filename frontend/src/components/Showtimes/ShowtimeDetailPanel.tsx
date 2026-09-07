@@ -159,7 +159,10 @@ const ShowtimeDetailPanel = ({
         </Stack>
       ) : null}
 
-      <SeatAvailabilitySection showtimeId={showtime.id} />
+      <SeatAvailabilitySection
+        showtimeId={showtime.id}
+        isGoing={current === "GOING"}
+      />
 
       <ShowtimeInvites showtimeId={showtime.id} />
 

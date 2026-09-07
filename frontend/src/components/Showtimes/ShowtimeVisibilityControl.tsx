@@ -10,7 +10,7 @@
  * another way on the web is how people share more than they meant to.
  */
 import { Box, Flex, Stack, Text } from "@chakra-ui/react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { VisibilityMode } from "shared/client"
 import { ShowtimesService } from "shared/client"
 import {
@@ -39,6 +39,21 @@ const ShowtimeVisibilityControl = ({
   const { data: visibility } = useShowtimeVisibility({
     showtimeId,
     enabled: isSignedIn,
+  })
+
+  /**
+   * Friends who are going to this showtime but were never invited to it.
+   *
+   * They are exactly who "invited only" would hide you from, and the app warns
+   * before that happens rather than after — the whole point of narrowing
+   * visibility is usually not to disappear from the people you are going with.
+   */
+  const { data: uninvited } = useQuery({
+    queryKey: ["showtimes", "uninvitedSelectedFriends", showtimeId],
+    queryFn: () =>
+      ShowtimesService.getUninvitedSelectedFriendsForShowtime({ showtimeId }),
+    enabled: isSignedIn,
+    staleTime: 30_000,
   })
 
   const { mutate: setMode, isPending } = useMutation({
@@ -86,6 +101,15 @@ const ShowtimeVisibilityControl = ({
           })}
         </Stack>
       </RadioGroup>
+
+      {visibility.mode !== "INVITED_ONLY" && uninvited?.friends?.length ? (
+        <Text fontSize="xs" color="app.orange.secondary">
+          {uninvited.friends.length === 1
+            ? "One friend going to this is not in the invite"
+            : `${uninvited.friends.length} friends going to this are not in the invite`}
+          , so "Invited only" would hide you from them. Invite them first.
+        </Text>
+      ) : null}
 
       <Flex>
         <Text fontSize="xs" color="fg.muted">

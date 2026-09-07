@@ -28,9 +28,12 @@ import {
 } from "shared/showtimes/seat-availability-level"
 
 import { useIsSignedIn, useRequireAccount } from "@/auth/useSession"
+import SeatFloorPlan from "@/components/Showtimes/SeatFloorPlan"
 
 type SeatAvailabilitySectionProps = {
   showtimeId: number
+  /** True when the viewer is going, which is what a seat attaches to. */
+  isGoing?: boolean
 }
 
 /**
@@ -50,6 +53,7 @@ const soldOutWatchQueryKey = ["showtimes", "sold-out-watch"] as const
 
 const SeatAvailabilitySection = ({
   showtimeId,
+  isGoing = false,
 }: SeatAvailabilitySectionProps) => {
   // Read flow: prepare derived values/handlers first, then return component JSX.
   const queryClient = useQueryClient()
@@ -139,6 +143,14 @@ const SeatAvailabilitySection = ({
           Nobody has checked this screening yet.
         </Text>
       )}
+
+      {/* Passed the same reading the count above came from, so the map and the
+          number cannot disagree. */}
+      <SeatFloorPlan
+        showtimeId={showtimeId}
+        readingAt={availability.checked_at ?? null}
+        canPickSeat={isGoing}
+      />
 
       <Flex gap={2} wrap="wrap">
         {availability.can_request_check ? (

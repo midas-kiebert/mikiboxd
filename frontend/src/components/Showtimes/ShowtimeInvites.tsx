@@ -35,6 +35,22 @@ const ShowtimeInvites = ({ showtimeId }: ShowtimeInvitesProps) => {
 
   const { data: friends } = useFetchFriends({ enabled: isSignedIn })
 
+  /**
+   * Friends who are going but whose own visibility hides them from you.
+   *
+   * Worth surfacing because they are the people most worth inviting — you would
+   * otherwise be organising around a showtime they are already at. Only their
+   * count is shown: naming them would be exactly the leak their setting exists
+   * to prevent.
+   */
+  const { data: hiddenAttending } = useQuery({
+    queryKey: ["showtimes", "hiddenAttendingFriends", showtimeId],
+    queryFn: () =>
+      ShowtimesService.getHiddenAttendingFriendsForShowtime({ showtimeId }),
+    enabled: isSignedIn,
+    staleTime: 30_000,
+  })
+
   const { data: sentPings } = useQuery({
     queryKey: sentPingsQueryKey(showtimeId),
     queryFn: () => ShowtimesService.getSentPingsForShowtime({ showtimeId }),
@@ -117,6 +133,15 @@ const ShowtimeInvites = ({ showtimeId }: ShowtimeInvitesProps) => {
       {friends?.length === 0 ? (
         <Text fontSize="sm" color="fg.muted">
           Add friends to invite them to a showtime.
+        </Text>
+      ) : null}
+
+      {hiddenAttending?.friends?.length ? (
+        <Text fontSize="xs" color="fg.muted">
+          {hiddenAttending.friends.length === 1
+            ? "One friend here has their status hidden from you."
+            : `${hiddenAttending.friends.length} friends here have their status hidden from you.`}{" "}
+          Inviting them shows you to each other.
         </Text>
       ) : null}
 

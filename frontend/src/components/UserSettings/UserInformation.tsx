@@ -24,6 +24,7 @@ import {
 import { type ApiError, MeService, type UserUpdate } from "shared"
 import useAuth from "shared/hooks/useAuth"
 import { Field } from "../ui/field"
+import EmailVerificationNotice from "./EmailVerificationNotice"
 
 const UserInformation = () => {
   // Read flow: prepare derived values/handlers first, then return component JSX.
@@ -101,6 +102,7 @@ const UserInformation = () => {
   return (
     <>
       <Container maxW="full">
+      <EmailVerificationNotice />
         <Heading size="sm" py={4}>
           User Information
         </Heading>

@@ -24,6 +24,7 @@ const ShowtimesPage = ({ userId }: ShowtimesPageProps) => {
   return (
     <ShowtimeFeedPage
       feed={feed}
+      showPresets={false}
       header={<Heading size="md">{name}'s agenda</Heading>}
       emptyText={`${name} has nothing coming up that you can see.`}
       filteredEmptyText="Nothing here matches these filters."

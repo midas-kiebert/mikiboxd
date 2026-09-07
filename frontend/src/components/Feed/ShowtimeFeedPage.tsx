@@ -17,6 +17,7 @@ import type { ShowtimePublic } from "shared"
 
 import FeedFilterRail from "@/components/Feed/FeedFilterRail"
 import FeedLayout from "@/components/Feed/FeedLayout"
+import FeedPresets from "@/components/Feed/FeedPresets"
 import FeedToolbar from "@/components/Feed/FeedToolbar"
 import ShowtimeCard from "@/components/Showtimes/ShowtimeCard"
 import ShowtimeDetailPanel from "@/components/Showtimes/ShowtimeDetailPanel"
@@ -50,6 +51,8 @@ type ShowtimeFeedPageProps = {
   hasSidebar?: boolean
   /** Off where the filter set would not apply to the endpoint behind the feed. */
   showRail?: boolean
+  /** Off on the pages whose filters are not the ones a preset saves. */
+  showPresets?: boolean
 }
 
 const ShowtimeFeedPage = ({
@@ -59,6 +62,7 @@ const ShowtimeFeedPage = ({
   filteredEmptyText = "No showtimes match these filters.",
   hasSidebar = true,
   showRail = true,
+  showPresets = true,
 }: ShowtimeFeedPageProps) => {
   // Read flow: prepare derived values/handlers first, then return component JSX.
   const isMobile = useIsMobile()
@@ -87,13 +91,18 @@ const ShowtimeFeedPage = ({
   const handleClose = useCallback(() => setSelectedId(null), [])
 
   const toolbar = (
-    <FeedToolbar
-      params={feed.params}
-      onChange={feed.setParams}
-      onReset={feed.resetParams}
-      activeFilterCount={feed.activeFilterCount}
-      resultCount={feed.showtimes.length}
-    />
+    <Flex direction="column" gap={2}>
+      <FeedToolbar
+        params={feed.params}
+        onChange={feed.setParams}
+        onReset={feed.resetParams}
+        activeFilterCount={feed.activeFilterCount}
+        resultCount={feed.showtimes.length}
+      />
+      {showPresets ? (
+        <FeedPresets params={feed.params} onChange={feed.setParams} />
+      ) : null}
+    </Flex>
   )
 
   // Render/output using the state and derived values prepared above.

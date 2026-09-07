@@ -16,6 +16,7 @@ const MyShowtimesPage = () => {
   return (
     <ShowtimeFeedPage
       feed={feed}
+      showPresets={false}
       header={<Heading size="md">Your agenda</Heading>}
       emptyText="Nothing in your agenda yet. Mark a showtime going or interested and it lands here."
       filteredEmptyText="Nothing in your agenda matches these filters."

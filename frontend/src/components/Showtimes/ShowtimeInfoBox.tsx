@@ -5,9 +5,9 @@ import { useIsMobile } from "@/hooks/useIsMobile"
 import { Flex, Stack } from "@chakra-ui/react"
 import type { ShowtimePublic } from "shared"
 import CinemaBadge from "../Common/CinemaBadge"
-import SeatAvailabilityBadge from "./SeatAvailabilityBadge"
 import FriendBadges from "../Movies/FriendBadges"
 import MovieTitle from "../Movies/MovieTitle"
+import SeatAvailabilityBadge from "./SeatAvailabilityBadge"
 
 type ShowtimeInfoBoxProps = {
   showtime: ShowtimePublic

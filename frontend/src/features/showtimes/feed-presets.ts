@@ -13,12 +13,12 @@
  * history and refetch the feed on each one.
  */
 import type { Language } from "shared/client"
+import type { PageFilterPresetState } from "shared/filters/filter-preset-utils"
 import {
   type DisplayPreset,
   type PresetApplySetters,
   applyDisplayPreset,
 } from "shared/filters/saved-presets"
-import type { PageFilterPresetState } from "shared/filters/filter-preset-utils"
 import type { SharedTabShowtimeFilter } from "shared/filters/shared-tab-filters"
 
 import type { FeedParams, WatchedMode, WatchlistMode } from "./feed-params"
@@ -119,7 +119,9 @@ export const feedParamsToPresetState = (
   hide_watched: params.watched === "hide",
   watched_only: params.watched === "only",
   selected_list_ids: params.lists.length ? [...params.lists] : null,
-  exclude_list_ids: params.excludeLists.length ? [...params.excludeLists] : null,
+  exclude_list_ids: params.excludeLists.length
+    ? [...params.excludeLists]
+    : null,
   days: params.days.length ? [...params.days] : null,
   time_ranges: params.times.length ? [...params.times] : null,
   runtime_ranges: params.runtime.length ? [...params.runtime] : null,

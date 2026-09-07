@@ -1,3 +1,13 @@
+import {
+  Badge,
+  Container,
+  Flex,
+  Heading,
+  Input,
+  Stack,
+  Text,
+} from "@chakra-ui/react"
+import { DateTime } from "luxon"
 /**
  * Settings → Letterboxd lists.
  *
@@ -9,16 +19,6 @@
  * remove button on one would either lie or delete something for other people.
  */
 import { useState } from "react"
-import {
-  Badge,
-  Container,
-  Flex,
-  Heading,
-  Input,
-  Stack,
-  Text,
-} from "@chakra-ui/react"
-import { DateTime } from "luxon"
 
 import { useIsSignedIn } from "@/auth/useSession"
 import { Button } from "@/components/ui/button"
@@ -98,7 +98,12 @@ const LetterboxdLists = () => {
         {own.length ? (
           <Stack gap={2}>
             {own.map((list) => (
-              <Flex key={list.id} align="center" justify="space-between" gap={3}>
+              <Flex
+                key={list.id}
+                align="center"
+                justify="space-between"
+                gap={3}
+              >
                 <Stack gap={0} minW={0}>
                   <Text fontSize="sm" truncate>
                     {list.title ?? list.list_slug}

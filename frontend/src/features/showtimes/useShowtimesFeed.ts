@@ -30,9 +30,7 @@ type UseShowtimesFeedOptions = {
   pinned?: Partial<FeedParams>
 }
 
-export const useShowtimesFeed = ({
-  pinned,
-}: UseShowtimesFeedOptions = {}) => {
+export const useShowtimesFeed = ({ pinned }: UseShowtimesFeedOptions = {}) => {
   const {
     params,
     setParams,

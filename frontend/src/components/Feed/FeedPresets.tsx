@@ -1,3 +1,13 @@
+import {
+  Button,
+  Flex,
+  IconButton,
+  Input,
+  Portal,
+  Stack,
+  Text,
+} from "@chakra-ui/react"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 /**
  * Saved filter presets, above the feed.
  *
@@ -13,19 +23,8 @@
  * would be work spent on a problem the extra space already solves.
  */
 import { useState } from "react"
-import {
-  Button,
-  Flex,
-  IconButton,
-  Input,
-  Portal,
-  Stack,
-  Text,
-} from "@chakra-ui/react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { FiStar, FiTrash2 } from "react-icons/fi"
 import { MeService } from "shared/client"
-import useAuth from "shared/hooks/useAuth"
 import {
   type DisplayPreset,
   buildSavedPresetCreate,
@@ -33,8 +32,10 @@ import {
   presetKey,
 } from "shared/filters/saved-presets"
 import { useDisplayPresets } from "shared/filters/useDisplayPresets"
+import useAuth from "shared/hooks/useAuth"
 
 import { useIsSignedIn } from "@/auth/useSession"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   DialogBody,
   DialogContent,
@@ -42,7 +43,6 @@ import {
   DialogRoot,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Checkbox } from "@/components/ui/checkbox"
 import type { FeedParams } from "@/features/showtimes/feed-params"
 import {
   feedParamsToPresetState,
@@ -169,9 +169,7 @@ const FeedPresets = ({ params, onChange }: FeedPresetsProps) => {
                     setIncludeCinemas(!!details.checked)
                   }
                 >
-                  <Text fontSize="sm">
-                    Include the cinemas I have selected
-                  </Text>
+                  <Text fontSize="sm">Include the cinemas I have selected</Text>
                 </Checkbox>
                 <Flex justify="flex-end" gap={2}>
                   <Button

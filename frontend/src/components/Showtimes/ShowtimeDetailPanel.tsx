@@ -33,6 +33,7 @@ import type { GoingStatus, ShowtimePublic } from "shared"
 import { ShowtimesService } from "shared/client"
 
 import { useRequireAccount } from "@/auth/useSession"
+import ShowtimeInvites from "@/components/Showtimes/ShowtimeInvites"
 
 type ShowtimeDetailPanelProps = {
   showtime: ShowtimePublic
@@ -155,6 +156,8 @@ const ShowtimeDetailPanel = ({
           ) : null}
         </Stack>
       ) : null}
+
+      <ShowtimeInvites showtimeId={showtime.id} />
 
       {showtime.ticket_link ? (
         <Button asChild variant="surface" size="sm">

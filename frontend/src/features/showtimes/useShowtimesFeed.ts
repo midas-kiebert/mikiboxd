@@ -47,6 +47,7 @@ export const useShowtimesFeed = ({ pinned }: UseShowtimesFeedOptions = {}) => {
     firstPageLimit: FIRST_PAGE_LIMIT,
     snapshotTime,
     filters,
+    enabled,
   })
 
   const showtimes = useMemo(() => query.data?.pages.flat() ?? [], [query.data])
@@ -58,7 +59,7 @@ export const useShowtimesFeed = ({ pinned }: UseShowtimesFeedOptions = {}) => {
     activeFilterCount,
     refresh,
     showtimes,
-    isLoading: query.isLoading,
+    isLoading: enabled && query.isLoading,
     isFetchingNextPage: query.isFetchingNextPage,
     hasNextPage: Boolean(query.hasNextPage),
     fetchNextPage: query.fetchNextPage,

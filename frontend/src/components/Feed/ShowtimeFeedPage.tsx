@@ -1,58 +1,37 @@
-import { Box, Button, Center, Flex, Spinner, Text } from "@chakra-ui/react"
 /**
- * Every showtime feed on the website, rendered once.
+ * Every showtime feed on the website: home, a cinema's programme, your agenda,
+ * a friend's agenda. They differ only in where their rows come from and what
+ * they say when empty.
  *
- * The home feed, a cinema's programme, your agenda and a friend's agenda differ
- * only in where their rows come from and what they say when empty. They were
- * four near-identical pages; this is the one they share, so a change to how a
- * feed looks or behaves happens here rather than four times with three of them
- * forgotten.
- *
- * It takes a feed object rather than calling a hook, so the page above chooses
- * which endpoint it is showing.
+ * Owns which showtime is selected; everything around the rows is
+ * `FeedPageShell`.
  */
 import { useCallback, useEffect, useRef, useState } from "react"
+import { Box } from "@chakra-ui/react"
 import type { ReactNode } from "react"
 import type { ShowtimePublic } from "shared"
 
-import FeedFilterRail from "@/components/Feed/FeedFilterRail"
-import FeedLayout from "@/components/Feed/FeedLayout"
-import FeedPresets from "@/components/Feed/FeedPresets"
-import FeedToolbar from "@/components/Feed/FeedToolbar"
+import FeedPageShell, { type FeedChrome } from "@/components/Feed/FeedPageShell"
 import ShowtimeCard from "@/components/Showtimes/ShowtimeCard"
 import ShowtimeDetailPanel from "@/components/Showtimes/ShowtimeDetailPanel"
-import type { FeedParams } from "@/features/showtimes/feed-params"
 import useInfiniteScroll from "@/hooks/useInfiniteScroll"
 import { useIsMobile } from "@/hooks/useIsMobile"
 
-/** What every feed hook in `features/showtimes` returns. */
-export type ShowtimeFeedLike = {
-  params: FeedParams
-  setParams: (patch: Partial<FeedParams>) => void
-  resetParams: () => void
-  activeFilterCount: number
+/** What every showtime feed hook in `features/showtimes` returns. */
+export type ShowtimeFeedLike = FeedChrome & {
   showtimes: ShowtimePublic[]
-  isLoading: boolean
-  isFetchingNextPage: boolean
-  hasNextPage: boolean
   fetchNextPage: () => void
-  isEmpty: boolean
-  isFilteredEmpty: boolean
 }
 
 type ShowtimeFeedPageProps = {
   feed: ShowtimeFeedLike
-  /** Sits above the toolbar — a cinema's name, whose agenda this is. */
   header?: ReactNode
-  /** What to say when nothing matches, and when there is simply nothing. */
   emptyText?: string
   filteredEmptyText?: string
-  /** False on the deep-link routes that sit outside `_layout`. */
   hasSidebar?: boolean
-  /** Off where the filter set would not apply to the endpoint behind the feed. */
   showRail?: boolean
-  /** Off on the pages whose filters are not the ones a preset saves. */
   showPresets?: boolean
+  showGroupToggle?: boolean
 }
 
 const ShowtimeFeedPage = ({
@@ -63,6 +42,7 @@ const ShowtimeFeedPage = ({
   hasSidebar = true,
   showRail = true,
   showPresets = true,
+  showGroupToggle = false,
 }: ShowtimeFeedPageProps) => {
   // Read flow: prepare derived values/handlers first, then return component JSX.
   const isMobile = useIsMobile()
@@ -90,67 +70,25 @@ const ShowtimeFeedPage = ({
   }, [])
   const handleClose = useCallback(() => setSelectedId(null), [])
 
-  const toolbar = (
-    <Flex direction="column" gap={2}>
-      <FeedToolbar
-        params={feed.params}
-        onChange={feed.setParams}
-        onReset={feed.resetParams}
-        activeFilterCount={feed.activeFilterCount}
-        resultCount={feed.showtimes.length}
-      />
-      {showPresets ? (
-        <FeedPresets params={feed.params} onChange={feed.setParams} />
-      ) : null}
-    </Flex>
-  )
-
   // Render/output using the state and derived values prepared above.
   return (
-    <FeedLayout
+    <FeedPageShell
+      feed={feed}
+      resultCount={feed.showtimes.length}
+      header={header}
+      emptyText={emptyText}
+      filteredEmptyText={filteredEmptyText}
       hasSidebar={hasSidebar}
-      rail={
-        showRail ? (
-          <FeedFilterRail params={feed.params} onChange={feed.setParams} />
-        ) : undefined
-      }
-      toolbar={
-        header ? (
-          <Flex direction="column" gap={2}>
-            {header}
-            {toolbar}
-          </Flex>
-        ) : (
-          toolbar
-        )
-      }
+      showRail={showRail}
+      showPresets={showPresets}
+      showGroupToggle={showGroupToggle}
+      loadMoreRef={loadMoreRef}
       detail={
         selected ? (
           <ShowtimeDetailPanel showtime={selected} onClose={handleClose} />
         ) : null
       }
     >
-      {feed.isLoading ? (
-        <Center py={20}>
-          <Spinner size="xl" />
-        </Center>
-      ) : null}
-
-      {feed.isEmpty ? (
-        <Center py={20}>
-          <Flex direction="column" align="center" gap={3}>
-            <Text color="fg.muted">
-              {feed.isFilteredEmpty ? filteredEmptyText : emptyText}
-            </Text>
-            {feed.isFilteredEmpty ? (
-              <Button size="sm" variant="surface" onClick={feed.resetParams}>
-                Clear filters
-              </Button>
-            ) : null}
-          </Flex>
-        </Center>
-      ) : null}
-
       {feed.showtimes.map((showtime) => (
         <ShowtimeCard
           key={showtime.id}
@@ -168,16 +106,7 @@ const ShowtimeFeedPage = ({
           <ShowtimeDetailPanel showtime={selected} onClose={handleClose} />
         </Box>
       ) : null}
-
-      {feed.hasNextPage ? (
-        <div ref={loadMoreRef} style={{ height: "1px" }} />
-      ) : null}
-      {feed.isFetchingNextPage ? (
-        <Center py={6}>
-          <Spinner size="sm" />
-        </Center>
-      ) : null}
-    </FeedLayout>
+    </FeedPageShell>
   )
 }
 

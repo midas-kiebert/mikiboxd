@@ -13,7 +13,12 @@ import { useFeedParams } from "./useFeedParams"
 const FIRST_PAGE_LIMIT = 15
 const PAGE_LIMIT = 30
 
-export const useMoviesFeed = () => {
+type UseMoviesFeedOptions = {
+  /** Off when the page is showing the showtimes feed instead. */
+  enabled?: boolean
+}
+
+export const useMoviesFeed = ({ enabled = true }: UseMoviesFeedOptions = {}) => {
   const {
     params,
     setParams,
@@ -30,6 +35,7 @@ export const useMoviesFeed = () => {
     firstPageLimit: FIRST_PAGE_LIMIT,
     snapshotTime,
     filters,
+    enabled,
   })
 
   const movies = useMemo(() => query.data?.pages.flat() ?? [], [query.data])
@@ -41,7 +47,7 @@ export const useMoviesFeed = () => {
     activeFilterCount,
     refresh,
     movies,
-    isLoading: query.isLoading,
+    isLoading: enabled && query.isLoading,
     isFetchingNextPage: query.isFetchingNextPage,
     hasNextPage: Boolean(query.hasNextPage),
     fetchNextPage: query.fetchNextPage,

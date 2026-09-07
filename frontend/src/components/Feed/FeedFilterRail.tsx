@@ -18,11 +18,11 @@ import {
   WEEKDAY_DAY_OPTIONS,
 } from "shared/filters/day-filter-utils"
 import { TIME_FILTER_PRESETS } from "shared/filters/time-filter-presets"
+import { useFetchCinemas } from "shared/hooks/useFetchCinemas"
 import {
   useFetchCuratedLetterboxdLists,
   useFetchLetterboxdLists,
 } from "shared/hooks/useLetterboxdLists"
-import { useFetchCinemas } from "shared/hooks/useFetchCinemas"
 
 import { useIsSignedIn } from "@/auth/useSession"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -127,7 +127,10 @@ const FeedFilterRail = ({ params, onChange }: FeedFilterRailProps) => {
    */
   const setListMode = (id: string, mode: "off" | "only" | "hide") =>
     onChange({
-      lists: mode === "only" ? [...new Set([...params.lists, id])] : params.lists.filter((entry) => entry !== id),
+      lists:
+        mode === "only"
+          ? [...new Set([...params.lists, id])]
+          : params.lists.filter((entry) => entry !== id),
       excludeLists:
         mode === "hide"
           ? [...new Set([...params.excludeLists, id])]
@@ -276,8 +279,17 @@ const FeedFilterRail = ({ params, onChange }: FeedFilterRailProps) => {
             const isOnly = params.lists.includes(list.id)
             const isHidden = params.excludeLists.includes(list.id)
             return (
-              <Flex key={list.id} align="center" gap={1} justify="space-between">
-                <Text fontSize="sm" truncate title={list.title ?? list.list_slug}>
+              <Flex
+                key={list.id}
+                align="center"
+                gap={1}
+                justify="space-between"
+              >
+                <Text
+                  fontSize="sm"
+                  truncate
+                  title={list.title ?? list.list_slug}
+                >
                   {list.title ?? list.list_slug}
                 </Text>
                 <Flex gap={1} flexShrink={0}>
@@ -285,7 +297,9 @@ const FeedFilterRail = ({ params, onChange }: FeedFilterRailProps) => {
                     size="2xs"
                     variant={isOnly ? "solid" : "surface"}
                     colorPalette={isOnly ? "green" : "gray"}
-                    onClick={() => setListMode(list.id, isOnly ? "off" : "only")}
+                    onClick={() =>
+                      setListMode(list.id, isOnly ? "off" : "only")
+                    }
                   >
                     Only
                   </Button>
@@ -293,7 +307,9 @@ const FeedFilterRail = ({ params, onChange }: FeedFilterRailProps) => {
                     size="2xs"
                     variant={isHidden ? "solid" : "surface"}
                     colorPalette={isHidden ? "red" : "gray"}
-                    onClick={() => setListMode(list.id, isHidden ? "off" : "hide")}
+                    onClick={() =>
+                      setListMode(list.id, isHidden ? "off" : "hide")
+                    }
                   >
                     Hide
                   </Button>

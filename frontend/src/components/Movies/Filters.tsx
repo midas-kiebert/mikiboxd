@@ -129,7 +129,10 @@ const Filters = ({ selectedDays, handleDaysChange }: FiltersProps) => {
     })
   }
 
-  if (cinemas === undefined || (isSignedIn && selectedCinemaIds === undefined)) {
+  if (
+    cinemas === undefined ||
+    (isSignedIn && selectedCinemaIds === undefined)
+  ) {
     return <FilterButton disabled={true} />
   }
 

@@ -115,7 +115,9 @@ const FeedToolbar = ({
         {showGroupToggle ? (
           <Checkbox
             checked={params.group}
-            onCheckedChange={(details) => onChange({ group: !!details.checked })}
+            onCheckedChange={(details) =>
+              onChange({ group: !!details.checked })
+            }
           >
             <Text fontSize="sm">One row per film</Text>
           </Checkbox>

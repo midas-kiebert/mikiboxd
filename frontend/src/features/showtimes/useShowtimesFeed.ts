@@ -22,8 +22,14 @@ const FIRST_PAGE_LIMIT = 20
 const PAGE_LIMIT = 40
 
 export const useShowtimesFeed = () => {
-  const { params, setParams, resetParams, activeFilterCount, snapshotTime, refresh } =
-    useFeedParams()
+  const {
+    params,
+    setParams,
+    resetParams,
+    activeFilterCount,
+    snapshotTime,
+    refresh,
+  } = useFeedParams()
 
   const filters = useMemo(() => feedParamsToApiFilters(params), [params])
 

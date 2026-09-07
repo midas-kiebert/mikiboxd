@@ -14,8 +14,14 @@ const FIRST_PAGE_LIMIT = 15
 const PAGE_LIMIT = 30
 
 export const useMoviesFeed = () => {
-  const { params, setParams, resetParams, activeFilterCount, snapshotTime, refresh } =
-    useFeedParams()
+  const {
+    params,
+    setParams,
+    resetParams,
+    activeFilterCount,
+    snapshotTime,
+    refresh,
+  } = useFeedParams()
 
   const filters = useMemo(() => feedParamsToMovieFilters(params), [params])
 

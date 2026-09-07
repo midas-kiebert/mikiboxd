@@ -37,8 +37,19 @@ set -euo pipefail
 cd /home/github/actions-runner/_work/mikiboxd/mikiboxd
 
 # .env already exists on the box (secrets baked in from the last real
-# workflow run) and is excluded from the rsync above, so it's reused as-is.
+# workflow run) and is excluded from the rsync above, so it's reused as-is
+# for secrets. But its STACK_NAME/DOMAIN/*_HOST/CORS values are production's
+# (that file is shared with the prod deploy workflow, which overwrites it) —
+# left to fall through, `docker compose` would label these containers as
+# prod's Traefik routers and bake prod's API URL into the frontend build.
+# Pin the staging values explicitly instead of relying on the .env fallback.
 export $(grep -E '^(POSTGRES_USER|POSTGRES_DB)=' .env | xargs)
+export STACK_NAME=mikiboxd-staging
+export DOMAIN=staging.mikino.nl
+export API_HOST=https://api.staging.mikino.nl
+export FRONTEND_HOST=https://dashboard.staging.mikino.nl
+export PUBLIC_HOST=https://staging.mikino.nl
+export BACKEND_CORS_ORIGINS='https://staging.mikino.nl,https://www.staging.mikino.nl,https://api.staging.mikino.nl'
 
 docker compose -f docker-compose.yml --project-name mikiboxd-staging build
 

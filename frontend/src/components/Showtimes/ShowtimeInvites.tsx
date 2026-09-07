@@ -1,3 +1,5 @@
+import { Box, Button, Flex, Input, Stack, Text } from "@chakra-ui/react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 /**
  * Inviting friends to a showtime, from inside the detail panel.
  *
@@ -10,8 +12,6 @@
  * people, which is well below what anyone actually has.
  */
 import { useState } from "react"
-import { Box, Button, Flex, Input, Stack, Text } from "@chakra-ui/react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ShowtimesService } from "shared/client"
 import { useFetchFriends } from "shared/hooks/useFetchFriends"
 import useTrackEvent from "shared/hooks/useTrackEvent"
@@ -106,7 +106,12 @@ const ShowtimeInvites = ({ showtimeId }: ShowtimeInvitesProps) => {
           const name = friend.display_name ?? "Friend"
 
           return (
-            <Flex key={friend.id} align="center" gap={2} justify="space-between">
+            <Flex
+              key={friend.id}
+              align="center"
+              gap={2}
+              justify="space-between"
+            >
               <Box minW={0}>
                 <Text fontSize="sm" truncate>
                   {name}

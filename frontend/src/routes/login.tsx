@@ -26,16 +26,17 @@ export const Route = createFileRoute("/login")({
   // `redirect` is where the visitor was when they were asked to sign in --
   // `useRequireAccount` and `RequireAccount` both set it, so pressing "Going" on
   // a showtime as a guest returns to that showtime rather than the home feed.
-  validateSearch: (search: Record<string, unknown>) => ({
-    redirect: typeof search.redirect === "string" ? search.redirect : undefined,
+  validateSearch: (search: Record<string, unknown>): { redirect?: string } => ({
+    ...(typeof search.redirect === "string"
+      ? { redirect: search.redirect }
+      : {}),
   }),
   beforeLoad: async ({ search }) => {
     if (await isLoggedIn()) {
-      throw redirect(
-        search.redirect
-          ? { href: search.redirect }
-          : { to: "/", search: defaultFeedParams },
-      )
+      if (search.redirect) {
+        throw redirect({ href: search.redirect })
+      }
+      throw redirect({ to: "/", search: defaultFeedParams })
     }
   },
 })

@@ -34,6 +34,7 @@ import { ShowtimesService } from "shared/client"
 
 import { useRequireAccount } from "@/auth/useSession"
 import ShowtimeInvites from "@/components/Showtimes/ShowtimeInvites"
+import ShowtimeVisibilityControl from "@/components/Showtimes/ShowtimeVisibilityControl"
 
 type ShowtimeDetailPanelProps = {
   showtime: ShowtimePublic
@@ -158,6 +159,12 @@ const ShowtimeDetailPanel = ({
       ) : null}
 
       <ShowtimeInvites showtimeId={showtime.id} />
+
+      {/* A visibility mode on a showtime you are not going to governs nothing,
+          so it only appears once there is a status to hide or show. */}
+      {current === "GOING" || current === "INTERESTED" ? (
+        <ShowtimeVisibilityControl showtimeId={showtime.id} />
+      ) : null}
 
       {showtime.ticket_link ? (
         <Button asChild variant="surface" size="sm">

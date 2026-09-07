@@ -8,6 +8,7 @@ import Page from "@/components/Common/Page"
 import RequireAccount from "@/components/Common/RequireAccount"
 import Appearance from "@/components/UserSettings/Appearance"
 import BlockedAccounts from "@/components/UserSettings/BlockedAccounts"
+import LetterboxdLists from "@/components/UserSettings/LetterboxdLists"
 import ChangePassword from "@/components/UserSettings/ChangePassword"
 import DeleteAccount from "@/components/UserSettings/DeleteAccount"
 import Notifications from "@/components/UserSettings/Notifications"
@@ -17,6 +18,7 @@ import useAuth from "shared/hooks/useAuth"
 const tabsConfig = [
   { value: "my-profile", title: "My profile", component: UserInformation },
   { value: "password", title: "Password", component: ChangePassword },
+  { value: "letterboxd", title: "Letterboxd", component: LetterboxdLists },
   {
     value: "notifications",
     title: "Notifications",

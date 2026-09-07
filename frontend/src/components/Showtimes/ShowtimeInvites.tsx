@@ -31,6 +31,7 @@ const ShowtimeInvites = ({ showtimeId }: ShowtimeInvitesProps) => {
   const queryClient = useQueryClient()
   const { trackEvent } = useTrackEvent()
   const [search, setSearch] = useState("")
+  const [linkCopied, setLinkCopied] = useState(false)
 
   const { data: friends } = useFetchFriends({ enabled: isSignedIn })
 
@@ -62,6 +63,25 @@ const ShowtimeInvites = ({ showtimeId }: ShowtimeInvitesProps) => {
   const { mutate: remind } = useMutation({
     mutationFn: (friendId: string) =>
       ShowtimesService.sendShowtimeReminder({ showtimeId, friendId }),
+  })
+
+  /**
+   * A link anyone can open, for the people who are not on here yet.
+   *
+   * The token is server-minted and signed rather than the sender's id, so the
+   * receiving end can prove who sent it and the link cannot be forged by
+   * swapping an id in the URL.
+   */
+  const { mutate: copyInviteLink, isPending: isBuildingLink } = useMutation({
+    mutationFn: async () => {
+      const { token } = await ShowtimesService.createShowtimePingLinkToken({
+        showtimeId,
+      })
+      const url = `${window.location.origin}/ping/${showtimeId}/${token}`
+      await navigator.clipboard.writeText(url)
+      return url
+    },
+    onSuccess: () => setLinkCopied(true),
   })
 
   // A section that could only ever be empty is hidden rather than gated: a guest
@@ -160,6 +180,17 @@ const ShowtimeInvites = ({ showtimeId }: ShowtimeInvitesProps) => {
           )
         })}
       </Stack>
+
+      {/* For the people who are not on here yet. */}
+      <Button
+        size="xs"
+        variant="ghost"
+        alignSelf="flex-start"
+        loading={isBuildingLink}
+        onClick={() => copyInviteLink()}
+      >
+        {linkCopied ? "Link copied" : "Copy an invite link"}
+      </Button>
     </Stack>
   )
 }

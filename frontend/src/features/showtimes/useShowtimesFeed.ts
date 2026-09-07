@@ -9,7 +9,11 @@
 import { useMemo } from "react"
 import { useFetchMainPageShowtimes } from "shared/hooks/useFetchMainPageShowtimes"
 
-import { defaultFeedParams, feedParamsToApiFilters } from "./feed-params"
+import {
+  type FeedParams,
+  defaultFeedParams,
+  feedParamsToApiFilters,
+} from "./feed-params"
 import { useFeedParams } from "./useFeedParams"
 
 /**

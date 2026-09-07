@@ -1,44 +1,27 @@
-import { Button, Center, Flex, Text, VStack } from "@chakra-ui/react"
+/**
+ * TanStack Router route module for one cinema's programme.
+ *
+ * A deep-link target: the app sends `/cinema-showtimes/<id>` links here, so the
+ * path is fixed and the route sits outside `_layout` (no sidebar). It used to
+ * be a stub telling the visitor to open the app; it now shows the programme.
+ */
 import { createFileRoute } from "@tanstack/react-router"
 
+import CinemaShowtimesPage from "@/components/Showtimes/CinemaShowtimesPage"
+import { parseFeedParams } from "@/features/showtimes/feed-params"
+
 export const Route = createFileRoute("/cinema-showtimes/$cinemaId" as never)({
-  component: CinemaShowtimesLinkPage,
+  component: CinemaShowtimesRoute,
+  validateSearch: (search: Record<string, unknown>) => parseFeedParams(search),
 })
 
-function CinemaShowtimesLinkPage() {
-  const cinemaId = window.location.pathname.replace(/^\/cinema-showtimes\//, "")
-
-  return (
-    <Center minH="100vh" px={4}>
-      <Flex
-        direction="column"
-        align="center"
-        gap={4}
-        maxW="md"
-        textAlign="center"
-      >
-        <Text fontSize="2xl" fontWeight="bold">
-          Cinema Page Link
-        </Text>
-
-        <Text>
-          Cinema links are opened via the app. You can browse movies and
-          showtimes from here instead.
-        </Text>
-
-        <Text color="fg.muted" fontSize="sm">
-          Link target: <strong>/{cinemaId}</strong>
-        </Text>
-
-        <VStack gap={2}>
-          <Button
-            onClick={() => window.location.assign("/movies")}
-            colorScheme="teal"
-          >
-            Go to Movies
-          </Button>
-        </VStack>
-      </Flex>
-    </Center>
+function CinemaShowtimesRoute() {
+  const cinemaId = Number.parseInt(
+    window.location.pathname.replace(/^\/cinema-showtimes\//, ""),
+    10,
   )
+
+  if (!Number.isFinite(cinemaId)) return null
+
+  return <CinemaShowtimesPage cinemaId={cinemaId} />
 }

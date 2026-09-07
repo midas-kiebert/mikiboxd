@@ -3,6 +3,7 @@ import Sidebar from "@/components/Common/Sidebar"
 import TopBar from "@/components/Common/TopBar"
 import UserMenu from "@/components/Common/UserMenu"
 import MovieLinks from "@/components/Movie/MovieLinks"
+import MovieSynopsis from "@/components/Movie/MovieSynopsis"
 import MoviePoster from "@/components/Movie/MoviePoster"
 import MovieTitle from "@/components/Movie/MovieTitle"
 import ReportShowtimeButton from "@/components/Movie/ReportShowtimeButton"
@@ -492,6 +493,10 @@ const MoviePage = () => {
                 </Flex>
                 <Directors directors={data?.directors || null} />
                 <MovieLinks letterboxd={letterboxdUrl ?? undefined} />
+                <MovieSynopsis
+                  description={data?.description}
+                  cast={data?.cast}
+                />
               </Flex>
             </Flex>
 

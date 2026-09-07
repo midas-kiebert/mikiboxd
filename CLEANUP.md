@@ -383,6 +383,8 @@ Legend:
 ---
 
 ## Frontend — Components
+- [x] `Showtimes/CinemaShowtimesPage.tsx` — One cinema's programme: the home feed with that cinema pinned, rather than a second feed that would drift from it. The pin survives "clear filters", so clearing drops the visitor's own choices without navigating them off the cinema they opened
+- [x] `Movie/MovieSynopsis.tsx` — The film's description and lead cast, both of which the API has always returned and the website rendered nowhere
 - [x] `Friends/UserModerationMenu.tsx` — Block and report on any user row. Blocking does not confirm, because the moment you want to block someone is not the moment to be asked twice; `UserSettings/BlockedAccounts.tsx` is what makes that safe. Swallows the click so opening it inside a friend card's link does not navigate
 - [x] `UserSettings/BlockedAccounts.tsx` — The blocked list and unblock, as a Settings tab. Without it a block is irreversible from the website
 

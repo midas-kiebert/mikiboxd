@@ -39,9 +39,20 @@ type FeedLayoutProps = {
   children: ReactNode
   /** The selected showtime, when there is one. */
   detail?: ReactNode
+  /**
+   * False on the routes that sit outside `_layout` and so have no sidebar to
+   * clear — the deep-link targets the app sends people to.
+   */
+  hasSidebar?: boolean
 }
 
-const FeedLayout = ({ rail, toolbar, children, detail }: FeedLayoutProps) => {
+const FeedLayout = ({
+  rail,
+  toolbar,
+  children,
+  detail,
+  hasSidebar = true,
+}: FeedLayoutProps) => {
   const isMobile = useIsMobile()
   const showRail = Boolean(rail) && !isMobile
   const showDetail = Boolean(detail) && !isMobile
@@ -54,8 +65,8 @@ const FeedLayout = ({ rail, toolbar, children, detail }: FeedLayoutProps) => {
       align="stretch"
       gap={0}
       minH="100%"
-      ml={isMobile ? 0 : `${SIDEBAR_WIDTH}px`}
-      mb={isMobile ? `${BOTTOM_NAV_HEIGHT}px` : 0}
+      ml={isMobile || !hasSidebar ? 0 : `${SIDEBAR_WIDTH}px`}
+      mb={isMobile && hasSidebar ? `${BOTTOM_NAV_HEIGHT}px` : 0}
     >
       {showRail ? (
         <Box

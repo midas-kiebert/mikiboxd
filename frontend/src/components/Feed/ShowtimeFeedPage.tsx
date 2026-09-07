@@ -1,3 +1,4 @@
+import { Box, Button, Center, Flex, Spinner, Text } from "@chakra-ui/react"
 /**
  * Every showtime feed on the website, rendered once.
  *
@@ -11,7 +12,6 @@
  * which endpoint it is showing.
  */
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Box, Button, Center, Flex, Spinner, Text } from "@chakra-ui/react"
 import type { ReactNode } from "react"
 import type { ShowtimePublic } from "shared"
 

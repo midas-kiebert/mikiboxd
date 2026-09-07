@@ -25,7 +25,14 @@ import { useFeedParams } from "./useFeedParams"
 const FIRST_PAGE_LIMIT = 20
 const PAGE_LIMIT = 40
 
-export const useShowtimesFeed = () => {
+type UseShowtimesFeedOptions = {
+  /** Dimensions a page fixes for the visitor — see `useFeedParams`. */
+  pinned?: Partial<FeedParams>
+}
+
+export const useShowtimesFeed = ({
+  pinned,
+}: UseShowtimesFeedOptions = {}) => {
   const {
     params,
     setParams,
@@ -33,7 +40,7 @@ export const useShowtimesFeed = () => {
     activeFilterCount,
     snapshotTime,
     refresh,
-  } = useFeedParams()
+  } = useFeedParams({ pinned })
 
   const filters = useMemo(() => feedParamsToApiFilters(params), [params])
 

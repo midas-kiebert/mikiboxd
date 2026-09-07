@@ -33,15 +33,25 @@ const toMyShowtimesFilters = (
 })
 
 export const useMyAgendaFeed = () => {
-  const { params, setParams, resetParams, activeFilterCount, snapshotTime, refresh } =
-    useFeedParams()
+  const {
+    params,
+    setParams,
+    resetParams,
+    activeFilterCount,
+    snapshotTime,
+    refresh,
+  } = useFeedParams()
 
   const filters = useMemo(
     () => toMyShowtimesFilters(feedParamsToApiFilters(params)),
     [params],
   )
 
-  const query = useFetchMyShowtimes({ limit: PAGE_LIMIT, snapshotTime, filters })
+  const query = useFetchMyShowtimes({
+    limit: PAGE_LIMIT,
+    snapshotTime,
+    filters,
+  })
   const showtimes = useMemo(() => query.data?.pages.flat() ?? [], [query.data])
 
   return {
@@ -64,8 +74,14 @@ export const useMyAgendaFeed = () => {
 }
 
 export const useFriendAgendaFeed = (userId: string) => {
-  const { params, setParams, resetParams, activeFilterCount, snapshotTime, refresh } =
-    useFeedParams()
+  const {
+    params,
+    setParams,
+    resetParams,
+    activeFilterCount,
+    snapshotTime,
+    refresh,
+  } = useFeedParams()
 
   // This endpoint takes the wider set, minus the main feed's cinema-scope flag.
   const filters = useMemo(() => {

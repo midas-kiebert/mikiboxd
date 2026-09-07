@@ -1,15 +1,3 @@
-/**
- * Activity: everything that has happened to you, in one list.
- *
- * The website had `/pings` — showtime invites only — against the app's Activity
- * tab, which merges invites, friend requests, friend activity and the seat
- * alerts nobody caused. This is that feed.
- *
- * The wording of each row comes from `shared/notifications/feed-copy`, the same
- * function the app's row uses, so the two clients cannot describe the same
- * event differently.
- */
-import { useEffect } from "react"
 import {
   Badge,
   Box,
@@ -24,6 +12,18 @@ import {
 } from "@chakra-ui/react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Link as RouterLink } from "@tanstack/react-router"
+/**
+ * Activity: everything that has happened to you, in one list.
+ *
+ * The website had `/pings` — showtime invites only — against the app's Activity
+ * tab, which merges invites, friend requests, friend activity and the seat
+ * alerts nobody caused. This is that feed.
+ *
+ * The wording of each row comes from `shared/notifications/feed-copy`, the same
+ * function the app's row uses, so the two clients cannot describe the same
+ * event differently.
+ */
+import { useEffect } from "react"
 import { FiX } from "react-icons/fi"
 import type { NotificationFeedItem } from "shared"
 import { FriendsService, MeService } from "shared/client"

@@ -1,4 +1,5 @@
 import FriendBadge from "@/components/Common/FriendBadge"
+import { defaultFeedParams } from "@/features/showtimes/feed-params"
 import { Badge, Box, Flex, Icon, IconButton, Spacer } from "@chakra-ui/react"
 
 import UserModerationMenu from "@/components/Friends/UserModerationMenu"
@@ -249,6 +250,7 @@ const UserCard = ({ user }: UserCardProps) => {
       <RouterLink
         to="/$userId/showtimes"
         params={{ userId: user.id }}
+        search={defaultFeedParams}
         style={{ textDecoration: "none", color: "inherit" }}
       >
         {cardContent}

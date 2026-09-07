@@ -1,3 +1,4 @@
+import { Flex, Heading, Link, Text } from "@chakra-ui/react"
 /**
  * One cinema's programme.
  *
@@ -10,7 +11,6 @@
  * visitor's own choices without navigating them off the cinema they opened.
  */
 import { useMemo } from "react"
-import { Flex, Heading, Link, Text } from "@chakra-ui/react"
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas"
 
 import ShowtimeFeedPage from "@/components/Feed/ShowtimeFeedPage"

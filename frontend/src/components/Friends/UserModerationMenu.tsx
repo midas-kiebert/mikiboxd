@@ -1,3 +1,5 @@
+import { Button, Flex, IconButton, Portal, Stack, Text } from "@chakra-ui/react"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 /**
  * Block and report, on any user row.
  *
@@ -11,15 +13,24 @@
  * you want to block someone is not the moment to be asked twice.
  */
 import { useState } from "react"
-import { Button, Flex, IconButton, Portal, Stack, Text } from "@chakra-ui/react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { FiMoreVertical } from "react-icons/fi"
 import type { UserReportReason } from "shared"
 import { UsersService } from "shared/client"
 import { REPORT_REASON_OPTIONS } from "shared/moderation/report-reasons"
 
-import { DialogBody, DialogContent, DialogHeader, DialogRoot, DialogTitle } from "@/components/ui/dialog"
-import { MenuContent, MenuItem, MenuRoot, MenuTrigger } from "@/components/ui/menu"
+import {
+  DialogBody,
+  DialogContent,
+  DialogHeader,
+  DialogRoot,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  MenuContent,
+  MenuItem,
+  MenuRoot,
+  MenuTrigger,
+} from "@/components/ui/menu"
 import useCustomToast from "@/hooks/useCustomToast"
 
 type UserModerationMenuProps = {

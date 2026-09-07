@@ -1,3 +1,4 @@
+import { defaultFeedParams } from "@/features/showtimes/feed-params"
 import { Route as ShowtimesRoute } from "@/routes/_layout/$userId/showtimes"
 import type { Responsive } from "@/types"
 /**
@@ -25,6 +26,7 @@ const FriendBadge = ({
     <Link
       to={ShowtimesRoute.to}
       params={{ userId: `${friend.id}` }}
+      search={defaultFeedParams}
       style={{ display: "inline-block" }}
       onClick={(e) => e.stopPropagation()}
     >

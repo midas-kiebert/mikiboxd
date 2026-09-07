@@ -48,15 +48,17 @@ export const useFeedParams = ({ pinned }: UseFeedParamsOptions = {}) => {
   const rawSearch = useSearch({ strict: false }) as Record<string, unknown>
   const [snapshotTime, setSnapshotTime] = useState(buildSnapshotTime)
 
+  // `pinned` is a literal at every call site, so compare its content rather
+  // than its identity or the feed refetches on every render.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pinned's identity changes every render but JSON.stringify(pinned) is what actually varies
   const params = useMemo(
     () => ({ ...parseFeedParams(rawSearch), ...pinned }),
-    // `pinned` is a literal at every call site, so compare its content rather
-    // than its identity or the feed refetches on every render.
     [rawSearch, JSON.stringify(pinned)],
   )
 
   // Pinned dimensions are the page, not a filter the visitor applied, so they
   // do not count towards "clear filters".
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pinned's identity changes every render but JSON.stringify(pinned) is what actually varies
   const activeFilterCount = useMemo(
     () => countActiveFilters({ ...params, ...defaultsForPinned(pinned) }),
     [params, JSON.stringify(pinned)],

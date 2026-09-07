@@ -24,8 +24,8 @@ import {
   getDelivery,
 } from "shared/notifications/preferences"
 
-import useCustomToast from "@/hooks/useCustomToast"
 import { Button } from "@/components/ui/button"
+import useCustomToast from "@/hooks/useCustomToast"
 import { handleError } from "@/utils"
 
 const DELIVERY_OPTIONS: { value: NotificationDelivery; label: string }[] = [
@@ -93,9 +93,7 @@ const Notifications = () => {
                         ? "green"
                         : "gray"
                     }
-                    onClick={() =>
-                      setDelivery({ key, delivery: option.value })
-                    }
+                    onClick={() => setDelivery({ key, delivery: option.value })}
                   >
                     {option.label}
                   </Button>

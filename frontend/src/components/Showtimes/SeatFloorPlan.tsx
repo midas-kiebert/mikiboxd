@@ -1,3 +1,5 @@
+import { Box, Flex, Text } from "@chakra-ui/react"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 /**
  * The room, drawn.
  *
@@ -14,8 +16,6 @@
  * count that disagree would be worse than either alone.
  */
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Box, Flex, Text } from "@chakra-ui/react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { ShowtimesService } from "shared/client"
 import { useShowtimeSeatFloorPlan } from "shared/hooks/useShowtimeSeatFloorPlan"
 import {
@@ -90,7 +90,11 @@ const SeatFloorPlan = ({
   // is most rooms — nothing is drawn either way.
   if (!plan?.seats?.length) return null
 
-  const handleSeat = (rowName: string, seatName: string, selectable: boolean) => {
+  const handleSeat = (
+    rowName: string,
+    seatName: string,
+    selectable: boolean,
+  ) => {
     if (!canPickSeat || !selectable) return
     if (!requireAccount()) return
     setSeat({ row: rowName, number: seatName })

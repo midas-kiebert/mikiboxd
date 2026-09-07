@@ -1,3 +1,4 @@
+import { Box } from "@chakra-ui/react"
 /**
  * Every showtime feed on the website: home, a cinema's programme, your agenda,
  * a friend's agenda. They differ only in where their rows come from and what
@@ -7,7 +8,6 @@
  * `FeedPageShell`.
  */
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Box } from "@chakra-ui/react"
 import type { ReactNode } from "react"
 import type { ShowtimePublic } from "shared"
 

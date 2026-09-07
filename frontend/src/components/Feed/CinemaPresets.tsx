@@ -1,3 +1,13 @@
+import {
+  Button,
+  Flex,
+  IconButton,
+  Input,
+  Portal,
+  Stack,
+  Text,
+} from "@chakra-ui/react"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
 /**
  * Named cinema selections, at the top of the Cinemas section.
  *
@@ -12,12 +22,9 @@
  * renamed or deleted.
  */
 import { useState } from "react"
-import { Button, Flex, IconButton, Input, Portal, Stack, Text } from "@chakra-ui/react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { FiEdit2, FiStar, FiTrash2 } from "react-icons/fi"
 import { MeService } from "shared/client"
 import {
-  findNamedCinemaPresets,
   invalidateCinemaPresets,
   nextCinemaPresetName,
   useCinemaPresets,
@@ -90,8 +97,6 @@ const CinemaPresets = ({ params, onChange }: CinemaPresetsProps) => {
   })
 
   if (!isSignedIn) return null
-
-  const named = findNamedCinemaPresets(presets)
 
   /** A preset is "on" when the feed is showing exactly its cinemas. */
   const isActive = (cinemaIds: number[]) =>

@@ -102,7 +102,7 @@ const UserInformation = () => {
   return (
     <>
       <Container maxW="full">
-      <EmailVerificationNotice />
+        <EmailVerificationNotice />
         <Heading size="sm" py={4}>
           User Information
         </Heading>

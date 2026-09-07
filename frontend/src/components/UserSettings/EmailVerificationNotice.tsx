@@ -41,7 +41,12 @@ const EmailVerificationNotice = () => {
       <Text fontSize="sm">
         Your email isn't confirmed yet, so digest emails are paused.
       </Text>
-      <Button size="xs" variant="surface" loading={isPending} onClick={() => resend()}>
+      <Button
+        size="xs"
+        variant="surface"
+        loading={isPending}
+        onClick={() => resend()}
+      >
         Send it again
       </Button>
     </Flex>

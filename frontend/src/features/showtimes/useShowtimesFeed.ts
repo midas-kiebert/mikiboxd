@@ -28,9 +28,14 @@ const PAGE_LIMIT = 40
 type UseShowtimesFeedOptions = {
   /** Dimensions a page fixes for the visitor — see `useFeedParams`. */
   pinned?: Partial<FeedParams>
+  /** Hooks cannot be conditional, so callers running two feeds at once pass this instead. */
+  enabled?: boolean
 }
 
-export const useShowtimesFeed = ({ pinned }: UseShowtimesFeedOptions = {}) => {
+export const useShowtimesFeed = ({
+  pinned,
+  enabled = true,
+}: UseShowtimesFeedOptions = {}) => {
   const {
     params,
     setParams,

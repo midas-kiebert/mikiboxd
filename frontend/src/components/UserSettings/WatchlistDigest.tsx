@@ -1,3 +1,12 @@
+import {
+  Container,
+  Flex,
+  Heading,
+  NativeSelect,
+  Stack,
+  Text,
+} from "@chakra-ui/react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 /**
  * Settings → Digest.
  *
@@ -8,15 +17,6 @@
  * means.
  */
 import { useState } from "react"
-import {
-  Container,
-  Flex,
-  Heading,
-  NativeSelect,
-  Stack,
-  Text,
-} from "@chakra-ui/react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { DigestFrequency } from "shared"
 import { MeService, UtilsService } from "shared/client"
 import { useCinemaPresets } from "shared/filters/cinema-presets"
@@ -49,7 +49,8 @@ const WatchlistDigest = () => {
   const { data: lists } = useFetchLetterboxdLists(isSignedIn)
   const { data: presets = [] } = useCinemaPresets({ enabled: isSignedIn })
 
-  const [frequency, setFrequency] = useState<DigestFrequency>("weekly_or_urgent")
+  const [frequency, setFrequency] =
+    useState<DigestFrequency>("weekly_or_urgent")
   const [listId, setListId] = useState<string>("")
   const [presetId, setPresetId] = useState<string>("")
 
@@ -83,7 +84,10 @@ const WatchlistDigest = () => {
     onSuccess: refresh,
   })
 
-  const describeSource = (listIdValue: string | null, presetIdValue: string | null) => {
+  const describeSource = (
+    listIdValue: string | null,
+    presetIdValue: string | null,
+  ) => {
     const list = lists?.find((entry) => entry.id === listIdValue)
     const preset = presets.find((entry) => entry.id === presetIdValue)
     return [
@@ -110,7 +114,12 @@ const WatchlistDigest = () => {
       <Stack gap={2} maxW="lg" mb={6}>
         {sources?.length ? (
           sources.map((source) => (
-            <Flex key={source.id} align="center" justify="space-between" gap={3}>
+            <Flex
+              key={source.id}
+              align="center"
+              justify="space-between"
+              gap={3}
+            >
               <Stack gap={0} minW={0}>
                 <Text fontSize="sm" truncate>
                   {describeSource(source.list_id, source.cinema_preset_id)}

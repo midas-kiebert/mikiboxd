@@ -18,7 +18,9 @@ type UseMoviesFeedOptions = {
   enabled?: boolean
 }
 
-export const useMoviesFeed = ({ enabled = true }: UseMoviesFeedOptions = {}) => {
+export const useMoviesFeed = ({
+  enabled = true,
+}: UseMoviesFeedOptions = {}) => {
   const {
     params,
     setParams,

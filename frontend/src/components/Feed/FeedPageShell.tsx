@@ -1,3 +1,4 @@
+import { Button, Center, Flex, Spinner, Text } from "@chakra-ui/react"
 /**
  * The chrome every feed page shares: layout, toolbar, rail, presets, and the
  * loading / empty / paging states.
@@ -9,7 +10,6 @@
  * feed it is showing without swapping anything around it.
  */
 import type { ReactNode } from "react"
-import { Button, Center, Flex, Spinner, Text } from "@chakra-ui/react"
 
 import FeedFilterRail from "@/components/Feed/FeedFilterRail"
 import FeedLayout from "@/components/Feed/FeedLayout"

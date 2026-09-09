@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 import emails  # type: ignore
 from jinja2 import Template
+from markupsafe import Markup
 
 from app.core.config import settings
 from app.core.enums import DIGEST_FREQUENCY_LABELS, DigestFrequency
@@ -439,6 +440,169 @@ def generate_user_report_email(
     <p><a href="{admin_link}">Open the user-reports dashboard</a></p>
     """
     return EmailData(html_content=html_content, subject=subject)
+
+
+def _italicize_movie_title(text: str, movie_title: str) -> Markup:
+    """Escape `text`, then wrap the (also escaped) `movie_title` in <em>.
+
+    Titles are plain strings built by string concatenation upstream (actor
+    name + verb phrase + movie title + day word), so this is the one place
+    that needs to turn just the movie's name italic without touching the
+    rest of the sentence. Returns pre-escaped `Markup` so the autoescaping
+    template renders the `<em>` tag instead of escaping it away.
+    """
+    escaped_text = str(Markup.escape(text))
+    escaped_title = str(Markup.escape(movie_title))
+    if escaped_title and escaped_title in escaped_text:
+        escaped_text = escaped_text.replace(
+            escaped_title, f"<em>{escaped_title}</em>", 1
+        )
+    return Markup(escaped_text)
+
+
+def _generate_activity_notification_email(
+    *,
+    subject: str,
+    heading: str,
+    cta_label: str,
+    cta_link: str,
+    movie: dict[str, Any] | None = None,
+) -> EmailData:
+    """Render one of the branded event-notification emails (invites, matches, etc.)."""
+    heading_html: str | Markup = (
+        _italicize_movie_title(heading, movie["title"]) if movie else heading
+    )
+    html_content = _render_email_template(
+        template_name="notification.html",
+        context={
+            "brand_name": BRAND_NAME,
+            "heading": heading_html,
+            "movie": movie,
+            "cta_label": cta_label,
+            "cta_link": cta_link,
+            "settings_link": f"{settings.FRONTEND_HOST}/settings",
+        },
+    )
+    return EmailData(html_content=html_content, subject=subject)
+
+
+def _movie_context(
+    *,
+    title: str,
+    cinema_name: str,
+    showtime_datetime_label: str,
+    poster_link: str | None,
+) -> dict[str, Any]:
+    return {
+        "title": title,
+        "cinema_name": cinema_name,
+        "datetime_label": showtime_datetime_label,
+        "poster_link": poster_link,
+    }
+
+
+def _showtime_link(*, movie_id: int, showtime_id: int) -> str:
+    return f"{settings.FRONTEND_HOST}/movie/{movie_id}?showtime={showtime_id}"
+
+
+def generate_friend_showtime_status_email(
+    *,
+    heading: str,
+    movie_id: int,
+    showtime_id: int,
+    movie_title: str,
+    poster_link: str | None,
+    cinema_name: str,
+    showtime_datetime_label: str,
+) -> EmailData:
+    """A friend you're both attending changed status on a showtime you share."""
+    return _generate_activity_notification_email(
+        subject=heading,
+        heading=heading,
+        movie=_movie_context(
+            title=movie_title,
+            cinema_name=cinema_name,
+            showtime_datetime_label=showtime_datetime_label,
+            poster_link=poster_link,
+        ),
+        cta_label=f"View on {BRAND_NAME}",
+        cta_link=_showtime_link(movie_id=movie_id, showtime_id=showtime_id),
+    )
+
+
+def generate_invite_response_email(
+    *,
+    heading: str,
+    movie_id: int,
+    showtime_id: int,
+    movie_title: str,
+    poster_link: str | None,
+    cinema_name: str,
+    showtime_datetime_label: str,
+) -> EmailData:
+    """Someone you invited to a showtime responded going/interested."""
+    return _generate_activity_notification_email(
+        subject=heading,
+        heading=heading,
+        movie=_movie_context(
+            title=movie_title,
+            cinema_name=cinema_name,
+            showtime_datetime_label=showtime_datetime_label,
+            poster_link=poster_link,
+        ),
+        cta_label=f"View on {BRAND_NAME}",
+        cta_link=_showtime_link(movie_id=movie_id, showtime_id=showtime_id),
+    )
+
+
+def generate_friend_request_email(*, heading: str) -> EmailData:
+    """Someone sent you a friend request."""
+    return _generate_activity_notification_email(
+        subject=heading,
+        heading=heading,
+        cta_label="View friends",
+        cta_link=f"{settings.FRONTEND_HOST}/friends",
+    )
+
+
+def generate_friend_request_accepted_email(*, heading: str) -> EmailData:
+    """Someone accepted the friend request you sent."""
+    return _generate_activity_notification_email(
+        subject=heading,
+        heading=heading,
+        cta_label="View friends",
+        cta_link=f"{settings.FRONTEND_HOST}/friends",
+    )
+
+
+def generate_showtime_notice_email(
+    *,
+    heading: str,
+    movie_id: int,
+    showtime_id: int,
+    movie_title: str,
+    poster_link: str | None,
+    cinema_name: str,
+    showtime_datetime_label: str,
+) -> EmailData:
+    """A generic branded notice about one showtime.
+
+    Shared by every event type whose email is just "headline + movie card +
+    view on MiKiNO" — interest reminders, a friend's manual nudge, and seat
+    availability alerts.
+    """
+    return _generate_activity_notification_email(
+        subject=heading,
+        heading=heading,
+        movie=_movie_context(
+            title=movie_title,
+            cinema_name=cinema_name,
+            showtime_datetime_label=showtime_datetime_label,
+            poster_link=poster_link,
+        ),
+        cta_label=f"View on {BRAND_NAME}",
+        cta_link=_showtime_link(movie_id=movie_id, showtime_id=showtime_id),
+    )
 
 
 def generate_showtime_report_email(

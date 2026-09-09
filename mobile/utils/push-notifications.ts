@@ -7,7 +7,7 @@ import { Notifications } from '@/utils/notifications-module';
 import type * as NotificationsTypes from 'expo-notifications';
 import type { Href } from "expo-router";
 import { Platform } from "react-native";
-import { MeService, ShowtimesService } from "shared";
+import { FriendsService, MeService, ShowtimesService } from "shared";
 
 /**
  * Whether this build can hold a remote push token at all.
@@ -48,6 +48,9 @@ export const ANDROID_PUSH_CHANNEL_ID = "mikino-heads-up-v2";
 const LEGACY_ANDROID_PUSH_CHANNEL_ID = "heads-up";
 export const SHOWTIME_PING_NOTIFICATION_CATEGORY_ID = "showtime-ping";
 export const SHOWTIME_PING_ACTION_INTERESTED_ID = "showtime-ping-interest";
+export const FRIEND_REQUEST_NOTIFICATION_CATEGORY_ID = "friend-request";
+export const FRIEND_REQUEST_ACTION_ACCEPT_ID = "friend-request-accept";
+export const FRIEND_REQUEST_ACTION_DENY_ID = "friend-request-deny";
 
 type PushNotificationData = {
   type?: unknown;
@@ -77,6 +80,9 @@ const parsePositiveInteger = (value: unknown): number | null => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
+const parseNonEmptyString = (value: unknown): string | null =>
+  typeof value === "string" && value.trim().length > 0 ? value : null;
+
 export async function configureNotificationCategories(): Promise<void> {
   await Notifications.setNotificationCategoryAsync(
     SHOWTIME_PING_NOTIFICATION_CATEGORY_ID,
@@ -90,13 +96,35 @@ export async function configureNotificationCategories(): Promise<void> {
       },
     ]
   );
+  await Notifications.setNotificationCategoryAsync(
+    FRIEND_REQUEST_NOTIFICATION_CATEGORY_ID,
+    [
+      {
+        identifier: FRIEND_REQUEST_ACTION_ACCEPT_ID,
+        buttonTitle: "Accept",
+        options: {
+          opensAppToForeground: true,
+        },
+      },
+      {
+        identifier: FRIEND_REQUEST_ACTION_DENY_ID,
+        buttonTitle: "Deny",
+        options: {
+          opensAppToForeground: true,
+          isDestructive: true,
+        },
+      },
+    ]
+  );
 }
 
 export const canRouteFromNotificationAction = (
   actionIdentifier: string
 ): boolean =>
   actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER ||
-  actionIdentifier === SHOWTIME_PING_ACTION_INTERESTED_ID;
+  actionIdentifier === SHOWTIME_PING_ACTION_INTERESTED_ID ||
+  actionIdentifier === FRIEND_REQUEST_ACTION_ACCEPT_ID ||
+  actionIdentifier === FRIEND_REQUEST_ACTION_DENY_ID;
 
 export function resolveNotificationRoute(data: unknown): Href | null {
   if (!isPushNotificationData(data) || typeof data.type !== "string") {
@@ -168,27 +196,49 @@ export function getModalShowtimeIdFromNotification(data: unknown): number | null
 export async function handleNotificationQuickAction(
   response: NotificationsTypes.NotificationResponse
 ): Promise<boolean> {
-  if (response.actionIdentifier !== SHOWTIME_PING_ACTION_INTERESTED_ID) {
-    return false;
-  }
-
+  const { actionIdentifier } = response;
   const data = response.notification.request.content.data;
-  if (!isPushNotificationData(data) || data.type !== "showtime_ping") {
+  if (!isPushNotificationData(data)) {
     return false;
   }
 
-  const showtimeId = parsePositiveInteger(data.showtimeId);
-  if (showtimeId === null) {
-    return false;
+  if (actionIdentifier === SHOWTIME_PING_ACTION_INTERESTED_ID) {
+    if (data.type !== "showtime_ping") {
+      return false;
+    }
+    const showtimeId = parsePositiveInteger(data.showtimeId);
+    if (showtimeId === null) {
+      return false;
+    }
+    await ShowtimesService.updateShowtimeSelection({
+      showtimeId,
+      requestBody: {
+        going_status: "INTERESTED",
+      },
+    });
+    return true;
   }
 
-  await ShowtimesService.updateShowtimeSelection({
-    showtimeId,
-    requestBody: {
-      going_status: "INTERESTED",
-    },
-  });
-  return true;
+  if (
+    actionIdentifier === FRIEND_REQUEST_ACTION_ACCEPT_ID ||
+    actionIdentifier === FRIEND_REQUEST_ACTION_DENY_ID
+  ) {
+    if (data.type !== "friend_request_received") {
+      return false;
+    }
+    const senderId = parseNonEmptyString(data.senderId);
+    if (senderId === null) {
+      return false;
+    }
+    if (actionIdentifier === FRIEND_REQUEST_ACTION_ACCEPT_ID) {
+      await FriendsService.acceptFriendRequest({ senderId });
+    } else {
+      await FriendsService.declineFriendRequest({ senderId });
+    }
+    return true;
+  }
+
+  return false;
 }
 
 async function getProjectId(): Promise<string | null> {

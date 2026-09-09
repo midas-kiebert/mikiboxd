@@ -1,7 +1,6 @@
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 from datetime import datetime, timedelta
-from html import escape
 from logging import getLogger
 from typing import NamedTuple
 from uuid import UUID
@@ -22,7 +21,16 @@ from app.crud import showtime as showtime_crud
 from app.crud import showtime_ping as showtime_ping_crud
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud import user as user_crud
-from app.mailer import EmailDeliveryError, send_email
+from app.mailer import (
+    EmailData,
+    EmailDeliveryError,
+    generate_friend_request_accepted_email,
+    generate_friend_request_email,
+    generate_friend_showtime_status_email,
+    generate_invite_response_email,
+    generate_showtime_notice_email,
+    send_email,
+)
 from app.models.showtime import Showtime
 from app.models.showtime_selection import ShowtimeSelection
 from app.utils import now_amsterdam_naive
@@ -31,6 +39,7 @@ EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 # Channel ID is versioned to recover from user-disabled/stale channel configs.
 ANDROID_PUSH_CHANNEL_ID = "mikino-heads-up-v2"
 SHOWTIME_PING_NOTIFICATION_CATEGORY_ID = "showtime-ping"
+FRIEND_REQUEST_NOTIFICATION_CATEGORY_ID = "friend-request"
 REMINDER_HORIZON = timedelta(hours=24)
 REMINDER_MINIMUM_NOTICE = timedelta(hours=2)
 REMINDER_MINIMUM_DELAY_AFTER_SELECTION = timedelta(hours=2)
@@ -86,7 +95,52 @@ def _token_hint(token: str) -> str:
     return f"{token[:12]}...{token[-4:]}"
 
 
-def _send_email_notification(*, email_to: str, subject: str, body: str) -> bool:
+def _status_verb_phrase(status: GoingStatus) -> str:
+    return "going to" if status == GoingStatus.GOING else "interested in"
+
+
+# A showtime after midnight but before this hour still reads as "tonight" —
+# a 00:20 screening is the same night out as one at 23:00, not "tomorrow".
+_LATE_NIGHT_CUTOFF_HOUR = 5
+
+
+def _relative_day_word(dt: datetime, now: datetime) -> str | None:
+    """The phrase a title should use for how soon `dt` is, or None if it's far off.
+
+    "today"/"tonight" and "tomorrow" for the next two days, "on <weekday>"
+    (e.g. "on Friday") through the end of the rolling 7-day window after
+    that, and nothing beyond — the subtitle always carries the full day and
+    date regardless, so nothing is lost when the title stays silent on timing.
+    """
+    delta_days = (dt.date() - now.date()).days
+    if delta_days == 1 and dt.hour < _LATE_NIGHT_CUTOFF_HOUR:
+        delta_days = 0
+    if delta_days == 0:
+        is_late = dt.hour >= 18 or dt.hour < _LATE_NIGHT_CUTOFF_HOUR
+        return "tonight" if is_late else "today"
+    if delta_days == 1:
+        return "tomorrow"
+    if 2 <= delta_days <= 6:
+        return f"on {dt.strftime('%A')}"
+    return None
+
+
+def _format_showtime_when(dt: datetime, now: datetime) -> str:
+    """Day word (or full date) plus the exact time, for titles that need it all."""
+    day_word = _relative_day_word(dt, now)
+    time_str = dt.strftime("%H:%M")
+    if day_word:
+        return f"{day_word} at {time_str}"
+    return f"on {dt.strftime('%a, %b %d')} at {time_str}"
+
+
+def _showtime_subtitle(*, cinema_name: str, dt: datetime) -> str:
+    """Cinema + the full weekday name and date, always — even when the title
+    already has a day word, so the subtitle alone still pins down the exact day."""
+    return f"{cinema_name} • {dt.strftime('%A, %b %d at %H:%M')}"
+
+
+def _send_templated_email(*, email_to: str, email_data: EmailData) -> bool:
     if not settings.emails_enabled:
         logger.info(
             "Email notifications are disabled; skipping delivery to %s",
@@ -94,13 +148,12 @@ def _send_email_notification(*, email_to: str, subject: str, body: str) -> bool:
         )
         return False
 
-    html_content = f"<p>{escape(body)}</p>"
     try:
         send_email(
             email_to=email_to,
-            subject=subject,
-            html_content=html_content,
-            text_content=body,
+            subject=email_data.subject,
+            html_content=email_data.html_content,
+            text_content=email_data.text_content,
         )
         return True
     except (AssertionError, EmailDeliveryError, Exception):
@@ -116,11 +169,18 @@ def _build_showtime_status_payload(
     previous_status: GoingStatus,
     new_status: GoingStatus,
 ) -> tuple[str, str, dict] | None:
+    now = now_amsterdam_naive()
+    movie_title = showtime.movie.title
+    body = _showtime_subtitle(cinema_name=showtime.cinema.name, dt=showtime.datetime)
+
     if previous_status == GoingStatus.GOING and new_status != GoingStatus.GOING:
-        title = f"{actor_name} is no longer going"
+        title = f"{actor_name} is no longer going to {movie_title}"
+        day_word = _relative_day_word(showtime.datetime, now)
+        if day_word:
+            title = f"{title} {day_word}"
         return (
             title,
-            showtime.movie.title,
+            body,
             {
                 "type": "showtime_status_removed",
                 "showtimeId": showtime.id,
@@ -135,10 +195,13 @@ def _build_showtime_status_payload(
         previous_status == GoingStatus.INTERESTED
         and new_status == GoingStatus.NOT_GOING
     ):
-        title = f"{actor_name} is no longer interested"
+        title = f"{actor_name} is no longer interested in {movie_title}"
+        day_word = _relative_day_word(showtime.datetime, now)
+        if day_word:
+            title = f"{title} {day_word}"
         return (
             title,
-            showtime.movie.title,
+            body,
             {
                 "type": "showtime_status_removed",
                 "showtimeId": showtime.id,
@@ -150,11 +213,10 @@ def _build_showtime_status_payload(
         )
 
     if new_status in ACTIVE_SHOWTIME_STATUSES and previous_status != new_status:
-        status_text = "going" if new_status == GoingStatus.GOING else "interested"
-        title = f"{actor_name} is {status_text}"
+        title = f"{actor_name} is {_status_verb_phrase(new_status)} {movie_title}"
         return (
             title,
-            showtime.movie.title,
+            body,
             {
                 "type": "showtime_match",
                 "showtimeId": showtime.id,
@@ -315,12 +377,18 @@ def notify_friends_on_showtime_selection(
                     results=results,
                 )
 
-    for recipient in email_recipients:
-        _send_email_notification(
-            email_to=recipient.email,
-            subject=title,
-            body=body,
+    if email_recipients:
+        email_data = generate_friend_showtime_status_email(
+            heading=title,
+            movie_id=showtime.movie_id,
+            showtime_id=showtime.id,
+            movie_title=showtime.movie.title,
+            poster_link=showtime.movie.poster_link,
+            cinema_name=showtime.cinema.name,
+            showtime_datetime_label=showtime.datetime.strftime("%a, %b %d at %H:%M"),
         )
+        for recipient in email_recipients:
+            _send_templated_email(email_to=recipient.email, email_data=email_data)
 
 
 def notify_inviters_on_response(
@@ -354,9 +422,12 @@ def notify_inviters_on_response(
         return
 
     responder_name = responder.display_name or "A friend"
-    status_text = "going" if new_status == GoingStatus.GOING else "interested"
-    title = f"{responder_name} is {status_text}"
-    body = showtime.movie.title
+    now = now_amsterdam_naive()
+    title = f"{responder_name} is {_status_verb_phrase(new_status)} {showtime.movie.title}"
+    day_word = _relative_day_word(showtime.datetime, now)
+    if day_word:
+        title = f"{title} {day_word}"
+    body = _showtime_subtitle(cinema_name=showtime.cinema.name, dt=showtime.datetime)
     data = {
         "type": "invite_response",
         "showtimeId": showtime.id,
@@ -424,12 +495,18 @@ def notify_inviters_on_response(
                     results=results,
                 )
 
-    for recipient in email_recipients:
-        _send_email_notification(
-            email_to=recipient.email,
-            subject=title,
-            body=body,
+    if email_recipients:
+        email_data = generate_invite_response_email(
+            heading=title,
+            movie_id=showtime.movie_id,
+            showtime_id=showtime.id,
+            movie_title=showtime.movie.title,
+            poster_link=showtime.movie.poster_link,
+            cinema_name=showtime.cinema.name,
+            showtime_datetime_label=showtime.datetime.strftime("%a, %b %d at %H:%M"),
         )
+        for recipient in email_recipients:
+            _send_templated_email(email_to=recipient.email, email_data=email_data)
 
 
 def notify_user_on_friend_request(
@@ -446,14 +523,11 @@ def notify_user_on_friend_request(
         return
 
     sender_name = sender.display_name or "Someone"
-    subject = "New friend request"
-    body = f"{sender_name} sent you a friend request"
+    subject = f"{sender_name} sent you a friend request"
+    body = ""
     if receiver.notify_channel_friend_requests == NotificationChannel.EMAIL:
-        _send_email_notification(
-            email_to=receiver.email,
-            subject=subject,
-            body=body,
-        )
+        email_data = generate_friend_request_email(heading=subject)
+        _send_templated_email(email_to=receiver.email, email_data=email_data)
         return
 
     push_tokens = push_token_crud.get_push_tokens_for_users(
@@ -475,6 +549,7 @@ def notify_user_on_friend_request(
             "priority": "high",
             "sound": "default",
             "channelId": ANDROID_PUSH_CHANNEL_ID,
+            "categoryId": FRIEND_REQUEST_NOTIFICATION_CATEGORY_ID,
         }
         for token in push_tokens
     ]
@@ -517,14 +592,11 @@ def notify_user_on_friend_request_accepted(
     session.commit()
 
     accepter_name = accepter.display_name or "Someone"
-    subject = "Friend request accepted"
-    body = f"{accepter_name} accepted your friend request"
+    subject = f"{accepter_name} accepted your friend request"
+    body = ""
     if requester.notify_channel_friend_requests == NotificationChannel.EMAIL:
-        _send_email_notification(
-            email_to=requester.email,
-            subject=subject,
-            body=body,
-        )
+        email_data = generate_friend_request_accepted_email(heading=subject)
+        _send_templated_email(email_to=requester.email, email_data=email_data)
         return
 
     push_tokens = push_token_crud.get_push_tokens_for_users(
@@ -583,15 +655,22 @@ def notify_user_on_showtime_ping(
         return
 
     sender_name = sender.display_name or "A friend"
+    now = now_amsterdam_naive()
     formatted_datetime = showtime.datetime.strftime("%a, %b %d at %H:%M")
-    subject = f"{sender_name} invited you"
-    body = f"{showtime.movie.title} • {formatted_datetime}"
+    when = _format_showtime_when(showtime.datetime, now)
+    subject = f"{sender_name} invited you to {showtime.movie.title} {when} in {showtime.cinema.name}"
+    body = "Tap to respond"
     if receiver.notify_channel_showtime_ping == NotificationChannel.EMAIL:
-        _send_email_notification(
-            email_to=receiver.email,
-            subject=subject,
-            body=body,
+        email_data = generate_showtime_notice_email(
+            heading=subject,
+            movie_id=showtime.movie_id,
+            showtime_id=showtime.id,
+            movie_title=showtime.movie.title,
+            poster_link=showtime.movie.poster_link,
+            cinema_name=showtime.cinema.name,
+            showtime_datetime_label=formatted_datetime,
         )
+        _send_templated_email(email_to=receiver.email, email_data=email_data)
         return
 
     push_tokens = push_token_crud.get_push_tokens_for_users(
@@ -662,15 +741,24 @@ def notify_user_on_showtime_reminder(
         return False
 
     sender_name = sender.display_name or "A friend"
+    now = now_amsterdam_naive()
     formatted_datetime = showtime.datetime.strftime("%a, %b %d at %H:%M")
-    subject = f"{sender_name} sent you a reminder"
-    body = f"{showtime.movie.title} • {formatted_datetime}"
+    subject = f"{sender_name} sent you a reminder about {showtime.movie.title}"
+    day_word = _relative_day_word(showtime.datetime, now)
+    if day_word:
+        subject = f"{subject} {day_word}"
+    body = _showtime_subtitle(cinema_name=showtime.cinema.name, dt=showtime.datetime)
     if receiver.notify_channel_showtime_reminder == NotificationChannel.EMAIL:
-        return _send_email_notification(
-            email_to=receiver.email,
-            subject=subject,
-            body=body,
+        email_data = generate_showtime_notice_email(
+            heading=subject,
+            movie_id=showtime.movie_id,
+            showtime_id=showtime.id,
+            movie_title=showtime.movie.title,
+            poster_link=showtime.movie.poster_link,
+            cinema_name=showtime.cinema.name,
+            showtime_datetime_label=formatted_datetime,
         )
+        return _send_templated_email(email_to=receiver.email, email_data=email_data)
 
     push_tokens = push_token_crud.get_push_tokens_for_users(
         session=session,
@@ -775,9 +863,12 @@ def send_seat_alerts(
             continue
 
         title = copy.headline(showtime.movie.title)
-        body = (
-            f"{showtime.datetime.strftime('%a, %b %d at %H:%M')} · "
-            f"{showtime.cinema.name}"
+        day_word = _relative_day_word(showtime.datetime, reference_time)
+        if day_word:
+            title = f"{title} {day_word}"
+        body = _showtime_subtitle(
+            cinema_name=showtime.cinema.name,
+            dt=showtime.datetime,
         )
 
         notification_crud.upsert_notification(
@@ -790,7 +881,18 @@ def send_seat_alerts(
         )
 
         if getattr(recipient, copy.channel_field) == NotificationChannel.EMAIL:
-            _send_email_notification(email_to=recipient.email, subject=title, body=body)
+            email_data = generate_showtime_notice_email(
+                heading=title,
+                movie_id=showtime.movie_id,
+                showtime_id=showtime.id,
+                movie_title=showtime.movie.title,
+                poster_link=showtime.movie.poster_link,
+                cinema_name=showtime.cinema.name,
+                showtime_datetime_label=showtime.datetime.strftime(
+                    "%a, %b %d at %H:%M"
+                ),
+            )
+            _send_templated_email(email_to=recipient.email, email_data=email_data)
             # Stamped whether or not the mail went out: a failed send is not a
             # reason to try the same person again on the next crossing, and
             # there is no second crossing to try on anyway.
@@ -968,13 +1070,28 @@ def send_interested_showtime_reminders(
             continue
         for selection, showtime in user_candidates:
             formatted_datetime = showtime.datetime.strftime("%a, %b %d at %H:%M")
-            subject = "Reminder: showtime soon"
-            body = f"{showtime.movie.title} • {formatted_datetime}"
+            day_word = _relative_day_word(showtime.datetime, reference_time)
+            if day_word:
+                subject = f"Are you still interested in {showtime.movie.title} {day_word}?"
+            else:
+                subject = f"Are you still interested in {showtime.movie.title}?"
+            body = _showtime_subtitle(
+                cinema_name=showtime.cinema.name,
+                dt=showtime.datetime,
+            )
             if recipient.notify_channel_interest_reminder == NotificationChannel.EMAIL:
-                sent = _send_email_notification(
+                email_data = generate_showtime_notice_email(
+                    heading=subject,
+                    movie_id=showtime.movie_id,
+                    showtime_id=showtime.id,
+                    movie_title=showtime.movie.title,
+                    poster_link=showtime.movie.poster_link,
+                    cinema_name=showtime.cinema.name,
+                    showtime_datetime_label=formatted_datetime,
+                )
+                sent = _send_templated_email(
                     email_to=recipient.email,
-                    subject=subject,
-                    body=body,
+                    email_data=email_data,
                 )
                 if sent:
                     reminded_selections.append(selection)

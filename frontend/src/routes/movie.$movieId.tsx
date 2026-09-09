@@ -8,6 +8,9 @@ import { createFileRoute } from "@tanstack/react-router"
 //@ts-ignore
 export const Route = createFileRoute("/movie/$movieId")({
   component: SharedMoviePage,
+  validateSearch: (search) => ({
+    showtime: search.showtime ? Number(search.showtime) : undefined,
+  }),
 })
 
 function SharedMoviePage() {

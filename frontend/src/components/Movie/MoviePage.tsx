@@ -58,6 +58,8 @@ const MoviePage = () => {
   const params = Route.useParams()
   const { movieId } = params as { movieId: string }
   const movieIdNumber = Number(movieId)
+  const { showtime: linkedShowtimeId } = Route.useSearch()
+  const [hasOpenedLinkedShowtime, setHasOpenedLinkedShowtime] = useState(false)
   // Data hooks keep this module synced with backend data and shared cache state.
   const { data: selectedCinemaIds, isLoading: isLoadingSelectedCinemas } =
     useFetchSelectedCinemas()
@@ -112,6 +114,15 @@ const MoviePage = () => {
       setPingedFriendIds([])
     }
   }, [selectedShowtime])
+
+  // Open the showtime a notification email linked to, once, when it loads.
+  useEffect(() => {
+    if (hasOpenedLinkedShowtime || !linkedShowtimeId) return
+    const linked = showtimes.find((s) => s.id === linkedShowtimeId)
+    if (!linked) return
+    setSelectedShowtime(linked)
+    setHasOpenedLinkedShowtime(true)
+  }, [hasOpenedLinkedShowtime, linkedShowtimeId, showtimes])
 
   const friendsForPing = useMemo(() => {
     const availabilityRank: Record<FriendPingAvailability, number> = {

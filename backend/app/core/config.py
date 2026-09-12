@@ -274,8 +274,28 @@ class Settings(BaseSettings):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def emails_enabled(self) -> bool:
-        """True only when both an SMTP host and a From address are configured."""
-        return bool(self.SMTP_HOST and self.EMAILS_FROM_EMAIL)
+        """True off LOCAL (or under TESTING), with SMTP host + From address set.
+
+        The root .env carries real production SMTP creds even for local runs
+        (so devs can test the full send path against staging), which would
+        otherwise mail real users the moment someone points a local backend at
+        a copy of the prod database. The TESTING escape hatch keeps this from
+        touching the test suite, which already blocks real delivery itself
+        (`send_email` raises under TESTING) and asserts against a mocked
+        `send_email` that expects this flag true. See push_notifications_enabled
+        below.
+        """
+        return (self.TESTING or self.ENVIRONMENT is not Environment.LOCAL) and bool(
+            self.SMTP_HOST and self.EMAILS_FROM_EMAIL
+        )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def push_notifications_enabled(self) -> bool:
+        """False on LOCAL, so a copy of prod's push tokens can never be used
+        to push real users. See emails_enabled above for the same reasoning,
+        including the TESTING escape hatch."""
+        return self.TESTING or self.ENVIRONMENT is not Environment.LOCAL
 
     # -------------------------------------------------------------------------
     # Scraping & Integrations

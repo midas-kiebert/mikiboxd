@@ -3,9 +3,11 @@
  *
  * The wording here is a privacy promise, so it lives in one place and both
  * clients read it: an app and a website describing the same setting differently
- * is how people end up sharing more than they meant to. Only the presentation
- * of a mode — its icon and colour — is platform-specific, and that stays in
- * `mobile/components/showtimes/visibility-mode.ts`, which wraps this.
+ * is how people end up sharing more than they meant to. The icon and the palette
+ * are here for the same reason — a setting marked with a different glyph on each
+ * client is the same problem one step quieter. Only resolving them against a
+ * theme is the client's own; `mobile/components/showtimes/visibility-mode.ts`
+ * wraps this for the app.
  *
  * "Friends" means every friend you have not hidden your status from. Whichever
  * mode is set, your status is always visible to friends you invited, friends
@@ -19,6 +21,25 @@ export const VISIBILITY_MODE_ORDER: VisibilityMode[] = [
   "ALL_FRIENDS",
   "INVITED_ONLY",
 ];
+
+export type VisibilityModePresentation = {
+  /** A MaterialIcons name; both clients resolve it to their own icon set. */
+  icon: "hub" | "groups" | "mail";
+  /** Which palette trio draws it. */
+  palette: "purple" | "green" | "blue";
+};
+
+const PRESENTATION: Record<VisibilityMode, VisibilityModePresentation> = {
+  FRIENDS_OF_FRIENDS: { icon: "hub", palette: "purple" },
+  ALL_FRIENDS: { icon: "groups", palette: "green" },
+  INVITED_ONLY: { icon: "mail", palette: "blue" },
+};
+
+export function getVisibilityModePresentation(
+  mode: VisibilityMode
+): VisibilityModePresentation {
+  return PRESENTATION[mode];
+}
 
 export type VisibilityModeCopy = {
   mode: VisibilityMode;

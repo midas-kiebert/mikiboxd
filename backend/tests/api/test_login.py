@@ -16,6 +16,38 @@ from app.models.user import User, UserCreate
 from tests.utils.utils import random_email, random_lower_string
 
 
+# -----------------------------------------------------------------------------
+# Password recovery (POST /password-recovery/{email})
+#
+# `send_email()` raises RuntimeError("no provided configuration for email
+# variables") when `settings.emails_enabled` is False — a case this endpoint
+# used to only guard against `EmailDeliveryError`, so it fell through to an
+# unhandled 500 instead of the graceful 502 every other delivery failure gets.
+# -----------------------------------------------------------------------------
+
+
+def test_recover_password_returns_bad_gateway_when_email_is_not_configured(
+    client: TestClient,
+    db_transaction: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    email = random_email()
+    user_crud.create_user(
+        session=db_transaction,
+        user_create=UserCreate(email=email, password=random_lower_string()),
+    )
+    monkeypatch.setattr(
+        "app.api.routes.login.send_email",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("no provided configuration for email variables")
+        ),
+    )
+
+    r = client.post(f"{settings.API_V1_STR}/password-recovery/{email}")
+
+    assert r.status_code == 502, r.text
+
+
 def _login(client: TestClient) -> dict[str, str]:
     r = client.post(
         f"{settings.API_V1_STR}/login/access-token",

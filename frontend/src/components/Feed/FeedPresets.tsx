@@ -1,15 +1,7 @@
-import {
-  Button,
-  Flex,
-  IconButton,
-  Input,
-  Portal,
-  Stack,
-  Text,
-} from "@chakra-ui/react"
+import { Box, Button, Flex, Input, Portal, Stack, Text } from "@chakra-ui/react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 /**
- * Saved filter presets, above the feed.
+ * Saved filter presets, in the filter rail.
  *
  * A preset is a named set of filters you can put back on in one click. The
  * model is entirely shared with the app — including the part that is easy to
@@ -18,11 +10,23 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
  * filters you set by hand, and that is the intended behaviour rather than a bug
  * to work around here.
  *
+ * Lives in the filter rail rather than above the list, which is where the app
+ * keeps it too: a preset is a way of setting the filters, so it belongs with
+ * them and not in the bar that searches them.
+ *
+ * A preset button is squared and never renders as selected, even when the
+ * current filters match it exactly — see `RailActionButton`. That matters more
+ * here than it did above the list, because the rail's other controls are all
+ * fully-rounded state pills and a rounded preset would be indistinguishable
+ * from one. The favourite is marked by a filled star, not by a fill on the
+ * button.
+ *
  * Reordering is left out. On a phone it is a drag on a row you can reach; here
  * the list is short, visible, and sorted the same way the app sorts it, so it
  * would be work spent on a problem the extra space already solves.
  */
-import { useState } from "react"
+import { memo, useState } from "react"
+import { FaStar } from "react-icons/fa"
 import { FiStar, FiTrash2 } from "react-icons/fi"
 import { MeService } from "shared/client"
 import {
@@ -35,6 +39,10 @@ import { useDisplayPresets } from "shared/filters/useDisplayPresets"
 import useAuth from "shared/hooks/useAuth"
 
 import { useIsSignedIn } from "@/auth/useSession"
+import {
+  RailActionButton,
+  RailIconButton,
+} from "@/components/Feed/FilterRailControls"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   DialogBody,
@@ -55,7 +63,10 @@ type FeedPresetsProps = {
   onChange: (patch: Partial<FeedParams>) => void
 }
 
-const FeedPresets = ({ params, onChange }: FeedPresetsProps) => {
+const FeedPresets = memo(function FeedPresets({
+  params,
+  onChange,
+}: FeedPresetsProps) {
   // Read flow: prepare derived values/handlers first, then return component JSX.
   const isSignedIn = useIsSignedIn()
   const queryClient = useQueryClient()
@@ -105,21 +116,22 @@ const FeedPresets = ({ params, onChange }: FeedPresetsProps) => {
   // Render/output using the state and derived values prepared above.
   return (
     <>
-      <Flex gap={2} align="center" wrap="wrap">
+      {/* One preset per row rather than a wrapping strip: the rail is a column,
+          and a name the user chose can be any length. */}
+      <Stack gap={1}>
         {presets.map((preset) => (
-          <Flex key={presetKey(preset)} align="center" gap={0}>
-            <Button
-              size="xs"
-              variant={preset.isFavorite ? "solid" : "surface"}
-              colorPalette={preset.isFavorite ? "green" : "gray"}
-              onClick={() => apply(preset)}
-            >
-              {preset.name}
-            </Button>
-            <IconButton
-              size="xs"
-              variant="ghost"
-              aria-label={
+          <Flex key={presetKey(preset)} align="center" gap={1}>
+            <Box flex="1" minW={0}>
+              <RailActionButton
+                fullWidth
+                title={`Apply ${preset.name}`}
+                onClick={() => apply(preset)}
+              >
+                {preset.name}
+              </RailActionButton>
+            </Box>
+            <RailIconButton
+              label={
                 preset.isFavorite
                   ? `Unfavourite ${preset.name}`
                   : `Favourite ${preset.name}`
@@ -128,23 +140,21 @@ const FeedPresets = ({ params, onChange }: FeedPresetsProps) => {
                 setFavorite({ preset, makeFavorite: !preset.isFavorite })
               }
             >
-              <FiStar />
-            </IconButton>
-            <IconButton
-              size="xs"
-              variant="ghost"
-              aria-label={`Delete ${preset.name}`}
+              {preset.isFavorite ? <FaStar /> : <FiStar />}
+            </RailIconButton>
+            <RailIconButton
+              label={`Delete ${preset.name}`}
               onClick={() => remove(preset)}
             >
               <FiTrash2 />
-            </IconButton>
+            </RailIconButton>
           </Flex>
         ))}
 
-        <Button size="xs" variant="ghost" onClick={() => setIsSaveOpen(true)}>
+        <RailActionButton onClick={() => setIsSaveOpen(true)}>
           Save these filters
-        </Button>
-      </Flex>
+        </RailActionButton>
+      </Stack>
 
       <DialogRoot
         open={isSaveOpen}
@@ -195,6 +205,6 @@ const FeedPresets = ({ params, onChange }: FeedPresetsProps) => {
       </DialogRoot>
     </>
   )
-}
+})
 
 export default FeedPresets

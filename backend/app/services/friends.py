@@ -114,6 +114,8 @@ def accept_friend_request(
         AppError: For any other (unexpected) errors.
     """
     try:
+        # Raises NoResultFound when there is nothing to accept; create_friendship
+        # then clears any request the other way round as well.
         friendship_crud.delete_friend_request(
             session=session,
             receiver_id=current_user_id,

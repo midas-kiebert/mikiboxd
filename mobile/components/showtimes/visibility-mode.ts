@@ -1,14 +1,19 @@
 /**
- * The app's presentation of a visibility mode: the shared copy, plus the icon
- * and theme colour that only make sense here.
+ * The app's presentation of a visibility mode: the shared copy, icon and
+ * palette, resolved against the app's theme.
  *
- * The label and description come from `shared/showtimes/visibility-mode`, so
- * the website cannot drift from the app on what a privacy setting promises.
+ * The label, description, icon name and palette all come from
+ * `shared/showtimes/visibility-mode`, so the website cannot drift from the app
+ * on what a privacy setting promises or on how it is marked. What is left here
+ * is the part that is the app's alone: turning the palette name into a colour.
  */
 import type MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import type { ComponentProps } from "react";
 import type { VisibilityMode } from "shared";
-import { getVisibilityModeCopy } from "shared/showtimes/visibility-mode";
+import {
+  getVisibilityModeCopy,
+  getVisibilityModePresentation,
+} from "shared/showtimes/visibility-mode";
 
 import type { Colors } from "@/constants/theme";
 
@@ -25,19 +30,14 @@ export type VisibilityModeMeta = {
   color: string;
 };
 
-const PRESENTATION: Record<
-  VisibilityMode,
-  { icon: MaterialIconName; color: (colors: ThemeColors) => string }
-> = {
-  FRIENDS_OF_FRIENDS: { icon: "hub", color: (colors) => colors.purple.secondary },
-  ALL_FRIENDS: { icon: "groups", color: (colors) => colors.green.secondary },
-  INVITED_ONLY: { icon: "mail", color: (colors) => colors.blue.secondary },
-};
-
 export function getVisibilityModeMeta(
   mode: VisibilityMode,
   colors: ThemeColors,
 ): VisibilityModeMeta {
-  const { icon, color } = PRESENTATION[mode];
-  return { ...getVisibilityModeCopy(mode), icon, color: color(colors) };
+  const { icon, palette } = getVisibilityModePresentation(mode);
+  return {
+    ...getVisibilityModeCopy(mode),
+    icon,
+    color: colors[palette].secondary,
+  };
 }

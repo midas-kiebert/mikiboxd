@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlmodel import Session, col, select
+from sqlmodel import Session, col, delete, select
 
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.models.friendship import FriendRequest, Friendship
@@ -31,6 +31,13 @@ def create_friendship(
     reverse_friendship = Friendship(user_id=friend_id, friend_id=user_id)
     session.add(friendship)
     session.add(reverse_friendship)
+    # Both users may have sent each other a request before either accepted;
+    # once they are friends neither request can still be acted on.
+    delete_friend_requests_between(
+        session=session,
+        user_id=user_id,
+        other_user_id=friend_id,
+    )
     session.flush()
     showtime_visibility_crud.rebuild_effective_visibility_for_owner(
         session=session,
@@ -150,6 +157,21 @@ def create_friend_request(
     session.flush()
 
     return friend_request
+
+
+def delete_friend_requests_between(
+    *,
+    session: Session,
+    user_id: UUID,
+    other_user_id: UUID,
+) -> None:
+    """Delete any pending friend requests between two users, in both directions."""
+    session.exec(  # type: ignore[call-overload]
+        delete(FriendRequest).where(
+            col(FriendRequest.sender_id).in_([user_id, other_user_id]),
+            col(FriendRequest.receiver_id).in_([user_id, other_user_id]),
+        )
+    )
 
 
 def get_received_friend_requests_with_sender(

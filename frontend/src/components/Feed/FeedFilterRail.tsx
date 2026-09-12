@@ -3,16 +3,28 @@
  *
  * The app hides all of this behind a button, opens a sheet, and asks you to
  * expand a section before you can toggle anything — six actions to narrow to
- * tonight. A desktop has a column going spare, so every dimension here is
- * visible and one click away, which is the single biggest click-count win the
- * website has over the app.
+ * tonight. A desktop has a column going spare, so the dimensions people
+ * actually reach for are open on arrival and one click away, which is the
+ * single biggest click-count win the website has over the app.
+ *
+ * The two long ones are the exception. Cinemas and Letterboxd lists are lists
+ * without a ceiling — forty venues across a dozen cities — and leaving them
+ * open pushes the card past the bottom of the screen, which costs the rail the
+ * pinning that makes it worth having (see `FeedLayout`). They start closed
+ * with a summary of what they are doing, exactly as the app's sections do, and
+ * exactly as Cineville folds its cities and theatres away.
  *
  * Adding a dimension is a section in this file plus its control. The state,
  * the URL spelling and the API mapping are already in `feed-params.ts` — this
  * component only ever reads `params` and calls `onChange`.
+ *
+ * "Clear filters" sits in the card's own heading rather than in a bar above the
+ * list, because a reset belongs beside the things it resets. It is passed in
+ * rather than assumed: on a phone there is no rail, and the reset goes back to
+ * the toolbar with the search field.
  */
-import { Box, Button, Flex, Heading, Stack, Text } from "@chakra-ui/react"
-import type { ReactNode } from "react"
+import { Box, Flex, Stack, Text } from "@chakra-ui/react"
+import { memo } from "react"
 import {
   RELATIVE_DAY_OPTIONS,
   WEEKDAY_DAY_OPTIONS,
@@ -26,13 +38,24 @@ import {
 
 import { useIsSignedIn } from "@/auth/useSession"
 import CinemaPresets from "@/components/Feed/CinemaPresets"
-import { Checkbox } from "@/components/ui/checkbox"
+import FeedPresets from "@/components/Feed/FeedPresets"
+import {
+  RAIL_INK,
+  RailActionButton,
+  RailPill,
+  RailPillRow,
+  RailSection,
+  RailSegmented,
+  type RailSegmentedOption,
+  RailSubLabel,
+} from "@/components/Feed/FilterRailControls"
 import type {
   FeedParams,
   WatchedMode,
   WatchlistMode,
 } from "@/features/showtimes/feed-params"
 import type { Language } from "shared/client"
+import type { SharedTabShowtimeFilter } from "shared/filters/shared-tab-filters"
 
 /**
  * Runtime is one range at a time, like time of day. The app offers a slider;
@@ -51,40 +74,49 @@ const LANGUAGE_OPTIONS: { value: Language; label: string }[] = [
   { value: "nl", label: "Dutch" },
 ]
 
+/** What a section's header says when nothing in it is set. */
+const NOTHING_SET = "Any"
+
+/**
+ * One row per screening, or one per film. A segmented control rather than a
+ * checkbox, because it is a choice between two ways of reading the same feed
+ * and neither is the absence of the other — the app's own control, with the
+ * app's own words for the two sides.
+ */
+const GROUP_OPTIONS: readonly RailSegmentedOption<boolean>[] = [
+  { value: false, label: "Showtimes" },
+  { value: true, label: "Movies" },
+]
+
+/**
+ * Which of your friends' marks to narrow to. "Any" filters nothing, so its
+ * thumb is neutral rather than accented; the other two take the tones a status
+ * is drawn in everywhere else — orange for interested, green for going.
+ */
+const FRIEND_STATUS_OPTIONS: readonly RailSegmentedOption<SharedTabShowtimeFilter>[] =
+  [
+    { value: "all", label: "Any", tone: "neutral" },
+    { value: "interested", label: "Interested", tone: "orange" },
+    { value: "going", label: "Going", tone: "green" },
+  ]
+
 type FeedFilterRailProps = {
   params: FeedParams
   onChange: (patch: Partial<FeedParams>) => void
+  /** Saved filter presets. Off on the pages a preset would fight with. */
+  showPresets?: boolean
+  /**
+   * One row per film instead of one per screening. Only the feeds that can
+   * actually swap endpoints offer it.
+   */
+  showGroupToggle?: boolean
+  /**
+   * Clears every filter. Omitted where the rail is not on screen to hold it —
+   * on a phone the toolbar takes the reset back, along with the search field.
+   */
+  onReset?: () => void
+  activeFilterCount?: number
 }
-
-/** One heading + its controls. Every section in the rail uses this. */
-const Section = ({
-  title,
-  children,
-}: { title: string; children: ReactNode }) => (
-  <Box>
-    <Heading size="xs" textTransform="uppercase" color="fg.muted" mb={2}>
-      {title}
-    </Heading>
-    <Stack gap={1}>{children}</Stack>
-  </Box>
-)
-
-/** A toggle in a set where any number may be on. */
-const TokenToggle = ({
-  label,
-  isOn,
-  onToggle,
-}: { label: string; isOn: boolean; onToggle: () => void }) => (
-  <Button
-    size="xs"
-    variant={isOn ? "solid" : "surface"}
-    colorPalette={isOn ? "green" : "gray"}
-    onClick={onToggle}
-    justifyContent="flex-start"
-  >
-    {label}
-  </Button>
-)
 
 /** Add or remove one value from an array dimension. */
 const toggleIn = <T,>(values: T[], value: T): T[] =>
@@ -92,7 +124,18 @@ const toggleIn = <T,>(values: T[], value: T): T[] =>
     ? values.filter((entry) => entry !== value)
     : [...values, value]
 
-const FeedFilterRail = ({ params, onChange }: FeedFilterRailProps) => {
+/** A collapsed section's header line: the picked labels, or `NOTHING_SET`. */
+const summarise = (labels: string[]): string =>
+  labels.length ? labels.join(", ") : NOTHING_SET
+
+const FeedFilterRail = memo(function FeedFilterRail({
+  params,
+  onChange,
+  showPresets = true,
+  showGroupToggle = false,
+  onReset,
+  activeFilterCount = 0,
+}: FeedFilterRailProps) {
   // Read flow: prepare derived values/handlers first, then return component JSX.
   const { data: cinemas } = useFetchCinemas()
 
@@ -146,183 +189,290 @@ const FeedFilterRail = ({ params, onChange }: FeedFilterRailProps) => {
     cinemasByCity.get(city)?.push(cinema)
   }
 
+  const dayOptions = [...RELATIVE_DAY_OPTIONS, ...WEEKDAY_DAY_OPTIONS]
+  const daySummary = summarise(
+    dayOptions
+      .filter((option) => params.days.includes(option.token))
+      .map((option) => ("shortLabel" in option ? option.shortLabel : option.label)),
+  )
+  const timeSummary = summarise(
+    TIME_FILTER_PRESETS.filter((preset) =>
+      params.times.includes(preset.range),
+    ).map((preset) => preset.label),
+  )
+  const runtimeSummary = summarise(
+    RUNTIME_PRESETS.filter((preset) =>
+      params.runtime.includes(preset.token),
+    ).map((preset) => preset.label),
+  )
+  const languageSummary = summarise(
+    LANGUAGE_OPTIONS.filter((option) =>
+      params.languages.includes(option.value),
+    ).map((option) => option.label),
+  )
+  const myListsSummary = summarise(
+    [
+      params.watchlist === "only" ? "Watchlist" : null,
+      params.watched === "hide" ? "Unseen" : null,
+    ].filter((label): label is string => label !== null),
+  )
+  const groupSummary =
+    GROUP_OPTIONS.find((option) => option.value === params.group)?.label ??
+    NOTHING_SET
+  const friendStatusSummary =
+    FRIEND_STATUS_OPTIONS.find((option) => option.value === params.status)
+      ?.label ?? NOTHING_SET
+  const cinemaSummary = params.cinemas.length
+    ? `${params.cinemas.length} selected`
+    : "Your usual"
+  const listsSummary = summarise(
+    [
+      params.lists.length ? `${params.lists.length} only` : null,
+      params.excludeLists.length ? `${params.excludeLists.length} hidden` : null,
+    ].filter((label): label is string => label !== null),
+  )
+
   // Render/output using the state and derived values prepared above.
   return (
-    <Stack gap={5}>
-      <Section title="Day">
-        <Flex wrap="wrap" gap={1}>
-          {RELATIVE_DAY_OPTIONS.map((option) => (
-            <TokenToggle
-              key={option.token}
-              label={option.label}
-              isOn={params.days.includes(option.token)}
-              onToggle={() => toggleDay(option.token)}
-            />
-          ))}
-        </Flex>
-        <Flex wrap="wrap" gap={1}>
-          {WEEKDAY_DAY_OPTIONS.map((option) => (
-            <TokenToggle
-              key={option.token}
-              label={option.shortLabel}
-              isOn={params.days.includes(option.token)}
-              onToggle={() => toggleDay(option.token)}
-            />
-          ))}
-        </Flex>
-      </Section>
+    // The rail paints its own card rather than taking `FeedLayout`'s: it is
+    // the one panel with a colour of its own — the brand tint, so the filters
+    // read as the app's control surface and not as one more sheet of paper —
+    // and its section dividers have to run the full width, which they cannot do
+    // inside someone else's padding. Squared corners and no outline, the way
+    // Cineville's filter card is cut; the fill is what defines it.
+    <Box
+      bg="app.green.primary"
+      borderRadius="md"
+      boxShadow="sm"
+      // The last section's header would otherwise sit flush against the corner.
+      pb="6px"
+    >
+      <Flex px={3} pt={3} pb="10px" align="center" justify="space-between" gap={2}>
+        <Text fontSize="md" fontWeight="bold" color={RAIL_INK}>
+          Filters
+        </Text>
+        {/* Only offered when there is something to undo — a permanently visible
+            "clear" implies there is always something set. It appears inside a
+            heading row that is always there, so nothing below it moves. */}
+        {onReset && (activeFilterCount > 0 || params.q) ? (
+          <RailActionButton onClick={onReset} title="Clear every filter">
+            Clear{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+          </RailActionButton>
+        ) : null}
+      </Flex>
 
-      <Section title="Time of day">
-        <Flex wrap="wrap" gap={1}>
+      {showPresets && isSignedIn ? (
+        <RailSection title="Presets">
+          <FeedPresets params={params} onChange={onChange} />
+        </RailSection>
+      ) : null}
+
+      {showGroupToggle ? (
+        <RailSection title="Group by" summary={groupSummary}>
+          <RailSegmented
+            label="Group by"
+            options={GROUP_OPTIONS}
+            value={params.group}
+            onChange={(group) => onChange({ group })}
+          />
+        </RailSection>
+      ) : null}
+
+      {/* A guest has no friends, so this could only ever narrow the feed to
+          nothing — a whole section that can only be empty is hidden rather than
+          gated, the same call the app makes. */}
+      {isSignedIn ? (
+        <RailSection title="Marked by friends" summary={friendStatusSummary}>
+          <RailSegmented
+            label="Marked by friends"
+            options={FRIEND_STATUS_OPTIONS}
+            value={params.status}
+            onChange={(status) => onChange({ status })}
+          />
+        </RailSection>
+      ) : null}
+
+      <RailSection title="Day" summary={daySummary}>
+        <Stack gap="7px">
+          <RailPillRow>
+            {RELATIVE_DAY_OPTIONS.map((option) => (
+              <RailPill
+                key={option.token}
+                label={option.label}
+                isOn={params.days.includes(option.token)}
+                onToggle={() => toggleDay(option.token)}
+              />
+            ))}
+          </RailPillRow>
+          <RailPillRow>
+            {WEEKDAY_DAY_OPTIONS.map((option) => (
+              <RailPill
+                key={option.token}
+                label={option.shortLabel}
+                isOn={params.days.includes(option.token)}
+                onToggle={() => toggleDay(option.token)}
+              />
+            ))}
+          </RailPillRow>
+        </Stack>
+      </RailSection>
+
+      <RailSection title="Time of day" summary={timeSummary}>
+        <RailPillRow>
           {TIME_FILTER_PRESETS.map((preset) => (
-            <TokenToggle
+            <RailPill
               key={preset.id}
               label={preset.label}
               isOn={params.times.includes(preset.range)}
               onToggle={() => toggleTime(preset.range)}
             />
           ))}
-        </Flex>
-      </Section>
+        </RailPillRow>
+      </RailSection>
 
-      <Section title="Length">
-        <Flex wrap="wrap" gap={1}>
+      <RailSection title="Length" summary={runtimeSummary}>
+        <RailPillRow>
           {RUNTIME_PRESETS.map((preset) => (
-            <TokenToggle
+            <RailPill
               key={preset.token}
               label={preset.label}
               isOn={params.runtime.includes(preset.token)}
               onToggle={() => toggleRuntime(preset.token)}
             />
           ))}
-        </Flex>
-      </Section>
+        </RailPillRow>
+      </RailSection>
 
-      <Section title="Language">
-        <Flex wrap="wrap" gap={1}>
-          {LANGUAGE_OPTIONS.map((option) => (
-            <TokenToggle
-              key={option.value}
-              label={option.label}
-              isOn={params.languages.includes(option.value)}
-              onToggle={() => toggleLanguage(option.value)}
-            />
-          ))}
-        </Flex>
-        {params.languages.length > 1 ? (
-          <Text fontSize="xs" color="fg.muted">
-            Showing films in either language.
-          </Text>
-        ) : null}
-      </Section>
-
-      <Section title="Your lists">
-        <Checkbox
-          checked={params.watchlist === "only"}
-          onCheckedChange={(details) =>
-            onChange({
-              watchlist: (details.checked ? "only" : "any") as WatchlistMode,
-            })
-          }
-        >
-          <Text fontSize="sm">On my watchlist</Text>
-        </Checkbox>
-        <Checkbox
-          checked={params.watched === "hide"}
-          onCheckedChange={(details) =>
-            onChange({
-              watched: (details.checked ? "hide" : "any") as WatchedMode,
-            })
-          }
-        >
-          <Text fontSize="sm">Hide films I've seen</Text>
-        </Checkbox>
-      </Section>
-
-      <Section title="Cinemas">
-        <CinemaPresets params={params} onChange={onChange} />
-        {params.cinemas.length ? (
-          <Button
-            size="xs"
-            variant="ghost"
-            alignSelf="flex-start"
-            onClick={() => onChange({ cinemas: [] })}
-          >
-            Clear {params.cinemas.length} selected
-          </Button>
-        ) : (
-          <Text fontSize="xs" color="fg.muted">
-            Nothing selected — showing your usual cinemas.
-          </Text>
-        )}
-        {[...cinemasByCity.entries()].map(([city, cityCinemas]) => (
-          <Box key={city} mt={2}>
-            <Text fontSize="xs" fontWeight="semibold" color="fg.muted" mb={1}>
-              {city}
+      <RailSection title="Language" summary={languageSummary}>
+        <Stack gap="7px">
+          <RailPillRow>
+            {LANGUAGE_OPTIONS.map((option) => (
+              <RailPill
+                key={option.value}
+                label={option.label}
+                isOn={params.languages.includes(option.value)}
+                onToggle={() => toggleLanguage(option.value)}
+              />
+            ))}
+          </RailPillRow>
+          {params.languages.length > 1 ? (
+            <Text fontSize="xs" color={RAIL_INK}>
+              Showing films in either language.
             </Text>
-            <Stack gap={0.5}>
-              {(cityCinemas ?? []).map((cinema) => (
-                <Checkbox
-                  key={cinema.id}
-                  checked={params.cinemas.includes(cinema.id)}
-                  onCheckedChange={() => toggleCinema(cinema.id)}
-                >
-                  <Text fontSize="sm">{cinema.name}</Text>
-                </Checkbox>
-              ))}
-            </Stack>
-          </Box>
-        ))}
-      </Section>
+          ) : null}
+        </Stack>
+      </RailSection>
+
+      <RailSection title="Your lists" summary={myListsSummary}>
+        <RailPillRow>
+          <RailPill
+            label="On my watchlist"
+            isOn={params.watchlist === "only"}
+            onToggle={() =>
+              onChange({
+                watchlist: (params.watchlist === "only"
+                  ? "any"
+                  : "only") as WatchlistMode,
+              })
+            }
+          />
+          <RailPill
+            label="Hide films I've seen"
+            isOn={params.watched === "hide"}
+            onToggle={() =>
+              onChange({
+                watched: (params.watched === "hide"
+                  ? "any"
+                  : "hide") as WatchedMode,
+              })
+            }
+          />
+        </RailPillRow>
+      </RailSection>
+
+      <RailSection title="Cinemas" summary={cinemaSummary} defaultOpen={false}>
+        <Stack gap={2}>
+          <CinemaPresets params={params} onChange={onChange} />
+          {params.cinemas.length ? (
+            <Box>
+              <RailActionButton onClick={() => onChange({ cinemas: [] })}>
+                Clear {params.cinemas.length} selected
+              </RailActionButton>
+            </Box>
+          ) : (
+            <Text fontSize="xs" color={RAIL_INK}>
+              Nothing selected — showing your usual cinemas.
+            </Text>
+          )}
+          {/* Chips, not a checkbox column: it is what the app's cinema picker
+              uses, it is legible on the tint where a checkbox control is not,
+              and forty of them wrapping across the card is what the rail's
+              width is for. */}
+          {[...cinemasByCity.entries()].map(([city, cityCinemas]) => (
+            <Box key={city}>
+              <RailSubLabel label={city} />
+              <RailPillRow>
+                {(cityCinemas ?? []).map((cinema) => (
+                  <RailPill
+                    key={cinema.id}
+                    label={cinema.name}
+                    isOn={params.cinemas.includes(cinema.id)}
+                    onToggle={() => toggleCinema(cinema.id)}
+                  />
+                ))}
+              </RailPillRow>
+            </Box>
+          ))}
+        </Stack>
+      </RailSection>
 
       {lists.length ? (
-        <Section title="Letterboxd lists">
-          {lists.map((list) => {
-            const isOnly = params.lists.includes(list.id)
-            const isHidden = params.excludeLists.includes(list.id)
-            return (
-              <Flex
-                key={list.id}
-                align="center"
-                gap={1}
-                justify="space-between"
-              >
-                <Text
-                  fontSize="sm"
-                  truncate
-                  title={list.title ?? list.list_slug}
-                >
-                  {list.title ?? list.list_slug}
-                </Text>
-                <Flex gap={1} flexShrink={0}>
-                  <Button
-                    size="2xs"
-                    variant={isOnly ? "solid" : "surface"}
-                    colorPalette={isOnly ? "green" : "gray"}
-                    onClick={() =>
-                      setListMode(list.id, isOnly ? "off" : "only")
-                    }
+        <RailSection
+          title="Letterboxd lists"
+          summary={listsSummary}
+          defaultOpen={false}
+        >
+          <Stack gap={2}>
+            {lists.map((list) => {
+              const isOnly = params.lists.includes(list.id)
+              const isHidden = params.excludeLists.includes(list.id)
+              const name = list.title ?? list.list_slug
+              return (
+                <Box key={list.id}>
+                  <Text
+                    fontSize="sm"
+                    color={RAIL_INK}
+                    truncate
+                    title={name}
+                    mb="4px"
                   >
-                    Only
-                  </Button>
-                  <Button
-                    size="2xs"
-                    variant={isHidden ? "solid" : "surface"}
-                    colorPalette={isHidden ? "red" : "gray"}
-                    onClick={() =>
-                      setListMode(list.id, isHidden ? "off" : "hide")
-                    }
-                  >
-                    Hide
-                  </Button>
-                </Flex>
-              </Flex>
-            )
-          })}
-        </Section>
+                    {name}
+                  </Text>
+                  <RailPillRow>
+                    <RailPill
+                      label="Only"
+                      title={`Show only films on ${name}`}
+                      isOn={isOnly}
+                      onToggle={() => setListMode(list.id, isOnly ? "off" : "only")}
+                    />
+                    <RailPill
+                      label="Hide"
+                      tone="red"
+                      title={`Hide films on ${name}`}
+                      isOn={isHidden}
+                      onToggle={() =>
+                        setListMode(list.id, isHidden ? "off" : "hide")
+                      }
+                    />
+                  </RailPillRow>
+                </Box>
+              )
+            })}
+          </Stack>
+        </RailSection>
       ) : null}
-    </Stack>
+    </Box>
   )
-}
+})
 
 export default FeedFilterRail

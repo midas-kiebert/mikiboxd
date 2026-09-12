@@ -1,12 +1,4 @@
-import {
-  Button,
-  Flex,
-  IconButton,
-  Input,
-  Portal,
-  Stack,
-  Text,
-} from "@chakra-ui/react"
+import { Box, Button, Flex, Input, Portal, Stack, Text } from "@chakra-ui/react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 /**
  * Named cinema selections, at the top of the Cinemas section.
@@ -20,6 +12,11 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
  * the one every account has and starts up with. The default is the synthetic
  * "All cinemas" row, which has no database row behind it and so cannot be
  * renamed or deleted.
+ *
+ * A row never lights up to say the current selection matches it. It used to,
+ * and on the rail that is untenable: these sit a few pixels from the cinema
+ * chips, which *are* selections, and a filled preset would read as one more of
+ * them. Same rule as the saved filter presets above — see `RailActionButton`.
  */
 import { useState } from "react"
 import { FiEdit2, FiStar, FiTrash2 } from "react-icons/fi"
@@ -31,6 +28,10 @@ import {
 } from "shared/filters/cinema-presets"
 
 import { useIsSignedIn } from "@/auth/useSession"
+import {
+  RailActionButton,
+  RailIconButton,
+} from "@/components/Feed/FilterRailControls"
 import {
   DialogBody,
   DialogContent,
@@ -98,11 +99,6 @@ const CinemaPresets = ({ params, onChange }: CinemaPresetsProps) => {
 
   if (!isSignedIn) return null
 
-  /** A preset is "on" when the feed is showing exactly its cinemas. */
-  const isActive = (cinemaIds: number[]) =>
-    cinemaIds.length === params.cinemas.length &&
-    cinemaIds.every((id) => params.cinemas.includes(id))
-
   const openSave = () => {
     // Prefilled, so saving never *requires* typing — an empty box that blocks
     // the button is what makes this read as a mistake rather than a choice.
@@ -116,52 +112,45 @@ const CinemaPresets = ({ params, onChange }: CinemaPresetsProps) => {
       <Stack gap={1} mb={2}>
         {presets.map((preset) => (
           <Flex key={preset.id} align="center" gap={1}>
-            <Button
-              size="2xs"
-              flex="1"
-              justifyContent="flex-start"
-              variant={isActive(preset.cinema_ids) ? "solid" : "surface"}
-              colorPalette={isActive(preset.cinema_ids) ? "green" : "gray"}
-              onClick={() => onChange({ cinemas: [...preset.cinema_ids] })}
-            >
-              {preset.name}
-            </Button>
+            <Box flex="1" minW={0}>
+              <RailActionButton
+                fullWidth
+                title={`Select ${preset.name}`}
+                onClick={() => onChange({ cinemas: [...preset.cinema_ids] })}
+              >
+                {preset.name}
+              </RailActionButton>
+            </Box>
 
             {/* The synthetic "All cinemas" row has nothing behind it to edit. */}
             {preset.is_default ? null : (
               <>
-                <IconButton
-                  size="2xs"
-                  variant="ghost"
-                  aria-label={`Rename ${preset.name}`}
+                <RailIconButton
+                  label={`Rename ${preset.name}`}
                   onClick={() => {
                     setRenaming(preset.id)
                     setName(preset.name)
                   }}
                 >
                   <FiEdit2 />
-                </IconButton>
+                </RailIconButton>
                 {/* The favourite is "my cinemas" — every account has exactly
                     one, so it can be moved but not deleted. */}
                 {preset.is_favorite ? null : (
                   <>
-                    <IconButton
-                      size="2xs"
-                      variant="ghost"
-                      aria-label={`Make ${preset.name} my cinemas`}
+                    <RailIconButton
+                      label={`Make ${preset.name} my cinemas`}
                       title="Use these at startup"
                       onClick={() => makeDefault(preset.id)}
                     >
                       <FiStar />
-                    </IconButton>
-                    <IconButton
-                      size="2xs"
-                      variant="ghost"
-                      aria-label={`Delete ${preset.name}`}
+                    </RailIconButton>
+                    <RailIconButton
+                      label={`Delete ${preset.name}`}
                       onClick={() => remove(preset.id)}
                     >
                       <FiTrash2 />
-                    </IconButton>
+                    </RailIconButton>
                   </>
                 )}
               </>
@@ -170,14 +159,9 @@ const CinemaPresets = ({ params, onChange }: CinemaPresetsProps) => {
         ))}
 
         {params.cinemas.length ? (
-          <Button
-            size="2xs"
-            variant="ghost"
-            alignSelf="flex-start"
-            onClick={openSave}
-          >
+          <RailActionButton onClick={openSave}>
             Save this selection
-          </Button>
+          </RailActionButton>
         ) : null}
       </Stack>
 

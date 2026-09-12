@@ -1,198 +1,188 @@
 /**
  * The panel that opens beside the feed when a showtime is selected.
  *
- * Phase 1 scope: read the showtime, set your status on it, and get a ticket.
- * Invites, per-showtime visibility, seat availability and sold-out watches are
- * the app's showtime sheet and belong to a later phase — the layout here leaves
- * room for them rather than pretending they exist.
- *
  * Docked rather than a centred dialog, which is the one real advantage the web
- * has over the app's full-screen sheet: the list stays visible, so setting a
- * status on one showtime does not hide the alternatives you were comparing it
- * against.
+ * has over the app's full-screen sheet: the list stays visible, so acting on
+ * one screening never hides the alternatives you were comparing it against.
  *
- * Status buttons stay visible for guests and gate on press, per the app's rule
- * that pressing "Going" is how a signed-out visitor discovers what an account
- * is for.
+ * Everything else follows the app's sheet, in its order and its words: the
+ * header with "More info" under the poster, then who is already here, then the
+ * status buttons, then one card holding the seat count, the ticket link and
+ * your seat, then "Status visible to", then who you have invited, and Share and
+ * "Invite friends" at the foot. The web had reached the same set of features by
+ * a different arrangement, and the two clients disagreeing about where a thing
+ * lives — and about whether a status is a star or a bookmark — costs more than
+ * either layout was worth. The one deliberate difference is Share, which copies
+ * a link here instead of opening a share sheet.
+ *
+ * Three decisions shape it:
+ *
+ *   - **It paints from data already in hand.** Every section reads the
+ *     `ShowtimePublic` the feed fetched — attendance, the invite state, the
+ *     visibility mode and the busyness are all on it — so selecting a row is
+ *     instant and the follow-up queries only ever *revalidate* what is already
+ *     drawn. Nothing here has a loading state on the way in.
+ *   - **It reacts to the selection.** The card is topped with the status's own
+ *     colour, the body animates on each change of screening, and the panel
+ *     scrolls back to its top: with rows this alike, a panel that changed
+ *     silently halfway down its own scroll was easy to mistake for the one you
+ *     were just looking at.
+ *   - **Acting on it does not reload the feed.** Status changes patch the
+ *     cached rows in place (`features/showtimes/showtime-cache`) instead of
+ *     invalidating `["showtimes"]`, which used to refetch every page of every
+ *     feed on every press.
+ *
+ * The header is sticky inside the panel's own scroller, which is why the panel
+ * paints its own card and its own padding rather than taking them from
+ * `FeedLayout` — a sticky header needs a background of its own to pin against.
  */
-import {
-  Badge,
-  Box,
-  Button,
-  CloseButton,
-  Flex,
-  Heading,
-  Link,
-  Stack,
-  Text,
-} from "@chakra-ui/react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { Link as RouterLink } from "@tanstack/react-router"
-import days from "dayjs"
-import type { GoingStatus, ShowtimePublic } from "shared"
+import { Box, Text } from "@chakra-ui/react"
+import { useQuery } from "@tanstack/react-query"
+import { useEffect, useRef } from "react"
+import type { ShowtimePublic } from "shared"
 import { ShowtimesService } from "shared/client"
 
-import { useRequireAccount } from "@/auth/useSession"
-import SeatAvailabilitySection from "@/components/Showtimes/SeatAvailabilitySection"
-import ShowtimeInvites from "@/components/Showtimes/ShowtimeInvites"
-import ShowtimeVisibilityControl from "@/components/Showtimes/ShowtimeVisibilityControl"
+import { useIsSignedIn, useRequireAccount } from "@/auth/useSession"
+import SeatAvailabilityPanel from "@/components/Showtimes/detail/SeatAvailabilityPanel"
+import {
+  PanelIconButton,
+  PanelPressable,
+} from "@/components/Showtimes/detail/PanelChrome"
+import { PanelIcon } from "@/components/Showtimes/detail/panel-icons"
+import ShowtimeAttendance from "@/components/Showtimes/detail/ShowtimeAttendance"
+import ShowtimeDetailHeader from "@/components/Showtimes/detail/ShowtimeDetailHeader"
+import ShowtimeInvitePanel from "@/components/Showtimes/detail/ShowtimeInvitePanel"
+import ShowtimeStatusControl from "@/components/Showtimes/detail/ShowtimeStatusControl"
+import ShowtimeVisibilityPanel from "@/components/Showtimes/detail/ShowtimeVisibilityPanel"
+import { SIDE_PANEL_SCROLLER_ATTRIBUTE } from "@/components/Feed/FeedLayout"
+import { useShowtimeSelection } from "@/features/showtimes/useShowtimeSelection"
 
 type ShowtimeDetailPanelProps = {
   showtime: ShowtimePublic
   onClose: () => void
 }
 
-const STATUS_BUTTONS: {
-  status: GoingStatus
-  label: string
-  palette: string
-}[] = [
-  { status: "GOING", label: "Going", palette: "green" },
-  { status: "INTERESTED", label: "Interested", palette: "orange" },
-  { status: "NOT_GOING", label: "Not going", palette: "gray" },
-]
-
-const ShowtimeDetailPanel = ({
-  showtime,
-  onClose,
-}: ShowtimeDetailPanelProps) => {
+const ShowtimeDetailPanel = ({ showtime, onClose }: ShowtimeDetailPanelProps) => {
   // Read flow: prepare derived values/handlers first, then return component JSX.
-  const queryClient = useQueryClient()
+  const showtimeId = showtime.id
+  const isSignedIn = useIsSignedIn()
   const requireAccount = useRequireAccount()
+  const rootRef = useRef<HTMLDivElement>(null)
 
-  const current = showtime.viewer?.going
-  const datetime = new Date(showtime.datetime)
+  const { status, setStatus } = useShowtimeSelection(showtime)
 
-  const { mutate: setStatus, isPending } = useMutation({
-    mutationFn: (going_status: GoingStatus) =>
-      ShowtimesService.updateShowtimeSelection({
-        showtimeId: showtime.id,
-        requestBody: { going_status },
-      }),
-    onSuccess: () => {
-      // The feed, the agenda and the film page all show this showtime's status.
-      queryClient.invalidateQueries({ queryKey: ["showtimes"] })
-      queryClient.invalidateQueries({ queryKey: ["movies"] })
-    },
+  /**
+   * Friends who are here but whose own visibility hides them from you.
+   *
+   * Worth surfacing because they are the people most worth inviting — you
+   * would otherwise be organising around a screening they are already at. Only
+   * their count reaches the screen: naming them would be exactly the leak
+   * their setting exists to prevent.
+   */
+  const { data: hiddenAttending } = useQuery({
+    queryKey: ["showtimes", "hiddenAttendingFriends", showtimeId],
+    queryFn: () =>
+      ShowtimesService.getHiddenAttendingFriendsForShowtime({ showtimeId }),
+    enabled: isSignedIn,
+    staleTime: 30_000,
   })
 
-  const handleStatus = (status: GoingStatus) => {
-    if (!requireAccount()) return
-    setStatus(status === current ? "NOT_GOING" : status)
-  }
-
-  const friendsGoing = showtime.viewer?.friends_going ?? []
-  const friendsInterested = showtime.viewer?.friends_interested ?? []
+  // Back to the top on each new screening. The panel is docked and the rows it
+  // serves look alike, so a card that swapped its contents while staying
+  // scrolled to the seat map read as "nothing happened".
+  useEffect(() => {
+    rootRef.current
+      ?.closest(`[${SIDE_PANEL_SCROLLER_ATTRIBUTE}]`)
+      ?.scrollTo({ top: 0 })
+  }, [showtimeId])
 
   // Render/output using the state and derived values prepared above.
   return (
-    <Stack gap={4}>
-      <Flex justify="space-between" align="flex-start" gap={2}>
-        <Heading size="md" lineHeight="short">
-          {showtime.movie.title}
-        </Heading>
-        <CloseButton size="sm" onClick={onClose} aria-label="Close" />
-      </Flex>
-
-      <Box>
-        <Text fontWeight="semibold">
-          {days(datetime).format("ddd D MMMM, HH:mm")}
-        </Text>
-        <Text color="fg.muted">{showtime.cinema.name}</Text>
-        {showtime.room ? (
-          <Text color="fg.muted" fontSize="sm">
-            {showtime.room}
-          </Text>
-        ) : null}
+    <Box
+      ref={rootRef}
+      position="relative"
+      bg="bg.panel"
+      borderWidth="1px"
+      borderColor="border"
+      borderRadius="md"
+      boxShadow="sm"
+      overflow="hidden"
+    >
+      <Box
+        position="sticky"
+        top={0}
+        zIndex={1}
+        bg="bg.panel"
+        borderBottomWidth="1px"
+        borderColor="border.muted"
+      >
+        <ShowtimeDetailHeader showtime={showtime} />
+        <Box position="absolute" top="8px" right="6px">
+          <PanelIconButton label="Close" onClick={onClose}>
+            <Box as={PanelIcon.close} boxSize="18px" />
+          </PanelIconButton>
+        </Box>
       </Box>
 
-      {showtime.subtitles?.length ? (
-        <Flex gap={1} wrap="wrap">
-          {showtime.subtitles.map((subtitle) => (
-            <Badge key={subtitle} variant="surface">
-              {subtitle}
-            </Badge>
-          ))}
-        </Flex>
-      ) : null}
+      {/* Keyed on the screening so switching rows replays the entrance rather
+          than mutating one card into another in place. */}
+      <Box key={showtimeId} animation="panel-enter 180ms ease-out">
+        <ShowtimeAttendance
+          showtime={showtime}
+          hiddenCount={hiddenAttending?.friends?.length ?? 0}
+        />
 
-      <Stack gap={2}>
-        <Text fontSize="sm" fontWeight="semibold" color="fg.muted">
-          Your status
-        </Text>
-        <Flex gap={2}>
-          {STATUS_BUTTONS.map((option) => (
-            <Button
-              key={option.status}
-              flex="1"
-              size="sm"
-              loading={isPending}
-              colorPalette={option.palette}
-              variant={current === option.status ? "solid" : "surface"}
-              onClick={() => handleStatus(option.status)}
+        <Box px={3} pb={3}>
+          <ShowtimeStatusControl
+            status={status}
+            onChange={setStatus}
+            hasOpenInvite={Boolean(showtime.viewer?.invited_by?.length)}
+          />
+        </Box>
+
+        <SeatAvailabilityPanel showtime={showtime} />
+
+        {/* One line rather than a panel, in place of the sections a guest does
+            not get: the panel is about this screening, not about signing up. */}
+        {isSignedIn ? null : (
+          <Box px={3} pb={3}>
+            <PanelPressable
+              type="button"
+              onClick={() => requireAccount()}
+              display="flex"
+              alignItems="center"
+              gap="6px"
+              w="100%"
+              px="10px"
+              py="8px"
+              borderRadius="10px"
+              bg="app.blue.primary"
+              color="app.blue.secondary"
+              cursor="pointer"
+              _focusVisible={{
+                outline: "2px solid",
+                outlineColor: "app.tint",
+                outlineOffset: "1px",
+              }}
             >
-              {option.label}
-            </Button>
-          ))}
-        </Flex>
-      </Stack>
+              <Box as={PanelIcon.mailOutline} boxSize="16px" flexShrink={0} aria-hidden />
+              <Text fontSize="13px" fontWeight="600" flex="1" textAlign="left">
+                Log in to invite friends
+              </Text>
+              <Box as={PanelIcon.arrowForward} boxSize="14px" flexShrink={0} aria-hidden />
+            </PanelPressable>
+          </Box>
+        )}
 
-      {friendsGoing.length || friendsInterested.length ? (
-        <Stack gap={1}>
-          <Text fontSize="sm" fontWeight="semibold" color="fg.muted">
-            Friends
-          </Text>
-          {friendsGoing.length ? (
-            <Text fontSize="sm">
-              Going:{" "}
-              {friendsGoing.map((f) => f.display_name ?? "A friend").join(", ")}
-            </Text>
-          ) : null}
-          {friendsInterested.length ? (
-            <Text fontSize="sm">
-              Interested:{" "}
-              {friendsInterested
-                .map((f) => f.display_name ?? "A friend")
-                .join(", ")}
-            </Text>
-          ) : null}
-        </Stack>
-      ) : null}
+        {/* A visibility mode on a screening you are not going to governs
+            nothing, so it only appears once there is a status to hide. */}
+        {status === "GOING" || status === "INTERESTED" ? (
+          <ShowtimeVisibilityPanel showtime={showtime} />
+        ) : null}
 
-      <SeatAvailabilitySection
-        showtimeId={showtime.id}
-        isGoing={current === "GOING"}
-      />
-
-      <ShowtimeInvites showtimeId={showtime.id} />
-
-      {/* A visibility mode on a showtime you are not going to governs nothing,
-          so it only appears once there is a status to hide or show. */}
-      {current === "GOING" || current === "INTERESTED" ? (
-        <ShowtimeVisibilityControl showtimeId={showtime.id} />
-      ) : null}
-
-      {showtime.ticket_link ? (
-        <Button asChild variant="surface" size="sm">
-          <Link
-            href={showtime.ticket_link}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Get ticket
-          </Link>
-        </Button>
-      ) : null}
-
-      <Button asChild variant="ghost" size="sm">
-        <RouterLink
-          to="/movie/$movieId"
-          params={{ movieId: `${showtime.movie.id}` }}
-        >
-          More about this film
-        </RouterLink>
-      </Button>
-    </Stack>
+        <ShowtimeInvitePanel showtime={showtime} />
+      </Box>
+    </Box>
   )
 }
 

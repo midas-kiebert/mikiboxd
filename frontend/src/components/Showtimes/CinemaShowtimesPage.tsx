@@ -34,7 +34,7 @@ const CinemaShowtimesPage = ({ cinemaId }: CinemaShowtimesPageProps) => {
   return (
     <ShowtimeFeedPage
       feed={feed}
-      hasSidebar={false}
+      hasNav={false}
       emptyText="Nothing showing at this cinema right now."
       filteredEmptyText="No showtimes here match these filters."
       header={

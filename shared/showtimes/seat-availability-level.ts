@@ -3,9 +3,10 @@
  * with it.
  *
  * Split out of the app's module so the website says the same thing about the
- * same level. The icon and colour stay platform-specific — the app's are
- * MaterialIcons names against its theme — but the label, the description and
- * the "31 of 312 seats left" wording are the same on both.
+ * same level — the label, the description, the "31 of 312 seats left" wording,
+ * and now the icon and which palette draws it. Only resolving those last two
+ * against a theme is the client's own: the app hands the name to MaterialIcons
+ * and the web to the matching `react-icons/md` component.
  *
  * The cutoffs behind these levels live in the backend and are never recomputed
  * here: the client is handed a level and picks how to draw it.
@@ -15,6 +16,38 @@ import type {
   SeatAvailabilityLevel,
   ShowtimeSeatAvailabilityPublic,
 } from "../client";
+
+/**
+ * The mark a level carries, as a single progression rather than five unrelated
+ * icons: a lone silhouette, then the room filling one more at a time, then a
+ * flame, then a closed sign. Rank is in the shape as well as the colour, which
+ * is what makes the badge readable at the 12px a list row gives it.
+ *
+ * The colours ramp teal → yellow → orange → hot red → deep red, ending on two
+ * reds so the two states that actually cost you a ticket are the loudest marks
+ * on the screen.
+ */
+export type SeatAvailabilityPresentation = {
+  /** A MaterialIcons name; both clients resolve it to their own icon set. */
+  icon: "person" | "people" | "groups" | "whatshot" | "block";
+  /** Which palette trio draws it. */
+  palette: "teal" | "yellow" | "orange" | "redHot" | "redDeep";
+};
+
+const PRESENTATION: Record<string, SeatAvailabilityPresentation> = {
+  some_taken: { icon: "person", palette: "teal" },
+  busy: { icon: "people", palette: "yellow" },
+  very_busy: { icon: "groups", palette: "orange" },
+  last_few: { icon: "whatshot", palette: "redHot" },
+  sold_out: { icon: "block", palette: "redDeep" },
+};
+
+/** Null for a level this build no longer knows, so it draws nothing. */
+export function getSeatAvailabilityPresentation(
+  level: SeatAvailabilityLevel
+): SeatAvailabilityPresentation | null {
+  return PRESENTATION[level] ?? null;
+}
 
 export type SeatAvailabilityCopy = {
   level: SeatAvailabilityLevel;

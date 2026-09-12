@@ -1,11 +1,85 @@
 from datetime import timedelta
 from uuid import uuid4
 
+import pytest
 from pytest_mock import MockerFixture
 
-from app.core.enums import GoingStatus, NotificationChannel, NotificationType
+from app.core.config import settings
+from app.core.enums import (
+    Environment,
+    GoingStatus,
+    NotificationChannel,
+    NotificationType,
+)
 from app.services import push_notifications
 from app.utils import now_amsterdam_naive
+
+
+# ---------------------------------------------------------------------------
+# Settings.push_notifications_enabled + the _send_expo_messages gate
+#
+# A local backend routinely runs against a copy of prod's database, real push
+# tokens included. `_send_expo_messages` is the single choke point every
+# notification type in this module goes through to reach Expo, so gating it
+# there is what stops a local run from pushing real users' phones.
+#
+# The gate is bypassed under TESTING (which the whole suite runs with, per
+# conftest), since push-sending tests elsewhere already isolate themselves by
+# mocking `_send_expo_messages` directly rather than relying on this flag. The
+# "disabled on LOCAL" cases below turn TESTING off to exercise the actual
+# real-local-dev-run scenario the gate targets.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("environment", [Environment.STAGING, Environment.PRODUCTION])
+def test_push_notifications_enabled_off_local(
+    monkeypatch: pytest.MonkeyPatch, environment: Environment
+) -> None:
+    monkeypatch.setattr(settings, "ENVIRONMENT", environment)
+
+    assert settings.push_notifications_enabled is True
+
+
+def test_push_notifications_disabled_on_local(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "ENVIRONMENT", Environment.LOCAL)
+    monkeypatch.setattr(settings, "TESTING", False)
+
+    assert settings.push_notifications_enabled is False
+
+
+def test_send_expo_messages_skips_http_call_when_disabled(
+    monkeypatch: pytest.MonkeyPatch, mocker: MockerFixture
+) -> None:
+    monkeypatch.setattr(settings, "ENVIRONMENT", Environment.LOCAL)
+    monkeypatch.setattr(settings, "TESTING", False)
+    client_cls = mocker.patch("app.services.push_notifications.httpx.Client")
+
+    result = push_notifications._send_expo_messages(
+        [{"to": "ExponentPushToken[abc]", "title": "t", "body": "b"}]
+    )
+
+    assert result == []
+    client_cls.assert_not_called()
+
+
+def test_send_expo_messages_calls_http_when_enabled(
+    monkeypatch: pytest.MonkeyPatch, mocker: MockerFixture
+) -> None:
+    monkeypatch.setattr(settings, "ENVIRONMENT", Environment.STAGING)
+    fake_client = mocker.MagicMock()
+    fake_client.__enter__.return_value = fake_client
+    fake_client.post.return_value.json.return_value = {"data": [{"status": "ok"}]}
+    client_cls = mocker.patch(
+        "app.services.push_notifications.httpx.Client", return_value=fake_client
+    )
+
+    result = push_notifications._send_expo_messages(
+        [{"to": "ExponentPushToken[abc]", "title": "t", "body": "b"}]
+    )
+
+    client_cls.assert_called_once()
+    fake_client.post.assert_called_once()
+    assert result == [{"status": "ok"}]
 
 
 def test_notify_friends_looks_up_both_going_and_interested_recipients(
@@ -525,6 +599,56 @@ def test_notify_user_on_showtime_ping(
     assert sent_payload[0]["data"]["movieId"] == showtime.movie_id
     assert sent_payload[0]["data"]["senderId"] == str(sender_id)
     handle_results.assert_called_once()
+
+
+def test_notify_user_on_showtime_ping_makes_no_http_call_on_local(
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: MockerFixture,
+) -> None:
+    """End-to-end check that the LOCAL gate is effective for a real caller:
+    even with a receiver opted in on the push channel and a real token on
+    file, nothing reaches Expo's HTTP endpoint when running as LOCAL."""
+    monkeypatch.setattr(settings, "ENVIRONMENT", Environment.LOCAL)
+    monkeypatch.setattr(settings, "TESTING", False)
+
+    session = mocker.MagicMock()
+    sender_id = uuid4()
+    receiver_id = uuid4()
+    showtime = mocker.MagicMock()
+    showtime.id = 42
+    showtime.movie_id = 77
+    showtime.datetime = now_amsterdam_naive() + timedelta(days=1)
+    showtime.movie = mocker.MagicMock(title="Memories of Murder")
+
+    sender = mocker.MagicMock(display_name="Alex")
+    receiver = mocker.MagicMock(
+        notify_on_showtime_ping=True,
+        notify_channel_showtime_ping=NotificationChannel.PUSH,
+    )
+    token = mocker.MagicMock(token="ExponentPushToken[abc]")
+
+    mocker.patch(
+        "app.services.push_notifications.showtime_crud.get_showtime_by_id",
+        return_value=showtime,
+    )
+    mocker.patch(
+        "app.services.push_notifications.user_crud.get_user_by_id",
+        side_effect=[sender, receiver],
+    )
+    mocker.patch(
+        "app.services.push_notifications.push_token_crud.get_push_tokens_for_users",
+        return_value=[token],
+    )
+    client_cls = mocker.patch("app.services.push_notifications.httpx.Client")
+
+    push_notifications.notify_user_on_showtime_ping(
+        session=session,
+        sender_id=sender_id,
+        receiver_id=receiver_id,
+        showtime_id=showtime.id,
+    )
+
+    client_cls.assert_not_called()
 
 
 def test_notify_user_on_showtime_ping_uses_email_channel(

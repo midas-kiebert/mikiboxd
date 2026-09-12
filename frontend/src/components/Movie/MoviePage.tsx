@@ -1,5 +1,5 @@
 import Page from "@/components/Common/Page"
-import Sidebar from "@/components/Common/Sidebar"
+import TopNavBar from "@/components/Common/TopNavBar"
 import TopBar from "@/components/Common/TopBar"
 import UserMenu from "@/components/Common/UserMenu"
 import MovieLinks from "@/components/Movie/MovieLinks"
@@ -9,6 +9,7 @@ import MovieTitle from "@/components/Movie/MovieTitle"
 import ReportShowtimeButton from "@/components/Movie/ReportShowtimeButton"
 import { Showtimes } from "@/components/Movie/Showtimes"
 import Filters from "@/components/Movies/Filters"
+import { PAGE_NOTICE_BANNER_OFFSET_CSS } from "@/constants"
 import { Route } from "@/routes/movie.$movieId"
 import type { ShowtimeSelectionTogglePayload } from "@/types"
 import { Box, Center, Flex, Spacer, Spinner } from "@chakra-ui/react"
@@ -454,8 +455,12 @@ const MoviePage = () => {
           </Portal>
         </Dialog.Root>
       )}
+      {/* Outside `_layout`, so this page carries the site chrome itself: the
+          nav in flow under the notice banner, its own bar fixed below that. */}
+      <Box mt={PAGE_NOTICE_BANNER_OFFSET_CSS}>
+        <TopNavBar />
+      </Box>
       <Flex>
-        <Sidebar />
         <TopBar>
           <Filters
             selectedDays={selectedDays}

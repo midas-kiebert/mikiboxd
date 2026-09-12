@@ -1145,6 +1145,16 @@ def send_interested_showtime_reminders(
 
 
 def _send_expo_messages(messages: list[dict]) -> list[dict]:
+    if not settings.push_notifications_enabled:
+        # A local backend runs against a copy of prod's database, tokens and
+        # all — refusing here is what stops a local run from pushing real
+        # users' phones, not any check by the callers above.
+        logger.info(
+            "Push notifications are disabled; skipping delivery to %d recipient(s)",
+            len(messages),
+        )
+        return []
+
     with httpx.Client(timeout=10) as client:
         response = client.post(EXPO_PUSH_URL, json=messages)
         response.raise_for_status()

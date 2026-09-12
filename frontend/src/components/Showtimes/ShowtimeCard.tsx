@@ -7,7 +7,13 @@ import { Flex } from "@chakra-ui/react"
  * selected/status styling from props, so the feed owns which row is open and
  * this file stays free to be restyled. It used to be inert — the web had no way
  * at all to act on a showtime from a list.
+ *
+ * Memoised because the feed owning the selection means every click re-renders
+ * the whole list otherwise, and an infinite-scrolled feed is hundreds of rows
+ * deep by the time anyone clicks anything. Only the two rows whose
+ * `isSelected` actually changed need to re-render.
  */
+import { memo } from "react"
 import type { GoingStatus, ShowtimePublic } from "shared"
 import MoviePoster from "../Movies/MoviePoster"
 import DatetimeCard from "./DatetimeCard"
@@ -27,12 +33,12 @@ const statusBackground = (status: GoingStatus | undefined): string => {
   return "bg.panel"
 }
 
-const ShowtimeCard = ({
+const ShowtimeCard = memo(function ShowtimeCard({
   showtime,
   going_status,
   isSelected = false,
   onSelect,
-}: ShowtimeCardProps) => {
+}: ShowtimeCardProps) {
   // Read flow: prepare derived values/handlers first, then return component JSX.
   const isMobile = useIsMobile()
   const HEIGHT = isMobile ? 115 : 150
@@ -72,6 +78,6 @@ const ShowtimeCard = ({
       <ShowtimeInfoBox showtime={showtime} />
     </Flex>
   )
-}
+})
 
 export default ShowtimeCard

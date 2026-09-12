@@ -28,7 +28,7 @@ type ShowtimeFeedPageProps = {
   header?: ReactNode
   emptyText?: string
   filteredEmptyText?: string
-  hasSidebar?: boolean
+  hasNav?: boolean
   showRail?: boolean
   showPresets?: boolean
   showGroupToggle?: boolean
@@ -39,7 +39,7 @@ const ShowtimeFeedPage = ({
   header,
   emptyText = "No upcoming showtimes.",
   filteredEmptyText = "No showtimes match these filters.",
-  hasSidebar = true,
+  hasNav = true,
   showRail = true,
   showPresets = true,
   showGroupToggle = false,
@@ -74,11 +74,10 @@ const ShowtimeFeedPage = ({
   return (
     <FeedPageShell
       feed={feed}
-      resultCount={feed.showtimes.length}
       header={header}
       emptyText={emptyText}
       filteredEmptyText={filteredEmptyText}
-      hasSidebar={hasSidebar}
+      hasNav={hasNav}
       showRail={showRail}
       showPresets={showPresets}
       showGroupToggle={showGroupToggle}
@@ -100,9 +99,10 @@ const ShowtimeFeedPage = ({
       ))}
 
       {/* On a phone there is no room for a docked panel, so the selection opens
-          under the list until it becomes a drawer. */}
+          under the list until it becomes a drawer. The panel paints its own
+          card, so this only insets it from the screen edges. */}
       {isMobile && selected ? (
-        <Box borderBottomWidth="1px" borderColor="border" p={3}>
+        <Box px={2} py={3}>
           <ShowtimeDetailPanel showtime={selected} onClose={handleClose} />
         </Box>
       ) : null}

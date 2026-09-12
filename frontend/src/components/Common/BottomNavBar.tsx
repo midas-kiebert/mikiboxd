@@ -1,43 +1,91 @@
 /**
  * Shared web layout/presentation component: Bottom Nav Bar.
+ *
+ * The narrow-screen rendering of the app's tab bar, off the same `nav-items.ts`
+ * the top bar uses. It was six bare icons in an order of its own; it is now the
+ * app's tabs, labelled and badged the way the app labels and badges them.
+ *
+ * The tabs live down here on a phone because that is where the app keeps them,
+ * which is why `TopNavBar` drops its own row of them below `md`.
  */
-import { Box, Grid } from "@chakra-ui/react"
+import { Box, Flex, Grid, Icon, Text, useToken } from "@chakra-ui/react"
+import { useQueryClient } from "@tanstack/react-query"
 import { Link as RouterLink } from "@tanstack/react-router"
-import { FaUserFriends } from "react-icons/fa"
-import { FaRegCalendar } from "react-icons/fa6"
-import { FiBell, FiFilm, FiHome, FiSettings } from "react-icons/fi"
 
-const items = [
-  { icon: FiSettings, title: "User Settings", path: "/settings" },
-  { icon: FaRegCalendar, title: "Agenda", path: "/me/showtimes" },
-  { icon: FiHome, title: "Dashboard", path: "/" },
-  { icon: FiFilm, title: "Movies", path: "/movies" },
-  { icon: FaUserFriends, title: "Friends", path: "/friends" },
-  { icon: FiBell, title: "Activity", path: "/pings" },
-]
+import type { MeGetCurrentUserResponse } from "shared"
+
+import {
+  NAV_ICON_SIZE,
+  formatBadgeCount,
+  getNavItems,
+} from "@/components/Common/nav-items"
+import { useNavBadgeCounts } from "@/hooks/useNavBadgeCounts"
 
 const BottomNavBar = () => {
   // Read flow: prepare derived values/handlers first, then return component JSX.
-  const listItems = items.map(({ icon: Icon, title, path }) => (
-    <RouterLink
-      key={title}
-      from="/"
-      search={true}
-      to={path}
-      style={{ width: "100%", height: "100%" }}
-    >
-      <Box
+  const queryClient = useQueryClient()
+  const currentUser = queryClient.getQueryData<MeGetCurrentUserResponse>([
+    "currentUser",
+  ])
+  // Data hooks keep this module synced with backend data and shared cache state.
+  const badgeCounts = useNavBadgeCounts()
+  const [activeColor] = useToken("colors", "app.tabIconSelected")
+
+  const items = getNavItems(!!currentUser?.is_superuser)
+  const listItems = items.map(({ icon, title, path, badge }) => {
+    const count = badge ? badgeCounts[badge] : 0
+
+    return (
+      <RouterLink
         key={title}
-        width="100%"
-        height="100%"
-        display="flex"
-        justifyContent="center"
-        alignItems="center"
+        from="/"
+        search={true}
+        to={path}
+        // Showtimes is "/", which prefix-matches every other route, so only it
+        // needs the exact test; Admin has children that must stay lit.
+        activeOptions={{ exact: path === "/" }}
+        activeProps={{ style: { color: activeColor } }}
+        style={{ width: "100%", height: "100%" }}
       >
-        <Icon size={"20px"} />
-      </Box>
-    </RouterLink>
-  ))
+        <Flex
+          width="100%"
+          height="100%"
+          direction="column"
+          justifyContent="center"
+          alignItems="center"
+          gap={0.5}
+        >
+          {/* The badge hangs off the icon, not the cell, so it sits on the
+              icon's corner the way the app's does. */}
+          <Box position="relative">
+            <Icon as={icon} boxSize={NAV_ICON_SIZE} />
+            {count > 0 ? (
+              <Box
+                position="absolute"
+                top="-5px"
+                right="-8px"
+                minW="18px"
+                h="18px"
+                px="5px"
+                bg="app.notificationBadge"
+                color="white"
+                borderRadius="full"
+                fontSize="10px"
+                fontWeight="bold"
+                lineHeight="18px"
+                textAlign="center"
+              >
+                {formatBadgeCount(count)}
+              </Box>
+            ) : null}
+          </Box>
+          <Text fontSize="10px" lineHeight="1.2">
+            {title}
+          </Text>
+        </Flex>
+      </RouterLink>
+    )
+  })
 
   // Render/output using the state and derived values prepared above.
   return (
@@ -46,14 +94,12 @@ const BottomNavBar = () => {
       bg="bg.subtle"
       bottom={0}
       zIndex={10}
-      // minW="xs"
       width={"100%"}
       h="60px"
-      p={4}
+      px={2}
     >
       <Grid
         templateColumns={`repeat(${items.length}, 1fr)`}
-        gap={4}
         height="100%"
         alignItems="center"
       >

@@ -48,14 +48,12 @@ const MovieFeedPage = ({
   return (
     <FeedPageShell
       feed={feed}
-      resultCount={feed.movies.length}
       header={header}
       emptyText={emptyText}
       filteredEmptyText={filteredEmptyText}
       showPresets={showPresets}
       showGroupToggle={showGroupToggle}
       searchPlaceholder="Search films…"
-      resultNoun="films"
       loadMoreRef={loadMoreRef}
     >
       {feed.movies.map((movie) => (

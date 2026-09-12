@@ -210,7 +210,7 @@ def recover_password(email: str, session: SessionDep) -> Message:
             html_content=email_data.html_content,
             text_content=email_data.text_content,
         )
-    except EmailDeliveryError as e:
+    except (RuntimeError, EmailDeliveryError) as e:
         logger.exception("Password recovery email delivery failed for %s", user.email)
         raise HTTPException(
             status_code=http_status.HTTP_502_BAD_GATEWAY,

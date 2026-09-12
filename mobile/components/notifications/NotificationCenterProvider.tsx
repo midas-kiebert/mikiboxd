@@ -64,9 +64,21 @@ export function NotificationCenterProvider({ children }: { children: ReactNode }
   // The intro is its own blocking walkthrough; opened underneath it (e.g. a
   // bell tap right as the intro takes over), it would otherwise just be
   // sitting there, revealed once the intro ends instead of closed like it was.
+  //
+  // `visible` is part of the condition rather than only the thing being set.
+  // This is a render-phase update, and those are enqueued *without* React's
+  // usual same-value bailout — that check lives on the non-render path, so
+  // `setVisible(false)` re-runs this component even when it is already false.
+  // `isIntroActive` then stays true for the whole walkthrough, so the two
+  // together re-rendered until React gave up with "Too many re-renders", the
+  // instant the intro started. This provider wraps the app, so that took the
+  // whole thing down: every account created since the notification centre
+  // landed, on every device, before the first intro page could paint. The
+  // intro's pending flag is only cleared on skip or finish and lives in
+  // SecureStore, which survives a reinstall, so the install never recovered.
   const isIntroActive = useIsIntroActive();
   const isIntroActiveRef = useRef(isIntroActive);
-  if (isIntroActive) {
+  if (isIntroActive && visible) {
     setVisible(false);
   }
   useEffect(() => {

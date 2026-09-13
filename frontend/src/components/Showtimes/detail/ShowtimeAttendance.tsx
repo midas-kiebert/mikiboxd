@@ -36,6 +36,7 @@ import {
 
 import { useIsSignedIn } from "@/auth/useSession"
 import FriendBadges from "@/components/Showtimes/detail/FriendBadges"
+import ShowtimeInvitePanel from "@/components/Showtimes/detail/ShowtimeInvitePanel"
 import {
   PanelPressable,
   PANEL_ROW_VALUE_SIZE,
@@ -83,9 +84,9 @@ const WatchList = ({ kind, friends, invite }: WatchListProps) => {
         aria-expanded={isOpen}
         display="flex"
         alignItems="center"
-        gap="6px"
+        gap="8px"
         w="100%"
-        py="3px"
+        py="2px"
         bg="transparent"
         cursor="pointer"
         textAlign="left"
@@ -100,12 +101,12 @@ const WatchList = ({ kind, friends, invite }: WatchListProps) => {
           align="center"
           justify="center"
           flexShrink={0}
-          boxSize="20px"
+          boxSize="26px"
           borderRadius="full"
           bg={`app.${copy.palette}.primary`}
           color={`app.${copy.palette}.secondary`}
         >
-          <Box as={WATCH_KIND_ICON[copy.icon]} boxSize="13px" aria-hidden />
+          <Box as={WATCH_KIND_ICON[copy.icon]} boxSize="16px" aria-hidden />
         </Flex>
 
         <Text
@@ -131,7 +132,7 @@ const WatchList = ({ kind, friends, invite }: WatchListProps) => {
       </PanelPressable>
 
       {isOpen ? (
-        <Box pt="2px">
+        <Box pt="6px">
           {friends.map((friend) => {
             const invited = invite?.isInvited(friend.id) ?? false
 
@@ -190,15 +191,9 @@ const WatchList = ({ kind, friends, invite }: WatchListProps) => {
 
 type ShowtimeAttendanceProps = {
   showtime: ShowtimePublic
-  /**
-   * Friends who are here but whose own visibility hides them from you. Only
-   * the number: naming them is exactly the leak their setting exists to
-   * prevent.
-   */
-  hiddenCount?: number
 }
 
-const ShowtimeAttendance = ({ showtime, hiddenCount = 0 }: ShowtimeAttendanceProps) => {
+const ShowtimeAttendance = ({ showtime }: ShowtimeAttendanceProps) => {
   // Read flow: prepare derived values/handlers first, then return component JSX.
   const isSignedIn = useIsSignedIn()
   const viewer = showtime.viewer
@@ -219,15 +214,12 @@ const ShowtimeAttendance = ({ showtime, hiddenCount = 0 }: ShowtimeAttendancePro
 
   const hasAudience =
     going.length + interested.length + beyondGoing.length + beyondInterested.length > 0
-  const hasWatchRows = stillWatchlisted.length > 0 || watched.length > 0
 
   if (!isSignedIn) return null
 
-  const isEmpty = !hasAudience && !hasWatchRows
-
   // Render/output using the state and derived values prepared above.
   return (
-    <Box px={3} pt={1} pb={3}>
+    <Box px={3} pt={4} pb={4}>
       <Box
         borderWidth="1px"
         borderColor="border"
@@ -235,32 +227,25 @@ const ShowtimeAttendance = ({ showtime, hiddenCount = 0 }: ShowtimeAttendancePro
         bg="bg.subtle"
         overflow="hidden"
       >
-        {isEmpty ? (
-          <Box px="8px" py="9px">
-            <Text fontSize="12px" color="fg.subtle" lineHeight="1.4" textAlign="center">
-              No friends are interested in this showtime yet.
-            </Text>
-          </Box>
-        ) : null}
-
-        {hasAudience ? (
-          <Box px="8px" py="7px">
+        {/* The audience always has its own section, so "nobody yet" still
+            reads as an answer when friends have the film on a list below. */}
+        <Box px="12px" py="12px">
+          {hasAudience ? (
             <FriendBadges
               friendsGoing={going}
               friendsInterested={interested}
               friendsOfFriendsGoing={beyondGoing}
               friendsOfFriendsInterested={beyondInterested}
             />
-          </Box>
-        ) : null}
+          ) : (
+            <Text fontSize="13px" color="fg.subtle" lineHeight="1.4" textAlign="center">
+              No friends are interested in this showtime yet.
+            </Text>
+          )}
+        </Box>
 
-        {hasWatchRows ? (
-          <Box
-            px="8px"
-            py="5px"
-            borderTopWidth={hasAudience ? "1px" : 0}
-            borderColor="border.muted"
-          >
+        {stillWatchlisted.length > 0 ? (
+          <Box px="12px" py="7px" borderTopWidth="1px" borderColor="border.muted">
             <WatchList
               kind="watchlisted"
               friends={stillWatchlisted}
@@ -271,19 +256,20 @@ const ShowtimeAttendance = ({ showtime, hiddenCount = 0 }: ShowtimeAttendancePro
                 disabled: isSending,
               }}
             />
+          </Box>
+        ) : null}
+
+        {watched.length > 0 ? (
+          <Box px="12px" py="7px" borderTopWidth="1px" borderColor="border.muted">
             <WatchList kind="watched" friends={watched} />
           </Box>
         ) : null}
-      </Box>
 
-      {hiddenCount > 0 ? (
-        <Text fontSize="11px" color="fg.subtle" lineHeight="1.5" pt="6px">
-          {hiddenCount === 1
-            ? "One friend here keeps their status hidden from you."
-            : `${hiddenCount} friends here keep their status hidden from you.`}{" "}
-          Inviting them shows you to each other.
-        </Text>
-      ) : null}
+        {/* Inviting closes the box rather than the panel: "who would come if I
+            asked" and asking them are one step apart, and down at the foot of
+            the panel the picker opened below the fold where nobody saw it. */}
+        <ShowtimeInvitePanel showtime={showtime} />
+      </Box>
     </Box>
   )
 }

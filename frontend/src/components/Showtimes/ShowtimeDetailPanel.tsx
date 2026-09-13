@@ -37,10 +37,8 @@
  * `FeedLayout` — a sticky header needs a background of its own to pin against.
  */
 import { Box, Text } from "@chakra-ui/react"
-import { useQuery } from "@tanstack/react-query"
 import { useEffect, useRef } from "react"
 import type { ShowtimePublic } from "shared"
-import { ShowtimesService } from "shared/client"
 
 import { useIsSignedIn, useRequireAccount } from "@/auth/useSession"
 import SeatAvailabilityPanel from "@/components/Showtimes/detail/SeatAvailabilityPanel"
@@ -51,7 +49,6 @@ import {
 import { PanelIcon } from "@/components/Showtimes/detail/panel-icons"
 import ShowtimeAttendance from "@/components/Showtimes/detail/ShowtimeAttendance"
 import ShowtimeDetailHeader from "@/components/Showtimes/detail/ShowtimeDetailHeader"
-import ShowtimeInvitePanel from "@/components/Showtimes/detail/ShowtimeInvitePanel"
 import ShowtimeStatusControl from "@/components/Showtimes/detail/ShowtimeStatusControl"
 import ShowtimeVisibilityPanel from "@/components/Showtimes/detail/ShowtimeVisibilityPanel"
 import { SIDE_PANEL_SCROLLER_ATTRIBUTE } from "@/components/Feed/FeedLayout"
@@ -70,22 +67,6 @@ const ShowtimeDetailPanel = ({ showtime, onClose }: ShowtimeDetailPanelProps) =>
   const rootRef = useRef<HTMLDivElement>(null)
 
   const { status, setStatus } = useShowtimeSelection(showtime)
-
-  /**
-   * Friends who are here but whose own visibility hides them from you.
-   *
-   * Worth surfacing because they are the people most worth inviting — you
-   * would otherwise be organising around a screening they are already at. Only
-   * their count reaches the screen: naming them would be exactly the leak
-   * their setting exists to prevent.
-   */
-  const { data: hiddenAttending } = useQuery({
-    queryKey: ["showtimes", "hiddenAttendingFriends", showtimeId],
-    queryFn: () =>
-      ShowtimesService.getHiddenAttendingFriendsForShowtime({ showtimeId }),
-    enabled: isSignedIn,
-    staleTime: 30_000,
-  })
 
   // Back to the top on each new screening. The panel is docked and the rows it
   // serves look alike, so a card that swapped its contents while staying
@@ -127,10 +108,7 @@ const ShowtimeDetailPanel = ({ showtime, onClose }: ShowtimeDetailPanelProps) =>
       {/* Keyed on the screening so switching rows replays the entrance rather
           than mutating one card into another in place. */}
       <Box key={showtimeId} animation="panel-enter 180ms ease-out">
-        <ShowtimeAttendance
-          showtime={showtime}
-          hiddenCount={hiddenAttending?.friends?.length ?? 0}
-        />
+        <ShowtimeAttendance showtime={showtime} />
 
         <Box px={3} pb={3}>
           <ShowtimeStatusControl
@@ -180,7 +158,6 @@ const ShowtimeDetailPanel = ({ showtime, onClose }: ShowtimeDetailPanelProps) =>
           <ShowtimeVisibilityPanel showtime={showtime} />
         ) : null}
 
-        <ShowtimeInvitePanel showtime={showtime} />
       </Box>
     </Box>
   )

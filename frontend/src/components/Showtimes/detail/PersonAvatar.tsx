@@ -30,6 +30,7 @@ import {
   getAvatarPaletteKey,
 } from "shared/users/avatar-color"
 
+import { PanelIcon } from "@/components/Showtimes/detail/panel-icons"
 import { Tooltip } from "@/components/ui/tooltip"
 import { defaultFeedParams } from "@/features/showtimes/feed-params"
 
@@ -95,24 +96,60 @@ export const PersonChip = ({
   trailing?: ReactNode
 }) => (
   <Flex align="center" gap={2} minW={0} py="2px">
-    <Link
-      to="/$userId/showtimes"
-      params={{ userId: user.id }}
-      search={defaultFeedParams}
-      style={{ minWidth: 0, display: "flex", alignItems: "center", gap: "8px", flex: 1 }}
+    {/* A plain name read as a label, not a link. The chevron says "this goes
+        somewhere" before the pointer arrives; the hover band and underline
+        confirm it once it does. */}
+    <Flex
+      asChild
+      align="center"
+      gap="8px"
+      flex="1"
+      minW={0}
+      mx="-4px"
+      px="4px"
+      py="2px"
+      borderRadius="6px"
+      transition="background-color 120ms ease"
+      _hover={{ bg: "bg.muted", "& [data-person-name]": { textDecoration: "underline" } }}
+      _focusVisible={{
+        outline: "2px solid",
+        outlineColor: "app.tint",
+        outlineOffset: "1px",
+      }}
     >
-      <PersonAvatar user={user} />
-      <Box minW={0}>
-        <Text fontSize="13px" fontWeight="500" lineHeight="1.3" truncate>
-          {personName(user)}
-        </Text>
-        {caption ? (
-          <Text fontSize="11px" color="fg.muted" lineHeight="1.3" truncate>
-            {caption}
+      <Link
+        to="/$userId/showtimes"
+        params={{ userId: user.id }}
+        search={defaultFeedParams}
+      >
+        <PersonAvatar user={user} />
+        <Box minW={0}>
+          <Text
+            data-person-name
+            fontSize="13px"
+            fontWeight="600"
+            lineHeight="1.3"
+            textUnderlineOffset="2px"
+            truncate
+          >
+            {personName(user)}
           </Text>
-        ) : null}
-      </Box>
-    </Link>
+          {caption ? (
+            <Text fontSize="11px" color="fg.muted" lineHeight="1.3" truncate>
+              {caption}
+            </Text>
+          ) : null}
+        </Box>
+        <Box
+          as={PanelIcon.chevronRight}
+          boxSize="16px"
+          flexShrink={0}
+          ml="-4px"
+          color="fg.subtle"
+          aria-hidden
+        />
+      </Link>
+    </Flex>
     {trailing ? (
       <Flex align="center" gap="2px" flexShrink={0}>
         {trailing}

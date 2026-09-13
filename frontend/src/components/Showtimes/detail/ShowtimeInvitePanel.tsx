@@ -21,12 +21,16 @@
  * something to show for signing in.
  *
  * Arranged as the app arranges it: an "Invited" list of who you have asked and
- * whether they have looked, then a bar at the foot of the panel holding Share
+ * whether they have looked, then a bar holding Share
  * beside a collapsible "Invite friends". Share is deliberately *not* the app's
  * native share sheet — it copies a signed link to the clipboard, which is the
  * web's own answer and the one kept here on request. The token is server-minted
  * and signed rather than the sender's id, so the receiving end can prove who
  * sent it and the link cannot be forged by swapping an id in the URL.
+ *
+ * Rendered as the last section of the audience box (`ShowtimeAttendance`),
+ * under the watch lists, rather than at the foot of the panel, where the
+ * picker opened below the fold and pressing the button looked like nothing.
  *
  * The sent-pings query and every mutation over it are
  * `features/showtimes/useShowtimeInvites`, not this file's: the watch lists in
@@ -34,7 +38,7 @@
  * invited" would disagree.
  */
 import { Box, Flex, Input, Text } from "@chakra-ui/react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import type { SentShowtimePingPublic, ShowtimePublic } from "shared"
 import { useFetchFriends } from "shared/hooks/useFetchFriends"
 
@@ -53,9 +57,6 @@ import {
 } from "@/components/Showtimes/detail/PersonAvatar"
 import { Tooltip } from "@/components/ui/tooltip"
 import { useShowtimeInvites } from "@/features/showtimes/useShowtimeInvites"
-
-/** Past this many friends the list is worth searching rather than scanning. */
-const SEARCH_THRESHOLD = 8
 
 /** How tall the picker may get before it scrolls inside itself. */
 const PICKER_MAX_HEIGHT = "220px"
@@ -81,6 +82,21 @@ const ShowtimeInvitePanel = ({ showtime }: ShowtimeInvitePanelProps) => {
     setSearch("")
     setChosenIds([])
   }, [showtimeId])
+
+  // Pressing anywhere outside the open picker dismisses it, as any dropdown
+  // does. Pointerdown rather than click, so a drag that starts inside (say,
+  // selecting search text) and ends outside does not count as leaving.
+  const pickerRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!isPicking) return
+    const handlePointerDown = (event: PointerEvent) => {
+      if (pickerRef.current?.contains(event.target as Node)) return
+      setIsPicking(false)
+      setSearch("")
+    }
+    document.addEventListener("pointerdown", handlePointerDown)
+    return () => document.removeEventListener("pointerdown", handlePointerDown)
+  }, [isPicking])
 
   const { data: friends } = useFetchFriends({ enabled: isSignedIn })
 
@@ -141,6 +157,11 @@ const ShowtimeInvitePanel = ({ showtime }: ShowtimeInvitePanelProps) => {
         : [...current, friendId],
     )
 
+  const closePicker = () => {
+    setIsPicking(false)
+    setSearch("")
+  }
+
   /** "Seen" / "Pending" / "Dismissed" — the app's three words for an invite. */
   const inviteStatus = (
     ping: SentShowtimePingPublic,
@@ -153,7 +174,7 @@ const ShowtimeInvitePanel = ({ showtime }: ShowtimeInvitePanelProps) => {
   // Render/output using the state and derived values prepared above.
   return (
     <>
-      <Box px={3} py={2} borderTopWidth="1px" borderColor="border.muted">
+      <Box px="12px" pt="10px" pb="8px" borderTopWidth="1px" borderColor="border.muted">
         <Text
           fontSize="11px"
           fontWeight="700"
@@ -212,133 +233,99 @@ const ShowtimeInvitePanel = ({ showtime }: ShowtimeInvitePanelProps) => {
         )}
       </Box>
 
-      {/* Share is one press and never expands; inviting folds a picker out
-          underneath. Both are tinted blue, the app's coding for an invite. */}
-      <Box px={3} pb={3}>
-        <Flex gap="6px">
-          <PanelPressable
-            type="button"
-            onClick={() => copyInviteLink()}
-            disabled={isBuildingLink}
-            display="flex"
-            alignItems="center"
-            justifyContent="center"
-            gap="6px"
-            px="12px"
-            py="8px"
-            borderRadius="10px"
-            borderWidth="1px"
-            borderColor="app.blue.border"
-            bg="app.blue.primary"
-            color="app.blue.secondary"
-            fontSize="13px"
-            fontWeight="700"
-            cursor={isBuildingLink ? "not-allowed" : "pointer"}
-            opacity={isBuildingLink ? 0.5 : 1}
-            transition="background-color 120ms ease"
-            _focusVisible={{
-              outline: "2px solid",
-              outlineColor: "app.tint",
-              outlineOffset: "1px",
-            }}
-          >
-            {/* A link, not the app's share glyph: this copies a URL rather than
-                handing it to a share sheet, and the icon should say so. */}
-            <Box as={PanelIcon.shareLink} boxSize="16px" aria-hidden />
-            Share
-          </PanelPressable>
-
-          <PanelPressable
-            type="button"
-            onClick={() => setIsPicking((picking) => !picking)}
-            aria-expanded={isPicking}
-            display="flex"
-            alignItems="center"
-            justifyContent="center"
-            gap="6px"
-            flex="1"
-            minW={0}
-            px="12px"
-            py="8px"
-            borderRadius="10px"
-            borderWidth="1px"
-            borderColor="app.blue.border"
-            bg="app.blue.primary"
-            color="app.blue.secondary"
-            fontSize="13px"
-            fontWeight="700"
-            cursor="pointer"
-            transition="background-color 120ms ease"
-            _focusVisible={{
-              outline: "2px solid",
-              outlineColor: "app.tint",
-              outlineOffset: "1px",
-            }}
-          >
-            <Box as={PanelIcon.mailOutline} boxSize="18px" aria-hidden />
-            <Box as="span" truncate>
-              Invite friends
-            </Box>
-            <Box
-              as={PanelIcon.expandMore}
-              boxSize="20px"
-              flexShrink={0}
-              transition="transform 160ms ease"
-              transform={isPicking ? "rotate(180deg)" : "rotate(0deg)"}
-              aria-hidden
-            />
-          </PanelPressable>
-        </Flex>
-
+      {/* Share is one press and never expands. Invite friends opens *into* its
+          own search field: the button becomes the head of the picker, so the
+          thing you pressed and the thing you type in are one control rather
+          than a button with a second search box appearing under it. Both are
+          tinted blue, the app's coding for an invite. */}
+      <Box px="12px" pb="12px">
         {isPicking ? (
           <Box
-            mt="6px"
+            ref={pickerRef}
             borderWidth="1px"
-            borderColor="border"
+            borderColor="app.blue.border"
             borderRadius="10px"
+            bg="bg.panel"
             overflow="hidden"
           >
+            <Flex
+              align="center"
+              gap="8px"
+              pl="12px"
+              pr="4px"
+              py="4px"
+              bg="app.blue.primary"
+              color="app.blue.secondary"
+            >
+              <Box as={PanelIcon.search} boxSize="18px" flexShrink={0} aria-hidden />
+              <Input
+                autoFocus
+                variant="flushed"
+                size="sm"
+                flex="1"
+                minW={0}
+                h="32px"
+                px={0}
+                border="none"
+                bg="transparent"
+                color="fg"
+                fontSize="13px"
+                fontWeight="600"
+                placeholder="Search friends to invite"
+                _placeholder={{ color: "app.blue.secondary", opacity: 0.75 }}
+                value={search}
+                disabled={friends?.length === 0}
+                onChange={(event) => setSearch(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") closePicker()
+                }}
+                aria-label="Search friends to invite"
+                _focusVisible={{ borderColor: "transparent", boxShadow: "none" }}
+              />
+              <PanelPressable
+                type="button"
+                onClick={closePicker}
+                aria-expanded
+                aria-label="Close invite picker"
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                flexShrink={0}
+                boxSize="32px"
+                borderRadius="8px"
+                bg="transparent"
+                color="app.blue.secondary"
+                cursor="pointer"
+                transition="background-color 120ms ease"
+                _hover={{ bg: "blackAlpha.100" }}
+                _focusVisible={{
+                  outline: "2px solid",
+                  outlineColor: "app.tint",
+                  outlineOffset: "-2px",
+                }}
+              >
+                <Box
+                  as={PanelIcon.expandMore}
+                  boxSize="20px"
+                  transform="rotate(180deg)"
+                  aria-hidden
+                />
+              </PanelPressable>
+            </Flex>
+
             {friends?.length === 0 ? (
-              <Box px="10px" py="10px">
+              <Box px="10px" py="10px" borderTopWidth="1px" borderColor="app.blue.border">
                 <PanelEmpty>Add friends to invite them to a screening.</PanelEmpty>
               </Box>
             ) : (
               <>
-                {(friends?.length ?? 0) > SEARCH_THRESHOLD ? (
-                  <Flex
-                    align="center"
-                    gap={2}
-                    px={2}
-                    py="6px"
-                    borderBottomWidth="1px"
-                    borderColor="border.muted"
-                  >
-                    <Box
-                      as={PanelIcon.search}
-                      boxSize="15px"
-                      color="fg.subtle"
-                      flexShrink={0}
-                    />
-                    <Input
-                      autoFocus
-                      variant="flushed"
-                      size="sm"
-                      border="none"
-                      fontSize="13px"
-                      placeholder="Search friends"
-                      value={search}
-                      onChange={(event) => setSearch(event.target.value)}
-                      aria-label="Search friends"
-                      _focusVisible={{ borderColor: "transparent", boxShadow: "none" }}
-                    />
-                  </Flex>
-                ) : null}
-
                 <Box
                   maxH={PICKER_MAX_HEIGHT}
                   overflowY="auto"
                   overscrollBehavior="contain"
                   p="4px"
+                  borderTopWidth="1px"
+                  borderColor="app.blue.border"
                 >
                   {candidates.map((friend) => {
                     const isChosen = chosenIds.includes(friend.id)
@@ -415,28 +402,108 @@ const ShowtimeInvitePanel = ({ showtime }: ShowtimeInvitePanelProps) => {
                         chosenIds.map((friendId) => ({
                           friendId,
                           name: personName(
-                            candidates.find((friend) => friend.id === friendId) ?? {
+                            // All friends, not `candidates`: someone chosen
+                            // before the search changed is filtered out of it.
+                            friends?.find((friend) => friend.id === friendId) ?? {
                               id: friendId,
                               display_name: null,
                             },
                           ),
                         })),
                       )
-                      setIsPicking(false)
                       setChosenIds([])
-                      setSearch("")
+                      closePicker()
                     }}
                   >
                     {chosenIds.length > 1 ? `Invite ${chosenIds.length}` : "Invite"}
                   </PanelActionButton>
-                  <PanelActionButton onClick={() => setIsPicking(false)}>
-                    Cancel
-                  </PanelActionButton>
+                  {/* Its own width, not a share of the row: the full-width Invite
+                      beside it otherwise squeezes "Cancel" into an ellipsis. */}
+                  <Box display="grid" flexShrink={0} minW="88px">
+                    <PanelActionButton onClick={closePicker}>Cancel</PanelActionButton>
+                  </Box>
                 </Flex>
               </>
             )}
           </Box>
-        ) : null}
+        ) : (
+          <Flex gap="6px">
+            <PanelPressable
+              type="button"
+              onClick={() => copyInviteLink()}
+              disabled={isBuildingLink}
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              gap="6px"
+              px="12px"
+              py="8px"
+              borderRadius="10px"
+              borderWidth="1px"
+              borderColor="app.blue.border"
+              bg="app.blue.primary"
+              color="app.blue.secondary"
+              fontSize="13px"
+              fontWeight="700"
+              cursor={isBuildingLink ? "not-allowed" : "pointer"}
+              opacity={isBuildingLink ? 0.5 : 1}
+              transition="background-color 120ms ease"
+              _focusVisible={{
+                outline: "2px solid",
+                outlineColor: "app.tint",
+                outlineOffset: "1px",
+              }}
+            >
+              {/* A link, not the app's share glyph: this copies a URL rather than
+                  handing it to a share sheet, and the icon should say so. */}
+              <Box as={PanelIcon.shareLink} boxSize="16px" aria-hidden />
+              Share
+            </PanelPressable>
+
+            <PanelPressable
+              type="button"
+              onClick={() => setIsPicking(true)}
+              aria-expanded={false}
+              display="flex"
+              alignItems="center"
+              gap="8px"
+              flex="1"
+              minW={0}
+              pl="12px"
+              pr="10px"
+              py="8px"
+              borderRadius="10px"
+              borderWidth="1px"
+              borderColor="app.blue.border"
+              bg="app.blue.primary"
+              color="app.blue.secondary"
+              fontSize="13px"
+              fontWeight="700"
+              cursor="pointer"
+              textAlign="left"
+              transition="background-color 120ms ease"
+              _focusVisible={{
+                outline: "2px solid",
+                outlineColor: "app.tint",
+                outlineOffset: "1px",
+              }}
+            >
+              <Box as={PanelIcon.mailOutline} boxSize="18px" flexShrink={0} aria-hidden />
+              <Box as="span" flex="1" minW={0} truncate>
+                Invite friends
+              </Box>
+              {/* The search glyph previews what pressing does: this opens
+                  into a field you can type a name into. */}
+              <Box
+                as={PanelIcon.search}
+                boxSize="16px"
+                flexShrink={0}
+                opacity={0.8}
+                aria-hidden
+              />
+            </PanelPressable>
+          </Flex>
+        )}
       </Box>
     </>
   )

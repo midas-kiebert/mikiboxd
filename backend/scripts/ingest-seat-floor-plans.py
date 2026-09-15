@@ -20,23 +20,30 @@ into that room's showtimes when it doesn't.
 
 Run unconditionally from `scripts/prestart.sh` on every deploy, same as
 `seed-cities-and-cinemas.py` — but unlike that script this one does real
-outbound requests to five ticketing platforms' sites, so each platform skips
-itself (a single cheap DB count) once any of its cinemas has a plan stored,
+outbound requests to five ticketing platforms' sites, so each cinema skips
+itself (a single cheap DB count) once it has something stored for it,
 rather than re-scraping on every deploy. That skip is what makes "run once"
 true across environments without a manual step: the first deploy after a
-platform is added (dev, then later prod) does its real ingest, and every
-deploy after that is a no-op for it. The guard is drawn per *platform* and
-not per table on purpose — a whole-table count meant every platform added
+cinema is added (dev, then later prod) does its real ingest, and every
+deploy after that is a no-op for it. The guard is drawn per *cinema*, not
+per platform or per table: a whole-table count meant every platform added
 after the first never ran at all anywhere the Eagerly ingest had already
-been, which is what left every Ticketlab cinema without a floor plan. Pass
-`--force` to re-ingest anyway, e.g. after a covered cinema renovates a room:
+been (what left every Ticketlab cinema without a floor plan), and a
+platform-wide count has the same problem one level down — it left a new or
+renamed room permanently unignested at any cinema whose *platform* already
+had a plan somewhere else (e.g. Trianon, on Eagerly once Filmhallen already
+had one). A cinema that genuinely sells every room free-seating never
+yields a real plan, so `_mark_no_floor_plan` records a sentinel row for it
+once its candidates are exhausted — that is what keeps the per-cinema guard
+from re-scraping it on every deploy forever. Pass `--force` to re-ingest
+anyway, e.g. after a covered cinema renovates a room:
 
     python scripts/ingest-seat-floor-plans.py [--force]
 """
 
 import argparse
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from typing import NamedTuple
 
 from sqlmodel import Session, col, func, select
@@ -44,7 +51,6 @@ from sqlmodel import Session, col, func, select
 from app.api.deps import get_db_context
 from app.core.enums import ScreenSide
 from app.crud import cinema as cinema_crud
-from app.models.cinema import Cinema
 from app.models.cinema_room_floor_plan import CinemaRoomFloorPlan
 from app.models.showtime import Showtime
 from app.scraping.seat_availability import (
@@ -161,30 +167,43 @@ def _screen_side(
     return reported or ScreenSide.TOP
 
 
-def _already_ingested(*, session: Session, cinema_keys: Iterable[str]) -> bool:
-    """Whether one platform's cinemas already have their plans stored.
-
-    Per platform rather than per table: the table having *any* rows was the
-    original guard, and it meant every platform added after the first — the
-    Ticketlab, ActiveTickets and Ticketmatic sections below — silently never
-    ran anywhere the Eagerly ingest had already been. Per *cinema* would be
-    the obvious next step and is wrong in the other direction: the rooms that
-    are sold free-seating never yield a plan at all, so their cinemas would
-    re-scrape their whole candidate list on every single deploy, forever.
-    A platform is done as soon as any of its cinemas has a plan.
+def _cinema_done(*, session: Session, cinema_id: int) -> bool:
+    """Whether this cinema already has something stored — a real plan, or the
+    `_mark_no_floor_plan` sentinel recording that it was tried and has none.
     """
     return (
         session.exec(
             select(func.count())
             .select_from(CinemaRoomFloorPlan)
-            .join(Cinema, col(Cinema.id) == col(CinemaRoomFloorPlan.cinema_id))
-            .where(col(Cinema.key).in_(list(cinema_keys)))
+            .where(col(CinemaRoomFloorPlan.cinema_id) == cinema_id)
         ).one()
         > 0
     )
 
 
-def _ingest_eagerly_floor_plans(*, skipped: list[str]) -> int:
+_NO_FLOOR_PLAN_ROOM_KEY = "__no_floor_plan__"
+
+
+def _mark_no_floor_plan(*, session: Session, cinema_id: int) -> None:
+    """Record that this cinema was checked and has no seated room to plan.
+
+    No real room can ever be keyed this way — every platform keys or names
+    its rooms from the booking site itself — so `get_seat_floor_plan` never
+    matches this for an actual showtime. It exists only to make
+    `_cinema_done` true, so a cinema that sells every room free-seating
+    isn't re-scraped on every deploy forever.
+    """
+    _upsert_floor_plan(
+        session=session,
+        cinema_id=cinema_id,
+        room_key=_NO_FLOOR_PLAN_ROOM_KEY,
+        room_name=None,
+        seats=[],
+        screen_side=ScreenSide.TOP,
+    )
+
+
+def _ingest_eagerly_floor_plans(*, skipped: list[str], force: bool = False) -> int:
     """Eagerly rooms, walked from each site's agenda feed."""
     feed_cache: EagerlyFeedCache = {}
     ingested = 0
@@ -195,6 +214,9 @@ def _ingest_eagerly_floor_plans(*, skipped: list[str]) -> int:
             cinema_id = cinema_crud.get_cinema_id_by_key(
                 session=session, key=cinema_key
             )
+            if not force and _cinema_done(session=session, cinema_id=cinema_id):
+                skipped.append(f"{cinema_key} (already ingested)")
+                continue
 
         shows = fetch_eagerly_shows(f"https://{target.site}", feed_cache)
         # Every showtime the feed puts in a room, not just the first: the
@@ -211,9 +233,13 @@ def _ingest_eagerly_floor_plans(*, skipped: list[str]) -> int:
             rooms.setdefault(show.location, []).append((provider_id, show.cinema_id))
 
         if not rooms:
+            with get_db_context() as session:
+                _mark_no_floor_plan(session=session, cinema_id=cinema_id)
+                session.commit()
             skipped.append(f"{cinema_key} (no rooms found in agenda feed)")
             continue
 
+        cinema_ingested = 0
         for room, candidates in rooms.items():
             seats, reason = fetch_eagerly_room_geometry(
                 booking_host=target.booking_host,
@@ -249,50 +275,30 @@ def _ingest_eagerly_floor_plans(*, skipped: list[str]) -> int:
                 f"{selectable} selectable seats"
             )
             ingested += 1
+            cinema_ingested += 1
+
+        if cinema_ingested == 0:
+            with get_db_context() as session:
+                _mark_no_floor_plan(session=session, cinema_id=cinema_id)
+                session.commit()
 
     return ingested
 
 
 class _Platform(NamedTuple):
-    """One ticketing platform's ingest, and which cinemas it covers.
-
-    The cinema keys are only there for the "already done" guard — see
-    `_already_ingested` for why the guard is drawn at the platform.
-    """
+    """One ticketing platform's ingest function."""
 
     name: str
-    cinema_keys: tuple[str, ...]
     ingest: Callable[..., int]
 
 
 def _platforms() -> list[_Platform]:
     return [
-        _Platform(
-            "eagerly",
-            tuple(_NETLOC_TO_CINEMA_KEY.values())
-            + tuple(_SITE_CINEMA_TO_CINEMA_KEY.values()),
-            _ingest_eagerly_floor_plans,
-        ),
-        _Platform(
-            "tricket",
-            tuple(_TRICKET_HOST_TO_CINEMA_KEY.values()),
-            _ingest_tricket_floor_plans,
-        ),
-        _Platform(
-            "ticketlab",
-            tuple(_TICKETLAB_HOST_TO_CINEMA_KEY.values()),
-            _ingest_ticketlab_floor_plans,
-        ),
-        _Platform(
-            "activetickets",
-            tuple(_ACTIVETICKETS_HOST_TO_CINEMA_KEY.values()),
-            _ingest_activetickets_floor_plans,
-        ),
-        _Platform(
-            "ticketmatic",
-            tuple(_TICKETMATIC_HOST_TO_CINEMA_KEY.values()),
-            _ingest_ticketmatic_floor_plans,
-        ),
+        _Platform("eagerly", _ingest_eagerly_floor_plans),
+        _Platform("tricket", _ingest_tricket_floor_plans),
+        _Platform("ticketlab", _ingest_ticketlab_floor_plans),
+        _Platform("activetickets", _ingest_activetickets_floor_plans),
+        _Platform("ticketmatic", _ingest_ticketmatic_floor_plans),
     ]
 
 
@@ -300,16 +306,12 @@ def ingest_floor_plans(*, force: bool = False) -> None:
     ingested = 0
     skipped: list[str] = []
 
+    # The guard lives inside each platform's ingest function, per cinema —
+    # see `_cinema_done` — so every platform is called every run, and a
+    # cinema already done (or already known to have no seated room) is a
+    # single cheap DB count rather than a real re-scrape.
     for platform in _platforms():
-        if not force:
-            with get_db_context() as session:
-                if _already_ingested(session=session, cinema_keys=platform.cinema_keys):
-                    print(
-                        f"{platform.name}: floor plans already stored, skipping "
-                        "(pass --force to re-ingest)."
-                    )
-                    continue
-        ingested += platform.ingest(skipped=skipped)
+        ingested += platform.ingest(skipped=skipped, force=force)
 
     print(f"Done. Ingested {ingested} rooms, skipped {len(skipped)}: {skipped}")
 
@@ -319,7 +321,7 @@ def ingest_floor_plans(*, force: bool = False) -> None:
 _TRICKET_HOST_TO_CINEMA_KEY = {"kassa.cinecenter.nl": "cinecenter"}
 
 
-def _ingest_tricket_floor_plans(*, skipped: list[str]) -> int:
+def _ingest_tricket_floor_plans(*, skipped: list[str], force: bool = False) -> int:
     """Tricket rooms, whose geometry and screen side come off the seat map.
 
     Unlike Eagerly there is no programme feed to walk: the shop only answers
@@ -337,6 +339,9 @@ def _ingest_tricket_floor_plans(*, skipped: list[str]) -> int:
             cinema_id = cinema_crud.get_cinema_id_by_key(
                 session=session, key=cinema_key
             )
+            if not force and _cinema_done(session=session, cinema_id=cinema_id):
+                skipped.append(f"{cinema_key} (already ingested)")
+                continue
             screening_ids = _tricket_screening_ids(session=session, host=host)
 
         done: set[str] = set()
@@ -371,6 +376,10 @@ def _ingest_tricket_floor_plans(*, skipped: list[str]) -> int:
         missing = set(TRICKET_ROOM_NAMES.values()) - done
         if missing:
             skipped.append(f"{cinema_key} (no upcoming screening in {sorted(missing)})")
+        if not done:
+            with get_db_context() as session:
+                _mark_no_floor_plan(session=session, cinema_id=cinema_id)
+                session.commit()
     return ingested
 
 
@@ -403,7 +412,7 @@ _TICKETLAB_HOST_TO_CINEMA_KEY = {
 MAX_TICKETLAB_CANDIDATES_PER_CINEMA = 30
 
 
-def _ingest_ticketlab_floor_plans(*, skipped: list[str]) -> int:
+def _ingest_ticketlab_floor_plans(*, skipped: list[str], force: bool = False) -> int:
     """Ticketlab rooms, whose geometry, name and screen side all come off the
     same checkout page the poller already reads for the seat count.
 
@@ -424,6 +433,9 @@ def _ingest_ticketlab_floor_plans(*, skipped: list[str]) -> int:
             cinema_id = cinema_crud.get_cinema_id_by_key(
                 session=session, key=cinema_key
             )
+            if not force and _cinema_done(session=session, cinema_id=cinema_id):
+                skipped.append(f"{cinema_key} (already ingested)")
+                continue
             links = _ticket_links_for_host(session=session, host=host)
 
         done: set[str] = set()
@@ -459,6 +471,9 @@ def _ingest_ticketlab_floor_plans(*, skipped: list[str]) -> int:
 
         if not done:
             skipped.append(f"{cinema_key} (no seated showtime yielded a plan)")
+            with get_db_context() as session:
+                _mark_no_floor_plan(session=session, cinema_id=cinema_id)
+                session.commit()
     return ingested
 
 
@@ -482,7 +497,7 @@ _ACTIVETICKETS_HOST_TO_CINEMA_KEY = {
 MAX_ACTIVETICKETS_CANDIDATES_PER_CINEMA = 30
 
 
-def _ingest_activetickets_floor_plans(*, skipped: list[str]) -> int:
+def _ingest_activetickets_floor_plans(*, skipped: list[str], force: bool = False) -> int:
     """ActiveTickets rooms, whose geometry, name and screen side (via the
     override/default) all come off the same show page the poller already reads
     for the seat count.
@@ -501,6 +516,9 @@ def _ingest_activetickets_floor_plans(*, skipped: list[str]) -> int:
             cinema_id = cinema_crud.get_cinema_id_by_key(
                 session=session, key=cinema_key
             )
+            if not force and _cinema_done(session=session, cinema_id=cinema_id):
+                skipped.append(f"{cinema_key} (already ingested)")
+                continue
             links = _ticket_links_for_host(session=session, host=host)
 
         done: set[str] = set()
@@ -530,6 +548,9 @@ def _ingest_activetickets_floor_plans(*, skipped: list[str]) -> int:
 
         if not done:
             skipped.append(f"{cinema_key} (no seated showtime yielded a plan)")
+            with get_db_context() as session:
+                _mark_no_floor_plan(session=session, cinema_id=cinema_id)
+                session.commit()
     return ingested
 
 
@@ -547,7 +568,7 @@ _TICKETMATIC_HOST_TO_CINEMA_KEY = {
 MAX_TICKETMATIC_CANDIDATES_PER_CINEMA = 30
 
 
-def _ingest_ticketmatic_floor_plans(*, skipped: list[str]) -> int:
+def _ingest_ticketmatic_floor_plans(*, skipped: list[str], force: bool = False) -> int:
     """Ticketmatic rooms, whose geometry, name and screen side (via the
     override/default) all come off the same performance page the poller
     already reads for the seat count. General-admission rooms never yield a
@@ -563,6 +584,9 @@ def _ingest_ticketmatic_floor_plans(*, skipped: list[str]) -> int:
             cinema_id = cinema_crud.get_cinema_id_by_key(
                 session=session, key=cinema_key
             )
+            if not force and _cinema_done(session=session, cinema_id=cinema_id):
+                skipped.append(f"{cinema_key} (already ingested)")
+                continue
             links = _ticket_links_for_host(session=session, host=host)
 
         done: set[str] = set()
@@ -589,6 +613,9 @@ def _ingest_ticketmatic_floor_plans(*, skipped: list[str]) -> int:
 
         if not done:
             skipped.append(f"{cinema_key} (no seated showtime yielded a plan)")
+            with get_db_context() as session:
+                _mark_no_floor_plan(session=session, cinema_id=cinema_id)
+                session.commit()
     return ingested
 
 
@@ -631,7 +658,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Re-ingest even for platforms whose plans are already stored.",
+        help="Re-ingest even for cinemas whose plans are already stored.",
     )
     args = parser.parse_args()
     ingest_floor_plans(force=args.force)

@@ -181,9 +181,7 @@ class RialtoDePijpScraper(BaseCinemaScraper):
             logger.warning(
                 f"No TMDB id found for {title_query} ({self.cinema_key}), skipping"
             )
-            self.record_unidentified_listing(
-                title=title_query, datetimes=[showtime_dt]
-            )
+            self.record_unidentified_listing(title=title_query, datetimes=[showtime_dt])
             return None
 
         tmdb_details = get_tmdb_movie_details(tmdb_id)

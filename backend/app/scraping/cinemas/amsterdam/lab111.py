@@ -234,7 +234,9 @@ def extract_show_rows(div: Tag, *, title: str) -> list[ShowRow]:
         ticket_link = link["href"]
         if not isinstance(ticket_link, str):
             continue
-        rows.append(ShowRow(datetime=date, ticket_link=ticket_link, room=extract_room(day)))
+        rows.append(
+            ShowRow(datetime=date, ticket_link=ticket_link, room=extract_room(day))
+        )
     return rows
 
 

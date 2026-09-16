@@ -1147,9 +1147,8 @@ def _disambiguate_ambiguous_top_quality(
         )
         remaining_ids.intersection_update({popularity_leader_id})
 
-    own_title_signal = _prefer_own_title_match(
-        candidates=[candidate for candidate in top if candidate.movie.id in remaining_ids]
-    )
+    still_tied = [candidate for candidate in top if candidate.movie.id in remaining_ids]
+    own_title_signal = _prefer_own_title_match(candidates=still_tied)
     if own_title_signal is not None:
         active_signals.append(own_title_signal)
         remaining_ids.intersection_update(own_title_signal["preferred_candidate_ids"])

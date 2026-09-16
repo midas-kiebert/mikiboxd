@@ -48,6 +48,10 @@ from app.services.showtime_title_conflict import (
     record_source_disagreement,
     titles_conflict_match,
 )
+from app.services.unidentified_listings import (
+    UnidentifiedListingMatch,
+    consume_unidentified_listing_matches,
+)
 from app.utils import now_amsterdam_naive
 
 RECAP_EMAIL_TO = "scraper.mikino@midaskiebert.nl"
@@ -1085,6 +1089,20 @@ def _source_disagreement_line(
     )
 
 
+def _unidentified_listing_match_line(
+    match: UnidentifiedListingMatch,
+    cinema_name_by_id: dict[int, str],
+) -> str:
+    cinema_name = cinema_name_by_id.get(match.cinema_id, f"cinema_id={match.cinema_id}")
+    return (
+        f"{match.showtime_datetime.isoformat()} @ {cinema_name} | "
+        f"cinema scraper could not identify: {' / '.join(match.listing_titles)} | "
+        f"cineville: {match.cineville_movie_title} "
+        f"(movie_id={match.cineville_movie_id}, "
+        f"showtime_id={match.cineville_showtime_id}) | kept"
+    )
+
+
 def _drop_source_disagreements_resolved_since(
     disagreements: list[SourceDisagreement],
 ) -> list[SourceDisagreement]:
@@ -1241,6 +1259,7 @@ def _store_run_recap(
     source_disagreements = _drop_source_disagreements_resolved_since(
         _dedupe_source_disagreements(consume_source_disagreements())
     )
+    unidentified_listing_matches = consume_unidentified_listing_matches()
     letterboxd_failure_counts = _letterboxd_failure_breakdown(letterboxd_failures)
     recovered_presence_count = scrape_sync_service.consume_recovered_presence_count()
     pending_miss_details = _load_pending_miss_details()
@@ -1280,6 +1299,10 @@ def _store_run_recap(
         source_disagreement_lines=[
             _source_disagreement_line(disagreement, cinema_name_by_id)
             for disagreement in source_disagreements
+        ],
+        unidentified_listing_match_lines=[
+            _unidentified_listing_match_line(match, cinema_name_by_id)
+            for match in unidentified_listing_matches
         ],
         error_count=len(errors),
         letterboxd_failure_count=len(letterboxd_failures),
@@ -1574,6 +1597,7 @@ def run() -> None:
     # An interrupted run never reaches `_store_run_recap`, so drain here too or
     # its disagreements would be reported against the next run.
     consume_source_disagreements()
+    consume_unidentified_listing_matches()
     before_snapshot = _load_future_snapshot(snapshot_time=started_at)
     summary = ScrapeExecutionSummary()
     tmdb_lookups: list[dict] = []

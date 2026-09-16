@@ -128,6 +128,7 @@ Legend:
 - [ ] `analytics_event.py` — Event create/public response shapes
 - [ ] `analytics_dashboard.py` — Admin analytics-overview response shape
 - [x] `scrape_monitor.py` — Admin scrape-run/recap response shapes (deltas + anomaly flags)
+- [ ] `tmdb_ambiguity.py` — Admin view of a TMDB lookup that tied between several films: the listing metadata it had, the tied candidates, the tie-break that settled it (if any), and the review toggle
 - [ ] `showtime_report.py` — Showtime report create/update/admin-view shapes
 - [ ] `admin.py` — Admin movie/showtime moderation request/response shapes
 - [x] `user_block.py` — Blocked-account list-row shape
@@ -191,6 +192,8 @@ Legend:
 - [x] `sold_out_watch.py` — The one thing that polls a ticket shop hard, and every rule that keeps that affordable: one watch per user, `is_pro` to have one at all, a global `MAX_ACTIVE_WATCHES`, and a cadence that bursts on start, tapers through the middle, and ramps back up for the two hours before the screening when tickets actually get handed back. One-shot — it deletes itself the moment it finds a seat
 - [x] `scrape_monitor.py` — Read-only aggregation of ScrapeRun/ScrapeRecap for the admin scrape monitor (deltas + anomaly flags)
 - [x] `scrape_recap_render.py` — `RecapRunMetrics` + the recap renderer; the daily email is grouped by statistic (combined value, then each run's) instead of stitching per-run reports, and the long diagnostic dumps live in JSON attachments only
+- [ ] `unidentified_listings.py` — Screenings a cinema scraper lists but could not identify (no TMDB match). Scrapers record them through `BaseCinemaScraper.record_unidentified_listing`; after each cinema scraper run `find_cineville_matches` finds the Cineville showtimes at the same cinema and minute, which the trusted-scraper cleanup then leaves alone and the recap reports. Added after LAB111's Fahrenheit 9/11 showtimes were deleted and re-created every run
+- [ ] `tmdb_ambiguities.py` — Lists and marks reviewed the lookup-cache rows the matcher flagged as a tie between several very-good candidates (`TmdbLookupCache.ambiguity_json`), for the admin Scrapes page
 - [x] `showtime_title_conflict.py` — Recognizing the same screening listed by Cineville and a cinema scraper under near-identical titles; used both to stop the duplicate being inserted (`upsert_showtime`) and to clean up existing ones (`runner._delete_cineville_title_conflicts`). Also collects the resulting `SourceDisagreement`s, which the recap reports as TMDB matches to review
 - [x] `moderation.py` — Blocking (a teardown of friendship/requests/invites + visibility rebuild, not a flag) and reporting another user, together — App Store guideline 1.2. Reporting blocks by default; the two are still separate rows so unblocking never withdraws a report. Mails the operator on every new report, best-effort
 
@@ -234,7 +237,7 @@ Legend:
 - [ ] `runner.py` — Main scraping orchestrator ⚠️ Very large (2042 LOC) — needs splitting
 - [ ] `scrape.py` — Executes a single scraper and stores results
 - [x] `cineville_client.py` — Shared Cineville POST helper with 429/5xx retry + backoff
-- [ ] `base_cinema_scraper.py` — Abstract base class for cinema scrapers ⚠️ Too thin (18 LOC)
+- [ ] `base_cinema_scraper.py` — Abstract base class for cinema scrapers; `record_unidentified_listing` is how every scraper reports the screenings of a film it skipped for want of a TMDB match
 - [ ] `date_conversion.py` — Date/time parsing helpers for scrapers
 - [ ] `get_movies.py` — Fetches movies from the DB for enrichment
 - [ ] `get_showtimes.py` — Fetches showtimes from the DB for enrichment
@@ -316,6 +319,9 @@ Legend:
 - [x] `tests/crud/test_showtime_hidden_attending_friends.py` — The friends who are already visibly attending but would lose sight of the actor's status when it goes INVITED_ONLY — the set `InviteBeforePrivateDialog` offers to invite
 - [x] `tests/services/test_moderation_visibility_rebuild.py` — Blocking and unblocking rebuild the effective-visibility cache for both users' showtimes, so a block takes a status out of the other person's feed immediately instead of at the next write
 - [x] `tests/services/test_default_visibility_apply.py` — Switching the account default with and without applying it to showtimes already selected: "new showtimes only" pins the mode each going/interested showtime was running under so the default moves out from under it, unselected showtimes still take the new default, an omitted flag keeps the old apply-to-everything behaviour, and explicit per-showtime choices are untouched either way, plus the `has_selected_showtimes` flag the screen skips the prompt on
+- [ ] `tests/services/test_unidentified_listings.py` — A Cineville showtime at the same cinema and minute as a listing the cinema scraper couldn't identify is matched (active, upcoming, that cinema only; same-minute titles combined), exempt from the trusted-scraper cleanup, and reported with the skipped title
+- [ ] `tests/scraping/test_unidentified_listing_recording.py` — LAB111 and the generic Eagerly scraper record every screening time of a film they skip for want of a TMDB match (Eagerly only its own venue's)
+- [ ] `tests/services/test_tmdb_ambiguities.py` — Tied lookups listed newest first until reviewed, reopenable, only rows with a tie reviewable, and a correction through the TMDB cache tool counts as reviewed
 - [ ] `tests/fixtures/` — Test factories and shared fixtures
 - [ ] Add tests for `services/me.py`
 - [ ] Add tests for `services/showtimes.py` (visibility logic)
@@ -463,6 +469,7 @@ Legend:
 - [ ] `AdminMovies.tsx` — Movie-record edit form + TMDB lookup-cache override form
 - [ ] `AdminShowtimes.tsx` — Showtime search, inline edit, delete
 - [ ] `AdminReports.tsx` — Showtime-report triage (resolve/dismiss)
+- [ ] `TmdbAmbiguities.tsx` — TMDB lookups that tied between several films, on the Scrapes page (with a count notice on the overview): the tied candidates, which one was picked and by what, and mark-reviewed / correct-match actions
 
 ---
 

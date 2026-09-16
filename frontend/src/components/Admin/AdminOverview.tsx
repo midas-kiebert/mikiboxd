@@ -15,6 +15,7 @@ import { useQuery } from "@tanstack/react-query"
 import { Link } from "@tanstack/react-router"
 
 import { AdminService } from "shared"
+import { TMDB_AMBIGUITIES_QUERY_KEY } from "./TmdbAmbiguities"
 
 const AdminNav = () => (
   <Stack direction="row" gap={2} mb={6}>
@@ -33,6 +34,24 @@ const AdminNav = () => (
   </Stack>
 )
 
+const TmdbAmbiguityNotice = () => {
+  const { data: ambiguities } = useQuery({
+    queryKey: TMDB_AMBIGUITIES_QUERY_KEY,
+    queryFn: () => AdminService.listTmdbAmbiguities(),
+  })
+  if (!ambiguities || ambiguities.length === 0) return null
+  return (
+    <Box borderWidth="1px" borderColor="orange.muted" bg="orange.subtle" borderRadius="md" p={3} mb={6}>
+      <Text>
+        {ambiguities.length === 1
+          ? "1 TMDB lookup matched several films equally well."
+          : `${ambiguities.length} TMDB lookups matched several films equally well.`}{" "}
+        <Link to="/admin/scrapes">Review them on the Scrapes page</Link>
+      </Text>
+    </Box>
+  )
+}
+
 const AdminOverview = () => {
   const { data: overview, isLoading } = useQuery({
     queryKey: ["admin", "analytics-overview"],
@@ -43,6 +62,7 @@ const AdminOverview = () => {
     return (
       <Box>
         <AdminNav />
+        <TmdbAmbiguityNotice />
         <Text>Loading analytics…</Text>
       </Box>
     )
@@ -60,6 +80,7 @@ const AdminOverview = () => {
   return (
     <Box>
       <AdminNav />
+      <TmdbAmbiguityNotice />
       <Heading size="md" mb={4}>
         Last {overview.window_days} days
       </Heading>

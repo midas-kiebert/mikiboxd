@@ -181,6 +181,7 @@ class RialtoDePijpScraper(BaseCinemaScraper):
             logger.warning(
                 f"No TMDB id found for {title_query} ({self.cinema_key}), skipping"
             )
+            self.record_unidentified_listing(title=title_query, datetimes=[showtime_dt])
             return None
 
         tmdb_details = get_tmdb_movie_details(tmdb_id)
@@ -396,6 +397,9 @@ class RialtoVUScraper(BaseCinemaScraper):
         spoken_languages = split_names(fields.get("Taal")) or None
         subtitles = parse_subtitle_label(fields.get("Ondertiteling"))
         duration = parse_minutes(fields.get("Speelduur"))
+        performances = self._parse_performances(
+            soup=soup, path=path, title_query=title_query
+        )
 
         tmdb_id = find_tmdb_id(
             title_query=title_query,
@@ -407,6 +411,10 @@ class RialtoVUScraper(BaseCinemaScraper):
         if tmdb_id is None:
             logger.warning(
                 f"No TMDB id found for {title_query} ({self.cinema_key}), skipping"
+            )
+            self.record_unidentified_listing(
+                title=title_query,
+                datetimes=[showtime_dt for _, showtime_dt in performances],
             )
             return None
 
@@ -454,6 +462,29 @@ class RialtoVUScraper(BaseCinemaScraper):
             ),
         )
 
+        # The spec list describes the performance this page was opened for, so
+        # the room may only be attached to that one — the other options in the
+        # dropdown are different performances and can be in a different room.
+        page_room = normalize_room(select_course_value(soup, "Ruimte"))
+
+        showtimes = [
+            ShowtimeCreate(
+                movie_id=movie.id,
+                tmdb_cache_id=movie.tmdb_cache_id,
+                datetime=showtime_dt,
+                cinema_id=self.cinema_id,
+                ticket_link=f"{self.BASE_URL}{value}",
+                room=page_room if value == path else None,
+                subtitles=subtitles,
+            )
+            for value, showtime_dt in performances
+        ]
+        return movie, showtimes
+
+    def _parse_performances(
+        self, *, soup: BeautifulSoup, path: str, title_query: str
+    ) -> list[tuple[str, datetime]]:
+        """Every performance on a film page, as (dropdown value, start time)."""
         # A film with only one performance renders "Datum / Tijd" as a plain
         # value (no <select>); fall back to the date embedded in this page's
         # own URL in that case.
@@ -465,12 +496,7 @@ class RialtoVUScraper(BaseCinemaScraper):
             if isinstance(value := option.get("value"), str)
         ] or [path]
 
-        # The spec list describes the performance this page was opened for, so
-        # the room may only be attached to that one — the other options in the
-        # dropdown are different performances and can be in a different room.
-        page_room = normalize_room(select_course_value(soup, "Ruimte"))
-
-        showtimes: list[ShowtimeCreate] = []
+        performances: list[tuple[str, datetime]] = []
         for value in option_values:
             match = self._DATE_SUFFIX_RE.search(value)
             if not match:
@@ -483,18 +509,8 @@ class RialtoVUScraper(BaseCinemaScraper):
                     f"Could not parse Rialto VU showtime '{value}' for {title_query}, skipping"
                 )
                 continue
-            showtimes.append(
-                ShowtimeCreate(
-                    movie_id=movie.id,
-                    tmdb_cache_id=movie.tmdb_cache_id,
-                    datetime=showtime_dt,
-                    cinema_id=self.cinema_id,
-                    ticket_link=f"{self.BASE_URL}{value}",
-                    room=page_room if value == path else None,
-                    subtitles=subtitles,
-                )
-            )
-        return movie, showtimes
+            performances.append((value, showtime_dt))
+        return performances
 
     def scrape(self) -> list[tuple[str, int]]:
         assert self.cinema_id is not None

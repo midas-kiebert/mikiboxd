@@ -30,5 +30,11 @@ class TmdbLookupCache(SQLModel, table=True):
     # Set when an admin fixed this row by hand. Automated lookups must never
     # overwrite it, and it is what a drifted payload falls back to.
     is_manual_override: bool = Field(default=False)
+    # Set when the lookup found several films matching the listing equally well
+    # (see `app.scraping.tmdb.TmdbAmbiguity`): JSON with the tied candidates and
+    # whichever tie-break settled it, if any. The admin dashboard lists these
+    # until someone marks them reviewed.
+    ambiguity_json: str | None = None
+    ambiguity_reviewed_at: dt.datetime | None = None
     created_at: dt.datetime = Field(index=True)
     updated_at: dt.datetime = Field(index=True)

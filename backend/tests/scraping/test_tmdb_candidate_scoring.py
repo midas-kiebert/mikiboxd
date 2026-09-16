@@ -755,3 +755,274 @@ def test_exact_year_signal_stays_inactive_without_a_query_year() -> None:
     assert result.tmdb_id is None
     assert result.decision is not None
     assert result.decision.get("reason") == "ambiguous_top_quality"
+
+
+def _fahrenheit_candidates() -> tuple[
+    list[PreEnrichmentTmdbMovieCandidate],
+    dict[int, tmdb.TmdbMovieDetails],
+]:
+    """LAB111's "Fahrenheit 9/11" listing, as TMDB answered it in September 2026.
+
+    LAB111 gives Michael Moore as director and actor but no year or runtime.
+    Moore directs and appears in both documentaries, and TMDB lists
+    "Fahrenheit 9/11" among *Fahrenheit 11/9*'s alternative titles, so after the
+    alias rescore every signal the listing carries ties the two.
+    """
+    fahrenheit_911 = PreEnrichmentTmdbMovieCandidate(
+        id=1777,
+        title="Fahrenheit 9/11",
+        original_title="Fahrenheit 9/11",
+        release_year=2004,
+        original_language="en",
+        popularity=3.3308,
+        source_buckets={"searched", "directed", "acted"},
+    )
+    fahrenheit_119 = PreEnrichmentTmdbMovieCandidate(
+        id=532908,
+        title="Fahrenheit 11/9",
+        original_title="Fahrenheit 11/9",
+        release_year=2018,
+        original_language="en",
+        popularity=2.2551,
+        source_buckets={"searched", "directed", "acted"},
+    )
+    details_by_id = {
+        1777: tmdb.TmdbMovieDetails(
+            title="Fahrenheit 9/11",
+            original_title="Fahrenheit 9/11",
+            release_year=2004,
+            directors=["Michael Moore"],
+            poster_url=None,
+            original_language="en",
+            spoken_languages=["en", "fa"],
+            runtime_minutes=123,
+            cast_names=["Michael Moore", "John Conyers", "Abdul Henderson"],
+            genre_ids=[99],
+            alternative_titles=["Fahrenheit 9-11", "Fahrenheit 911"],
+        ),
+        532908: tmdb.TmdbMovieDetails(
+            title="Fahrenheit 11/9",
+            original_title="Fahrenheit 11/9",
+            release_year=2018,
+            directors=["Michael Moore"],
+            poster_url=None,
+            original_language="en",
+            spoken_languages=["en"],
+            runtime_minutes=128,
+            cast_names=["Michael Moore", "Alexandria Ocasio-Cortez"],
+            genre_ids=[99],
+            alternative_titles=["Fahrenheit 11-9", "Fahrenheit 9/11"],
+        ),
+    }
+    return [fahrenheit_911, fahrenheit_119], details_by_id
+
+
+def test_alias_only_title_match_loses_the_tie_to_the_films_own_title() -> None:
+    """Every other signal ties the two Michael Moore documentaries, which used to
+    reject the lookup — and a trusted cinema scraper then deleted Cineville's
+    correct showtimes every run. The film whose own title matches wins."""
+    candidate_pool, details_by_id = _fahrenheit_candidates()
+
+    result = _resolve_with_enrichment(
+        title_query="fahrenheit 9/11",
+        year=None,
+        director_names=["Michael Moore"],
+        actor_names=["Michael Moore"],
+        candidate_pool=candidate_pool,
+        details_by_id=details_by_id,
+    )
+
+    assert result.tmdb_id == 1777
+    assert result.decision is not None
+    assert result.decision["reason"] == "ambiguous_top_quality_disambiguated"
+    assert [
+        signal["signal"]
+        for signal in result.decision["disambiguation"]["active_signals"]
+    ] == ["prefer_own_title_match"]
+
+
+def test_enrichment_keeps_the_own_title_score_an_alias_raised() -> None:
+    candidate_pool, details_by_id = _fahrenheit_candidates()
+    pre_candidates = tmdb.run_pre_enrichment_phase(
+        title_query="fahrenheit 9/11",
+        title_variants=["fahrenheit 9/11"],
+        candidate_pool=candidate_pool,
+        year=None,
+        spoken_languages=[],
+    )
+
+    enriched, _, _ = tmdb.apply_enrichment_to_candidates(
+        pre_candidates=pre_candidates,
+        title_variants=["fahrenheit 9/11"],
+        details_by_id=dict(details_by_id),
+        query_duration_minutes=None,
+        spoken_languages=[],
+        director_names=["Michael Moore"],
+        actor_names=["Michael Moore"],
+    )
+
+    post_by_id = {candidate.movie.id: candidate for candidate in enriched}
+    assert post_by_id[532908].title_quality == tmdb.EXCELLENT
+    assert post_by_id[532908].effective_own_title_quality() < tmdb.EXCELLENT
+    assert post_by_id[1777].effective_own_title_quality() == tmdb.EXCELLENT
+
+
+def _tied_title_candidate(
+    *,
+    movie_id: int,
+    own_title_quality: tmdb.Quality | None,
+    year_quality: tmdb.Quality = tmdb.NONE,
+) -> tmdb.CandidateQuality:
+    return tmdb.CandidateQuality(
+        movie=PreEnrichmentTmdbMovieCandidate(
+            id=movie_id,
+            title=f"Film {movie_id}",
+            original_title=None,
+            release_year=2000,
+            original_language="en",
+            popularity=1.0,
+            source_buckets={"searched", "directed", "acted"},
+        ),
+        source_quality=tmdb.EXCELLENT,
+        title_quality=tmdb.EXCELLENT,
+        year_quality=year_quality,
+        language_quality=tmdb.NONE,
+        quality=tmdb.EXCELLENT,
+        own_title_quality=own_title_quality,
+    )
+
+
+def test_own_title_tie_break_never_overrules_another_signal() -> None:
+    """The exact year already points at the alias-only candidate; the own-title
+    rule only narrows what is still tied, so it must not flip that."""
+    result = tmdb.pick_tmdb_result(
+        candidates=[
+            _tied_title_candidate(
+                movie_id=920, own_title_quality=tmdb.EXCELLENT, year_quality=tmdb.DECENT
+            ),
+            _tied_title_candidate(
+                movie_id=921, own_title_quality=tmdb.GOOD, year_quality=tmdb.GOOD
+            ),
+        ],
+        reason="post_enrichment_quality_resolution",
+        details_by_id={920: None, 921: None},
+        enrichment_by_id={},
+    )
+
+    assert result.tmdb_id == 921
+    assert result.decision is not None
+    assert [
+        signal["signal"]
+        for signal in result.decision["disambiguation"]["active_signals"]
+    ] == ["prefer_exact_year"]
+
+
+def test_own_title_tie_break_stays_inactive_when_every_title_is_its_own() -> None:
+    result = tmdb.pick_tmdb_result(
+        candidates=[
+            _tied_title_candidate(movie_id=930, own_title_quality=None),
+            _tied_title_candidate(movie_id=931, own_title_quality=tmdb.EXCELLENT),
+        ],
+        reason="post_enrichment_quality_resolution",
+        details_by_id={930: None, 931: None},
+        enrichment_by_id={},
+    )
+
+    assert result.tmdb_id is None
+    assert result.decision is not None
+    assert result.decision["reason"] == "ambiguous_top_quality"
+
+
+def test_a_tie_that_a_signal_settled_is_still_reported_as_ambiguous() -> None:
+    """Even when a tie-break picks a film, the listing alone could not tell the
+    candidates apart — that is what the admin dashboard wants to hear about."""
+    candidate_pool, details_by_id = _fahrenheit_candidates()
+
+    result = _resolve_with_enrichment(
+        title_query="fahrenheit 9/11",
+        year=None,
+        director_names=["Michael Moore"],
+        actor_names=["Michael Moore"],
+        candidate_pool=candidate_pool,
+        details_by_id=details_by_id,
+    )
+
+    assert result.ambiguity is not None
+    assert result.ambiguity.quality == tmdb.EXCELLENT
+    assert {candidate.tmdb_id for candidate in result.ambiguity.candidates} == {
+        1777,
+        532908,
+    }
+    assert result.ambiguity.resolved_by == ("prefer_own_title_match",)
+
+
+def test_a_rejected_tie_is_reported_with_no_resolving_signal() -> None:
+    result = tmdb.pick_tmdb_result(
+        candidates=[
+            _tied_title_candidate(movie_id=940, own_title_quality=None),
+            _tied_title_candidate(movie_id=941, own_title_quality=None),
+        ],
+        reason="post_enrichment_quality_resolution",
+        details_by_id={940: None, 941: None},
+        enrichment_by_id={},
+    )
+
+    assert result.tmdb_id is None
+    assert result.ambiguity is not None
+    assert result.ambiguity.resolved_by == ()
+    assert result.ambiguity.to_payload()["candidates"] == [
+        {"tmdb_id": 940, "title": "Film 940", "release_year": 2000},
+        {"tmdb_id": 941, "title": "Film 941", "release_year": 2000},
+    ]
+
+
+def test_a_tie_the_title_settles_is_not_reported() -> None:
+    manhattan = _tied_title_candidate(movie_id=960, own_title_quality=None)
+    murder_mystery = tmdb.CandidateQuality(
+        movie=PreEnrichmentTmdbMovieCandidate(
+            id=961,
+            title="Film 961",
+            original_title=None,
+            release_year=2000,
+            original_language="en",
+            popularity=1.0,
+            source_buckets={"directed", "acted"},
+        ),
+        source_quality=tmdb.GOOD,
+        title_quality=tmdb.GOOD,
+        year_quality=tmdb.NONE,
+        language_quality=tmdb.NONE,
+        quality=tmdb.EXCELLENT,
+    )
+
+    result = tmdb.pick_tmdb_result(
+        candidates=[manhattan, murder_mystery],
+        reason="post_enrichment_quality_resolution",
+        details_by_id={},
+        enrichment_by_id={},
+    )
+
+    assert result.tmdb_id == 960
+    assert result.ambiguity is None
+
+
+def test_a_tie_below_excellent_is_not_reported() -> None:
+    result = tmdb.pick_tmdb_result(
+        candidates=[
+            _candidate_quality(movie_id=950, title="Film 950", popularity=1.0),
+            _candidate_quality(movie_id=951, title="Film 951", popularity=1.0),
+        ],
+        reason="post_enrichment_quality_resolution",
+        details_by_id={950: None, 951: None},
+        enrichment_by_id={},
+    )
+
+    assert result.ambiguity is None
+
+
+def test_lookup_payload_version_was_bumped_for_the_own_title_tie_break() -> None:
+    """Rejected ties are cached like any other answer; without a bump the
+    Fahrenheit 9/11 lookup keeps returning its cached "no match" forever."""
+    from app.scraping.tmdb_config import TMDB_LOOKUP_PAYLOAD_VERSION
+
+    assert TMDB_LOOKUP_PAYLOAD_VERSION >= 16

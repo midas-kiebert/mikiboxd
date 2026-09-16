@@ -297,6 +297,9 @@ class FCHyenaScraper(BaseCinemaScraper):
         year = int(film.year) if film.year and film.year.isdigit() else None
         if year is None:
             year = parse_year_hint_from_title(film.title)
+        # Fetched before the lookup so a film that can't be identified still
+        # reports when it plays.
+        show_slots = fetch_show_slots(film.production_id)
 
         tmdb_id = find_tmdb_id(
             title_query=title_query,
@@ -306,6 +309,10 @@ class FCHyenaScraper(BaseCinemaScraper):
         )
         if tmdb_id is None:
             logger.warning(f"No TMDB id found for {title_query}, skipping")
+            self.record_unidentified_listing(
+                title=title_query,
+                datetimes=[dt for dt, _ in show_slots],
+            )
             return None
 
         tmdb_details = get_tmdb_movie_details(tmdb_id)
@@ -349,29 +356,17 @@ class FCHyenaScraper(BaseCinemaScraper):
             ),
         )
 
-        showtimes_url = (
-            "https://tickets.fchyena.nl/fchyena/nl/flow_configs/1/z_events_list"
-            f"?production_id={film.production_id}"
-        )
-        showtimes_response = requests.get(showtimes_url, timeout=30)
-        showtimes_response.raise_for_status()
-        showtimes_soup = BeautifulSoup(showtimes_response.text, "html.parser")
-        rows = showtimes_soup.find_all("tr")
-        showtimes: list[ShowtimeCreate] = []
-        for row in rows:
-            if not isinstance(row, Tag):
-                continue
-            dt, ticket_link = parse_showtime(row)
-            showtimes.append(
-                ShowtimeCreate(
-                    movie_id=movie.id,
-                    tmdb_cache_id=movie.tmdb_cache_id,
-                    datetime=dt,
-                    cinema_id=self.cinema_id,
-                    ticket_link=ticket_link,
-                    subtitles=subtitles,
-                )
+        showtimes = [
+            ShowtimeCreate(
+                movie_id=movie.id,
+                tmdb_cache_id=movie.tmdb_cache_id,
+                datetime=dt,
+                cinema_id=self.cinema_id,
+                ticket_link=ticket_link,
+                subtitles=subtitles,
             )
+            for dt, ticket_link in show_slots
+        ]
         return movie, showtimes
 
     def scrape(self) -> list[tuple[str, int]]:
@@ -421,6 +416,22 @@ class FCHyenaScraper(BaseCinemaScraper):
                     observed_presences.append((source_event_key, showtime.id))
             session.commit()
         return observed_presences
+
+
+def fetch_show_slots(production_id: str) -> list[tuple[datetime, str]]:
+    """Every screening of one production, as (start time, ticket link)."""
+    showtimes_url = (
+        "https://tickets.fchyena.nl/fchyena/nl/flow_configs/1/z_events_list"
+        f"?production_id={production_id}"
+    )
+    showtimes_response = requests.get(showtimes_url, timeout=30)
+    showtimes_response.raise_for_status()
+    showtimes_soup = BeautifulSoup(showtimes_response.text, "html.parser")
+    return [
+        parse_showtime(row)
+        for row in showtimes_soup.find_all("tr")
+        if isinstance(row, Tag)
+    ]
 
 
 def parse_showtime(row: Tag) -> tuple[datetime, str]:

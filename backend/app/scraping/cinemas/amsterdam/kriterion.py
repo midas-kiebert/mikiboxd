@@ -174,9 +174,12 @@ class KriterionScraper(BaseCinemaScraper):
         showtimes: list[ShowtimeCreate] = []
         for show in shows:
             movie = movie_cache.get(show.production_id)
-            if movie is None:
-                continue
             start_datetime = parser.parse(show.start_date).replace(tzinfo=None)
+            if movie is None:
+                self.record_unidentified_listing(
+                    title=clean_title(show.name), datetimes=[start_datetime]
+                )
+                continue
             ticket_link = TICKET_URL_TEMPLATE.format(id=show.id)
             subtitles = parse_languages(show.subtitle_languages)
             if subtitles is None:

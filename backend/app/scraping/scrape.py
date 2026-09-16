@@ -44,6 +44,7 @@ from app.scraping.trusted_scrapers import TRUSTED_SCRAPERS
 from app.services import movies as movies_service
 from app.services import scrape_sync as scrape_sync_service
 from app.services import showtimes as showtimes_service
+from app.services import unidentified_listings as unidentified_listings_service
 from app.utils import clean_title, now_amsterdam_naive, to_amsterdam_time
 
 from . import get_movies, get_showtimes
@@ -706,6 +707,9 @@ async def _run_single_cinema_scraper(
             )
         if cinema_id is not None:
             source_stream = f"cinema_scraper:{cinema_id}"
+            # Drop leftovers from an earlier run of this scraper that raised
+            # before its unidentified listings were read.
+            unidentified_listings_service.consume_unidentified_listings(cinema_id)
 
         observed_pairs = await asyncio.to_thread(scraper.scrape)
         observed = [
@@ -727,12 +731,37 @@ async def _run_single_cinema_scraper(
             f"Cinema scraper sync for {source_stream}: status={status.value}, observed={len(observed)}, deleted={len(deleted_showtimes)}"
         )
 
+        unidentified_listings = (
+            unidentified_listings_service.consume_unidentified_listings(cinema_id)
+        )
+        unidentified_matches: list[unidentified_listings_service.UnidentifiedListingMatch] = []
+        if unidentified_listings:
+            with get_db_context() as db_session:
+                unidentified_matches = (
+                    unidentified_listings_service.find_cineville_matches(
+                        session=db_session,
+                        cinema_id=cinema_id,
+                        listings=unidentified_listings,
+                    )
+                )
+        if unidentified_matches:
+            unidentified_listings_service.record_unidentified_listing_matches(
+                unidentified_matches
+            )
+            logger.warning(
+                f"{scraper_name} could not identify {len(unidentified_matches)} "
+                "screening(s) Cineville lists at the same time; keeping Cineville's."
+            )
+
         if scraper_name in TRUSTED_SCRAPERS and status == ScrapeRunStatus.SUCCESS:
             with get_db_context() as db_session:
                 invalidated = scrape_sync_service.reconcile_trusted_scraper_misses(
                     session=db_session,
                     cinema_id=cinema_id,
                     observed_event_keys={pair[0] for pair in observed_pairs},
+                    exempt_showtime_ids={
+                        match.cineville_showtime_id for match in unidentified_matches
+                    },
                 )
             if invalidated:
                 logger.info(

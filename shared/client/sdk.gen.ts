@@ -38,6 +38,10 @@ import type {
   AdminGetScrapeRecapResponse,
   AdminGetScrapeRecapAttachmentData,
   AdminGetScrapeRecapAttachmentResponse,
+  AdminListTmdbAmbiguitiesData,
+  AdminListTmdbAmbiguitiesResponse,
+  AdminUpdateTmdbAmbiguityData,
+  AdminUpdateTmdbAmbiguityResponse,
   CinemasGetAllCinemasResponse,
   FriendsSendFriendRequestData,
   FriendsSendFriendRequestResponse,
@@ -648,6 +652,59 @@ export class AdminService {
         recap_id: data.recapId,
         filename: data.filename,
       },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * List Tmdb Ambiguities
+   * Lookups where several films matched a listing equally well.
+   *
+   * Each is a limit of the matcher: the listing alone could not tell the films
+   * apart, whether or not a tie-break then picked one. Newest first.
+   * @param data The data for the request.
+   * @param data.includeReviewed
+   * @param data.limit
+   * @returns TmdbAmbiguityView Successful Response
+   * @throws ApiError
+   */
+  public static listTmdbAmbiguities(
+    data: AdminListTmdbAmbiguitiesData = {},
+  ): CancelablePromise<AdminListTmdbAmbiguitiesResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/admin/tmdb-ambiguities",
+      query: {
+        include_reviewed: data.includeReviewed,
+        limit: data.limit,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Update Tmdb Ambiguity
+   * @param data The data for the request.
+   * @param data.cacheId
+   * @param data.requestBody
+   * @returns TmdbAmbiguityView Successful Response
+   * @throws ApiError
+   */
+  public static updateTmdbAmbiguity(
+    data: AdminUpdateTmdbAmbiguityData,
+  ): CancelablePromise<AdminUpdateTmdbAmbiguityResponse> {
+    return __request(OpenAPI, {
+      method: "PATCH",
+      url: "/api/v1/admin/tmdb-ambiguities/{cache_id}",
+      path: {
+        cache_id: data.cacheId,
+      },
+      body: data.requestBody,
+      mediaType: "application/json",
       errors: {
         422: "Validation Error",
       },

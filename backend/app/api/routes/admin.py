@@ -38,10 +38,12 @@ from app.schemas.seat_availability import (
     SimulateSeatAvailability,
 )
 from app.schemas.showtime_report import ShowtimeReportAdminView, ShowtimeReportUpdate
+from app.schemas.tmdb_ambiguity import TmdbAmbiguityReviewUpdate, TmdbAmbiguityView
 from app.schemas.user_report import UserReportAdminView, UserReportUpdate
 from app.services import analytics_dashboard as analytics_dashboard_service
 from app.services import scrape_monitor as scrape_monitor_service
 from app.services import seat_availability as seat_availability_service
+from app.services import tmdb_ambiguities as tmdb_ambiguities_service
 from app.utils import now_amsterdam_naive
 
 router = APIRouter(
@@ -356,3 +358,36 @@ def get_scrape_recap_attachment(
         )
     data, mime_type = result
     return Response(content=data, media_type=mime_type)
+
+
+# --- TMDB ambiguities -----------------------------------------------------
+
+
+@router.get("/tmdb-ambiguities", response_model=list[TmdbAmbiguityView])
+def list_tmdb_ambiguities(
+    *, session: SessionDep, include_reviewed: bool = False, limit: int = 50
+) -> list[TmdbAmbiguityView]:
+    """Lookups where several films matched a listing equally well.
+
+    Each is a limit of the matcher: the listing alone could not tell the films
+    apart, whether or not a tie-break then picked one. Newest first.
+    """
+    return tmdb_ambiguities_service.list_ambiguities(
+        session=session, include_reviewed=include_reviewed, limit=limit
+    )
+
+
+@router.patch("/tmdb-ambiguities/{cache_id}", response_model=TmdbAmbiguityView)
+def update_tmdb_ambiguity(
+    *, session: SessionDep, cache_id: int, payload: TmdbAmbiguityReviewUpdate
+) -> TmdbAmbiguityView:
+    view = tmdb_ambiguities_service.set_reviewed(
+        session=session, cache_id=cache_id, reviewed=payload.reviewed
+    )
+    if view is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="TMDB ambiguity not found",
+        )
+    session.commit()
+    return view

@@ -1,5 +1,6 @@
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from datetime import datetime
 from re import sub
 from typing import Any
@@ -37,6 +38,13 @@ def clean_title(title: str) -> str:
     return title
 
 
+@dataclass(frozen=True)
+class ListedTime:
+    datetime: datetime
+    theatre: str
+    ticket_link: str
+
+
 class GenericEagerlyScraper(BaseCinemaScraper):
     def __init__(
         self,
@@ -67,6 +75,22 @@ class GenericEagerlyScraper(BaseCinemaScraper):
         # "Nederlands (LHC), English (Springhaver)". Each venue reads only its
         # own clause via these aliases.
         self.subtitle_venue_aliases = subtitle_venue_aliases
+
+    def _listed_times(self, value: dict[str, Any]) -> list[ListedTime]:
+        """This venue's screenings of one feed entry (the feed can span several)."""
+        listed: list[ListedTime] = []
+        for time in value["times"]:
+            theatre = time["location"]
+            if not theatre.startswith(self.theatre_filter):
+                continue
+            listed.append(
+                ListedTime(
+                    datetime=datetime.strptime(time["program_start"], "%Y%m%d%H%M"),
+                    theatre=theatre,
+                    ticket_link=f"{self.url_base}/tickets/{time['provider_id']}",
+                )
+            )
+        return listed
 
     def _resolve_movie_via_tmdb(
         self,
@@ -158,6 +182,7 @@ class GenericEagerlyScraper(BaseCinemaScraper):
             return None
 
         title_query = clean_title(slug)
+        listed_times = self._listed_times(value)
         movie: MovieCreate | None
         if is_sneak_preview_title(slug) or is_sneak_preview_title(title_query):
             movie = sneak_preview_movie()
@@ -166,6 +191,10 @@ class GenericEagerlyScraper(BaseCinemaScraper):
                 slug=slug, title_query=title_query, value=value
             )
             if movie is None:
+                self.record_unidentified_listing(
+                    title=title_query,
+                    datetimes=[listed.datetime for listed in listed_times],
+                )
                 return None
 
         # The feed exposes subtitles under the (misnamed) "language" key, e.g.
@@ -178,25 +207,19 @@ class GenericEagerlyScraper(BaseCinemaScraper):
             subtitle_value, venue_aliases=self.subtitle_venue_aliases
         )
 
-        showtimes: list[ShowtimeCreate] = []
-        for time in value["times"]:
-            theatre = time["location"]
-            if not theatre.startswith(self.theatre_filter):
-                continue
-            date = datetime.strptime(time["program_start"], "%Y%m%d%H%M")
-            ticket_link = f"{self.url_base}/tickets/{time['provider_id']}"
-            assert self.cinema_id is not None
-            showtimes.append(
-                ShowtimeCreate(
-                    movie_id=movie.id,
-                    tmdb_cache_id=movie.tmdb_cache_id,
-                    datetime=date,
-                    cinema_id=self.cinema_id,
-                    ticket_link=ticket_link,
-                    room=normalize_room(theatre),
-                    subtitles=subtitles,
-                )
+        assert self.cinema_id is not None
+        showtimes = [
+            ShowtimeCreate(
+                movie_id=movie.id,
+                tmdb_cache_id=movie.tmdb_cache_id,
+                datetime=listed.datetime,
+                cinema_id=self.cinema_id,
+                ticket_link=listed.ticket_link,
+                room=normalize_room(listed.theatre),
+                subtitles=subtitles,
             )
+            for listed in listed_times
+        ]
 
         logger.debug(f"Resolved movie {movie.id} for {movie.title}")
         return movie, showtimes

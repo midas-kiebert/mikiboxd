@@ -226,11 +226,14 @@ class EyeScraper(BaseCinemaScraper):
         for show in valid_shows:
             production = show.production[0]
             cached_movie = movies_by_production_id.get(production.id)
-            if cached_movie is None:
-                continue
             start_datetime = datetime.fromisoformat(show.startDateTime).replace(
                 tzinfo=None
             )
+            if cached_movie is None:
+                self.record_unidentified_listing(
+                    title=clean_title(production.title), datetimes=[start_datetime]
+                )
+                continue
             showtimes.append(
                 ShowtimeCreate(
                     movie_id=cached_movie.id,

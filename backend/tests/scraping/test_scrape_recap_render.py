@@ -28,6 +28,7 @@ def test_metrics_payload_round_trips() -> None:
         tmdb_miss_title_counts=[("weird title", 2)],
         deleted_showtime_lines=["2026-09-03T19:00:00 - LOLA @ Eye"],
         source_disagreement_lines=["2026-08-14T21:30:00 @ KINO | ..."],
+        unidentified_listing_match_lines=["2026-09-16T20:45:00 @ LAB111 | ..."],
         missing_cinemas=["Ketelhuis"],
         low_confidence_threshold=80.0,
     )
@@ -155,3 +156,23 @@ def test_recaps_stored_before_the_format_change_are_still_included() -> None:
 
     assert "an older run" in html
     assert "Runs stored before the current recap format" in html
+
+
+def test_unidentified_listing_matches_are_counted_and_listed() -> None:
+    line = (
+        "2026-09-16T20:45:00 @ LAB111 | cinema scraper could not identify: "
+        "fahrenheit 9/11 | cineville: Fahrenheit 9/11 (movie_id=1777, "
+        "showtime_id=1933242) | kept"
+    )
+    html = render_recap_html([_run(3, unidentified_listing_match_lines=[line])])
+
+    assert "Cineville showtimes kept for unidentified cinema listings: <b>1</b>" in html
+    assert "Unidentified Cinema Listings" in html
+    assert "fahrenheit 9/11 | cineville: Fahrenheit 9/11" in html
+
+
+def test_an_older_stored_recap_without_unidentified_listings_still_loads() -> None:
+    payload = _run(3).to_payload()
+    del payload["unidentified_listing_match_lines"]
+
+    assert RecapRunMetrics.from_payload(payload).unidentified_listing_match_lines == []

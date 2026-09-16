@@ -54,6 +54,11 @@ class RecapRunMetrics:
     # TMDB ids — each one is a TMDB match that is wrong on one side, so they are
     # the leads worth acting on when improving the matcher.
     source_disagreement_lines: list[str] = field(default_factory=list)
+    # Screenings a cinema's own scraper skipped because it couldn't identify the
+    # film, while Cineville lists a showtime at the same cinema and minute. The
+    # Cineville showtime is kept (see `app.services.unidentified_listings`), but
+    # each one is a film Cineville matched and the cinema scraper didn't.
+    unidentified_listing_match_lines: list[str] = field(default_factory=list)
     error_count: int = 0
     letterboxd_failure_count: int = 0
     missing_cinemas: list[str] = field(default_factory=list)
@@ -86,6 +91,7 @@ class RecapRunMetrics:
             "deleted_showtime_lines": self.deleted_showtime_lines,
             "conflict_deleted_count": self.conflict_deleted_count,
             "source_disagreement_lines": self.source_disagreement_lines,
+            "unidentified_listing_match_lines": self.unidentified_listing_match_lines,
             "error_count": self.error_count,
             "letterboxd_failure_count": self.letterboxd_failure_count,
             "missing_cinemas": self.missing_cinemas,
@@ -139,6 +145,10 @@ class RecapRunMetrics:
             conflict_deleted_count=int(payload.get("conflict_deleted_count", 0)),
             source_disagreement_lines=[
                 str(line) for line in payload.get("source_disagreement_lines", [])
+            ],
+            unidentified_listing_match_lines=[
+                str(line)
+                for line in payload.get("unidentified_listing_match_lines", [])
             ],
             error_count=int(payload.get("error_count", 0)),
             letterboxd_failure_count=int(payload.get("letterboxd_failure_count", 0)),
@@ -306,6 +316,11 @@ def _build_metrics(runs: Sequence[RecapRunMetrics]) -> list[_Metric]:
             value=lambda run: len(run.source_disagreement_lines),
         ),
         _sum_metric(
+            label="Cineville showtimes kept for unidentified cinema listings",
+            runs=runs,
+            value=lambda run: len(run.unidentified_listing_match_lines),
+        ),
+        _sum_metric(
             label="Error count",
             runs=runs,
             value=lambda run: run.error_count,
@@ -412,6 +427,15 @@ def render_recap_html(
                 ),
                 runs=runs,
                 lines=lambda run: run.source_disagreement_lines,
+                show_per_run=show_per_run,
+            ),
+            _render_list_section(
+                title=(
+                    "Unidentified Cinema Listings — cinema scraper found no TMDB "
+                    "match, Cineville's showtime at the same time was kept"
+                ),
+                runs=runs,
+                lines=lambda run: run.unidentified_listing_match_lines,
                 show_per_run=show_per_run,
             ),
             _render_list_section(

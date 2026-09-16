@@ -1,5 +1,7 @@
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
+from datetime import datetime
 from re import sub
 
 import requests
@@ -82,6 +84,13 @@ def extract_film_slugs(html: str) -> list[str]:
     return list(seen)
 
 
+@dataclass(frozen=True)
+class ShowSlot:
+    datetime: datetime
+    ticket_link: str
+    subtitles: list[str] | None
+
+
 class StudioKScraper(BaseCinemaScraper):
     def __init__(self) -> None:
         self.cinema_key = CINEMA_KEY
@@ -121,6 +130,11 @@ class StudioKScraper(BaseCinemaScraper):
         year = parse_year(
             extract_label_value(soup, "Jaar:")
         ) or parse_year_hint_from_title(title_query)
+        show_slots = self._parse_show_slots(
+            soup=soup,
+            fallback_subtitles=fallback_subtitles,
+            title_query=title_query,
+        )
 
         tmdb_id = find_tmdb_id(
             title_query=title_query,
@@ -132,6 +146,10 @@ class StudioKScraper(BaseCinemaScraper):
         )
         if tmdb_id is None:
             logger.warning(f"No TMDB id found for {title_query}, skipping")
+            self.record_unidentified_listing(
+                title=title_query,
+                datetimes=[slot.datetime for slot in show_slots],
+            )
             return None
 
         tmdb_details = get_tmdb_movie_details(tmdb_id)
@@ -179,29 +197,30 @@ class StudioKScraper(BaseCinemaScraper):
             ),
         )
 
-        showtimes = self._parse_showtimes(
-            soup=soup,
-            movie_id=movie.id,
-            tmdb_cache_id=movie.tmdb_cache_id,
-            fallback_subtitles=fallback_subtitles,
-            title_query=title_query,
-        )
+        showtimes = [
+            ShowtimeCreate(
+                movie_id=movie.id,
+                tmdb_cache_id=movie.tmdb_cache_id,
+                datetime=slot.datetime,
+                cinema_id=self.cinema_id,
+                ticket_link=slot.ticket_link,
+                subtitles=slot.subtitles,
+            )
+            for slot in show_slots
+        ]
         return movie, showtimes
 
-    def _parse_showtimes(
+    def _parse_show_slots(
         self,
         *,
         soup: BeautifulSoup,
-        movie_id: int,
-        tmdb_cache_id: int | None,
         fallback_subtitles: list[str] | None,
         title_query: str,
-    ) -> list[ShowtimeCreate]:
-        assert self.cinema_id is not None
-        showtimes: list[ShowtimeCreate] = []
+    ) -> list[ShowSlot]:
+        slots: list[ShowSlot] = []
         shows_ul = soup.find("ul", id="shows")
         if not isinstance(shows_ul, Tag):
-            return showtimes
+            return slots
 
         for day_li in shows_ul.find_all("li", recursive=False):
             if not isinstance(day_li, Tag):
@@ -241,17 +260,14 @@ class StudioKScraper(BaseCinemaScraper):
                 else:
                     subtitles = fallback_subtitles
 
-                showtimes.append(
-                    ShowtimeCreate(
-                        movie_id=movie_id,
-                        tmdb_cache_id=tmdb_cache_id,
+                slots.append(
+                    ShowSlot(
                         datetime=showtime_dt,
-                        cinema_id=self.cinema_id,
                         ticket_link=ticket_link,
                         subtitles=subtitles,
                     )
                 )
-        return showtimes
+        return slots
 
     def scrape(self) -> list[tuple[str, int]]:
         assert self.cinema_id is not None

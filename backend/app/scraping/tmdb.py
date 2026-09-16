@@ -47,6 +47,11 @@ GOOD = Quality.GOOD
 EXCELLENT = Quality.EXCELLENT
 PERFECT = Quality.PERFECT
 
+# A tie at or above this quality — on the title as well as overall — is reported
+# to admins as a matcher limit: two or more films each matched the listing about
+# as well as a film can.
+TMDB_AMBIGUITY_NOTICE_MIN_QUALITY = EXCELLENT
+
 
 @dataclass(frozen=True)
 class TmdbMovieDetails:
@@ -66,10 +71,49 @@ class TmdbMovieDetails:
 
 
 @dataclass(frozen=True)
+class TiedCandidate:
+    tmdb_id: int
+    title: str
+    release_year: int | None
+
+
+@dataclass(frozen=True)
+class TmdbAmbiguity:
+    """Several candidates matched one listing equally well, title included.
+
+    Kept whether or not a tie-break then picked one of them: either way the
+    listing on its own could not tell the films apart, which is a limit of the
+    matcher an admin should see (see `app.services.tmdb_ambiguities`). A tie the
+    title settles — *Manhattan* against *Manhattan Murder Mystery* — is not one.
+    """
+
+    quality: Quality
+    candidates: tuple[TiedCandidate, ...]
+    # The disambiguation signals that settled the tie; empty when none did and
+    # the lookup was rejected.
+    resolved_by: tuple[str, ...]
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "quality": self.quality.name,
+            "candidates": [
+                {
+                    "tmdb_id": candidate.tmdb_id,
+                    "title": candidate.title,
+                    "release_year": candidate.release_year,
+                }
+                for candidate in self.candidates
+            ],
+            "resolved_by": list(self.resolved_by),
+        }
+
+
+@dataclass(frozen=True)
 class TmdbLookupResult:
     tmdb_id: int | None
     confidence: float | None
     decision: dict[str, Any] | None = None
+    ambiguity: TmdbAmbiguity | None = None
 
 
 @dataclass(frozen=True)
@@ -80,6 +124,17 @@ class CandidateQuality:
     year_quality: Quality
     language_quality: Quality
     quality: Quality
+    # The title score against TMDB's own title and original title only. After
+    # enrichment `title_quality` may have been raised by an alternative title
+    # (see `_rescore_title_after_enrichment`); this keeps what the candidate's
+    # own title earned. None means no alias was considered, so it equals
+    # `title_quality`.
+    own_title_quality: Quality | None = None
+
+    def effective_own_title_quality(self) -> Quality:
+        if self.own_title_quality is None:
+            return self.title_quality
+        return self.own_title_quality
 
 
 @dataclass(frozen=True)
@@ -809,6 +864,7 @@ def apply_enrichment_to_candidates(
                 year_quality=candidate.year_quality,
                 language_quality=candidate.language_quality,
                 quality=new_quality,
+                own_title_quality=candidate.effective_own_title_quality(),
             )
         )
 
@@ -887,6 +943,49 @@ def _clear_popularity_leader(
     if not diagnostics["active"]:
         return None, diagnostics
     return leader.movie.id, diagnostics
+
+
+def _prefer_own_title_match(
+    *,
+    candidates: Sequence[CandidateQuality],
+) -> dict[str, Any] | None:
+    """Break a tie the other signals left open in favour of a candidate's own title.
+
+    TMDB's alternative titles are crowd-edited and not always right: it lists
+    "Fahrenheit 9/11" as one of *Fahrenheit 11/9*'s. The post-enrichment title
+    rescore trusts that alias, so a listing with no year or runtime to tell the
+    two Michael Moore documentaries apart used to end in a tie and no match at
+    all. Between a candidate whose own title matches that well and one that
+    only gets there through an alias, the own title is the better bet.
+
+    Only ever narrows candidates that are still tied, so it cannot overturn a
+    decision another signal already made.
+    """
+    if len(candidates) < 2:
+        return None
+    strongest_title_quality = max(candidate.title_quality for candidate in candidates)
+    strongest = [
+        candidate
+        for candidate in candidates
+        if candidate.title_quality == strongest_title_quality
+    ]
+    alias_only_ids = {
+        candidate.movie.id
+        for candidate in strongest
+        if candidate.effective_own_title_quality() < strongest_title_quality
+    }
+    if not alias_only_ids or len(alias_only_ids) == len(strongest):
+        return None
+    return {
+        "signal": "prefer_own_title_match",
+        "preferred_candidate_ids": sorted(
+            candidate.movie.id
+            for candidate in candidates
+            if candidate.movie.id not in alias_only_ids
+        ),
+        "alias_only_candidate_ids": sorted(alias_only_ids),
+        "strongest_title_quality": strongest_title_quality.name,
+    }
 
 
 def _disambiguate_ambiguous_top_quality(
@@ -1048,6 +1147,13 @@ def _disambiguate_ambiguous_top_quality(
         )
         remaining_ids.intersection_update({popularity_leader_id})
 
+    own_title_signal = _prefer_own_title_match(
+        candidates=[candidate for candidate in top if candidate.movie.id in remaining_ids]
+    )
+    if own_title_signal is not None:
+        active_signals.append(own_title_signal)
+        remaining_ids.intersection_update(own_title_signal["preferred_candidate_ids"])
+
     diagnostics["active_signals"] = active_signals
     diagnostics["remaining_candidate_ids"] = sorted(remaining_ids)
     if not active_signals:
@@ -1068,6 +1174,42 @@ def _disambiguate_ambiguous_top_quality(
     diagnostics["reason"] = "signals_converged"
     diagnostics["winner_id"] = winner_id
     return winner, diagnostics
+
+
+def _ambiguity_notice(
+    *,
+    top: Sequence[CandidateQuality],
+    best_quality: Quality,
+    winner: CandidateQuality | None,
+    disambiguation: dict[str, Any] | None,
+) -> TmdbAmbiguity | None:
+    if best_quality < TMDB_AMBIGUITY_NOTICE_MIN_QUALITY:
+        return None
+    strongest_title_quality = max(candidate.title_quality for candidate in top)
+    tied = [
+        candidate
+        for candidate in top
+        if candidate.title_quality == strongest_title_quality
+    ]
+    if len(tied) < 2:
+        return None
+    resolved_by: tuple[str, ...] = ()
+    if winner is not None and disambiguation is not None:
+        resolved_by = tuple(
+            str(signal["signal"]) for signal in disambiguation["active_signals"]
+        )
+    return TmdbAmbiguity(
+        quality=best_quality,
+        candidates=tuple(
+            TiedCandidate(
+                tmdb_id=candidate.movie.id,
+                title=candidate.movie.title,
+                release_year=candidate.movie.release_year,
+            )
+            for candidate in tied
+        ),
+        resolved_by=resolved_by,
+    )
 
 
 def pick_tmdb_result(
@@ -1133,6 +1275,12 @@ def pick_tmdb_result(
             )
             if trace is not None and disambiguation is not None:
                 trace["ambiguous_top_quality_disambiguation"] = disambiguation
+        ambiguity = _ambiguity_notice(
+            top=top,
+            best_quality=best_quality,
+            winner=winner,
+            disambiguation=disambiguation,
+        )
 
         if winner is not None:
             return TmdbLookupResult(
@@ -1146,6 +1294,7 @@ def pick_tmdb_result(
                     "disambiguation": disambiguation,
                     "trace": trace,
                 },
+                ambiguity=ambiguity,
             )
 
         decision: dict[str, Any] = {
@@ -1161,6 +1310,7 @@ def pick_tmdb_result(
             tmdb_id=None,
             confidence=None,
             decision=decision,
+            ambiguity=ambiguity,
         )
 
     winner = top[0]

@@ -1,5 +1,7 @@
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
+from datetime import datetime
 
 import requests
 from bs4 import BeautifulSoup
@@ -72,6 +74,7 @@ class LAB111Scraper(BaseCinemaScraper):
         actor = actors[0] if actors else None
         subtitles = parse_subtitle_label(" ".join(extract_name(div, "Ondertiteling:")))
         year = parse_year_hint_from_title(raw_title)
+        show_rows = extract_show_rows(div, title=raw_title)
 
         tmdb_id = find_tmdb_id(
             title_query=title_query,
@@ -81,6 +84,10 @@ class LAB111Scraper(BaseCinemaScraper):
         )
         if tmdb_id is None:
             logger.warning(f"No TMDB id found for {title_query}, skipping")
+            self.record_unidentified_listing(
+                title=title_query,
+                datetimes=[row.datetime for row in show_rows],
+            )
             return None
 
         tmdb_details = get_tmdb_movie_details(tmdb_id)
@@ -124,34 +131,18 @@ class LAB111Scraper(BaseCinemaScraper):
             ),
         )
 
-        showtimes: list[ShowtimeCreate] = []
-        days = div.find_all("tr", class_="day")
-        for day in days:
-            if not isinstance(day, Tag):
-                continue
-            links = day.find_all("a")
-            if len(links) == 0:
-                logger.debug(f"No links found for {movie.title}, skipping")
-                continue
-            link = links[0]
-            if not isinstance(link, Tag):
-                continue
-            potential_showtime = link.get_text(strip=True)
-            date = get_closest_exact_date(potential_showtime)
-            ticket_link = link["href"]
-            if not isinstance(ticket_link, str):
-                continue
-            showtimes.append(
-                ShowtimeCreate(
-                    movie_id=movie.id,
-                    tmdb_cache_id=movie.tmdb_cache_id,
-                    datetime=date,
-                    cinema_id=self.cinema_id,
-                    ticket_link=ticket_link,
-                    room=extract_room(day),
-                    subtitles=subtitles,
-                )
+        showtimes = [
+            ShowtimeCreate(
+                movie_id=movie.id,
+                tmdb_cache_id=movie.tmdb_cache_id,
+                datetime=row.datetime,
+                cinema_id=self.cinema_id,
+                ticket_link=row.ticket_link,
+                room=row.room,
+                subtitles=subtitles,
             )
+            for row in show_rows
+        ]
         return movie, showtimes
 
     def scrape(self) -> list[tuple[str, int]]:
@@ -217,6 +208,34 @@ class LAB111Scraper(BaseCinemaScraper):
                     observed_presences.append((source_event_key, showtime.id))
             session.commit()
         return observed_presences
+
+
+@dataclass(frozen=True)
+class ShowRow:
+    datetime: datetime
+    ticket_link: str
+    room: str | None
+
+
+def extract_show_rows(div: Tag, *, title: str) -> list[ShowRow]:
+    """Every screening one film's block lists, one `<tr class="day">` row each."""
+    rows: list[ShowRow] = []
+    for day in div.find_all("tr", class_="day"):
+        if not isinstance(day, Tag):
+            continue
+        links = day.find_all("a")
+        if len(links) == 0:
+            logger.debug(f"No links found for {title}, skipping")
+            continue
+        link = links[0]
+        if not isinstance(link, Tag):
+            continue
+        date = get_closest_exact_date(link.get_text(strip=True))
+        ticket_link = link["href"]
+        if not isinstance(ticket_link, str):
+            continue
+        rows.append(ShowRow(datetime=date, ticket_link=ticket_link, room=extract_room(day)))
+    return rows
 
 
 def extract_room(day: Tag) -> str | None:

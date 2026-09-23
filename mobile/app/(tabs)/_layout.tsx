@@ -236,7 +236,8 @@ export default function TabLayout() {
           user.notify_on_showtime_ping ||
           user.notify_on_interest_reminder ||
           user.notify_on_seat_alert ||
-          user.notify_on_sold_out;
+          user.notify_on_sold_out ||
+          user.notify_on_tickets_available;
 
         if (!hasAnyNotificationPreferenceEnabled) {
           await MeService.updateUserMe({
@@ -247,6 +248,7 @@ export default function TabLayout() {
               notify_on_interest_reminder: true,
               notify_on_seat_alert: true,
               notify_on_sold_out: true,
+              notify_on_tickets_available: true,
             },
           });
           queryClient.invalidateQueries({ queryKey: ['currentUser'] });

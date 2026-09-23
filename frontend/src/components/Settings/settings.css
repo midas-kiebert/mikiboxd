@@ -397,6 +397,36 @@
 
 /* ---- Fields -------------------------------------------------------------- */
 
+/* Profile card: the avatar friends see, with the name beside it. */
+.st-profile-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.st-profile-head__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.st-profile-head__name {
+  overflow: hidden;
+  color: var(--chakra-colors-fg);
+  font-size: 16px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.st-profile-head__caption {
+  color: var(--chakra-colors-fg-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .st-fields {
   display: grid;
   grid-template-columns: 1fr 1fr;

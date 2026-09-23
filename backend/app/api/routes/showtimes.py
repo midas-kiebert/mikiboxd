@@ -77,9 +77,15 @@ _PING_NOTIFICATION_DELAY_SECONDS = 0 if os.getenv("TESTING") == "true" else 5  #
 _MAX_VISIBILITY_BATCH_SIZE = 200
 
 
-def _check_seat_availability_now(showtime_id: int) -> None:
+def _check_seat_availability_now(
+    showtime_id: int, manual_request_id: int | None = None
+) -> None:
     with get_db_context() as session:
-        seat_availability_service.check_now(session=session, showtime_id=showtime_id)
+        seat_availability_service.check_now(
+            session=session,
+            showtime_id=showtime_id,
+            manual_request_id=manual_request_id,
+        )
 
 
 @router.put("/selection/{showtime_id}", response_model=ShowtimePublic)
@@ -508,36 +514,52 @@ def request_seat_availability_check(
     background_tasks: BackgroundTasks,
     showtime_id: int,
 ) -> ShowtimeSeatAvailabilityPublic | None:
-    """Ask for this screening's first seat reading.
+    """Ask for a fresh seat reading of this screening, by hand.
 
-    From here on it is exactly the path selecting a showtime already takes: the
-    read is queued for the poller, with every cap it has, and attempted straight
-    away in the background under the same concurrency and per-host guards. What
-    bounds it is `should_check_immediately` — true only for a showtime that has
-    never been read at all — so a screening can cost at most one hand-requested
-    request in its life, however many people tap the button.
+    Offered for a screening never read at all and for one whose reading is at
+    least `MANUAL_CHECK_MIN_AGE` old — the rule and the budget behind it are
+    `seat_availability_service.reserve_manual_check`, which the button's
+    `can_request_check` mirrors. A granted request is marked due (so the
+    response already says "checking") and read straight away in the background,
+    under the same concurrency and per-host guards as a first selection; the
+    poller picks it up if that read is skipped.
 
     Signed in only. Reading the answer is public (see `get_seat_availability`);
     *causing* a request at a small cinema's ticket shop is not, and an account
     is what stops the button being an anonymous way to walk the catalogue.
 
-    Already-read showtimes are not an error — the caller wanted a number and
-    there is one, so it comes back as-is.
+    A refused request is not an error — the caller wanted a number, and gets
+    whatever is there, with `can_request_check` telling the button to go away.
     """
-    if seat_availability_service.should_check_immediately(
+    manual_request_id = seat_availability_service.reserve_manual_check(
         session=session, showtime_id=showtime_id
-    ):
-        seat_availability_service.request_reading_on_interest(
-            session=session, showtime_id=showtime_id
+    )
+    if manual_request_id is not None:
+        background_tasks.add_task(
+            _check_seat_availability_now, showtime_id, manual_request_id
         )
-        # Committed before the response is built, so the availability returned
-        # below already reads as "checking" and the client can say so without
-        # waiting for its next poll.
-        session.commit()
-        background_tasks.add_task(_check_seat_availability_now, showtime_id)
     return seat_availability_service.get_seat_availability(
         session=session, showtime_id=showtime_id
     )
+
+
+@router.post("/{showtime_id}/viewed", response_model=Message)
+def mark_showtime_viewed(
+    *,
+    session: SessionDep,
+    showtime_id: int,
+    current_user: CurrentUser,
+) -> Message:
+    """The viewer opened this showtime's sheet or panel.
+
+    Re-arms the "tickets available" notice for them — see
+    `seat_availability_service.mark_showtime_viewed`. Harmless for a showtime
+    they have no selection on; clients call it on every open.
+    """
+    seat_availability_service.mark_showtime_viewed(
+        session=session, showtime_id=showtime_id, user_id=current_user.id
+    )
+    return Message(message="ok")
 
 
 @router.get("/sold-out-watch", response_model=SoldOutWatchPublic | None)

@@ -1170,6 +1170,7 @@ export type UserMe = {
   notify_on_interest_reminder: boolean
   notify_on_seat_alert: boolean
   notify_on_sold_out: boolean
+  notify_on_tickets_available: boolean
   notify_on_showtime_reminder: boolean
   notify_channel_friend_showtime_match: NotificationChannel
   notify_channel_friend_requests: NotificationChannel
@@ -1178,6 +1179,7 @@ export type UserMe = {
   notify_channel_interest_reminder: NotificationChannel
   notify_channel_seat_alert: NotificationChannel
   notify_channel_sold_out: NotificationChannel
+  notify_channel_tickets_available: NotificationChannel
   notify_channel_showtime_reminder: NotificationChannel
   letterboxd_username: string | null
   watchlist_count: number
@@ -1282,6 +1284,7 @@ export type UserUpdate = {
   notify_on_interest_reminder?: boolean | null
   notify_on_seat_alert?: boolean | null
   notify_on_sold_out?: boolean | null
+  notify_on_tickets_available?: boolean | null
   notify_on_showtime_reminder?: boolean | null
   notify_channel_friend_showtime_match?: NotificationChannel | null
   notify_channel_friend_requests?: NotificationChannel | null
@@ -1290,6 +1293,7 @@ export type UserUpdate = {
   notify_channel_interest_reminder?: NotificationChannel | null
   notify_channel_seat_alert?: NotificationChannel | null
   notify_channel_sold_out?: NotificationChannel | null
+  notify_channel_tickets_available?: NotificationChannel | null
   notify_channel_showtime_reminder?: NotificationChannel | null
   notify_watchlist_digest_enabled?: boolean | null
   use_letterboxd_avatar?: boolean | null
@@ -2412,6 +2416,12 @@ export type ShowtimesRequestSeatAvailabilityCheckData = {
 
 export type ShowtimesRequestSeatAvailabilityCheckResponse =
   ShowtimeSeatAvailabilityPublic | null
+
+export type ShowtimesMarkShowtimeViewedData = {
+  showtimeId: number
+}
+
+export type ShowtimesMarkShowtimeViewedResponse = Message
 
 export type ShowtimesGetSoldOutWatchResponse = SoldOutWatchPublic | null
 

@@ -97,6 +97,7 @@ _EMAIL_DELIVERY_FIELDS: tuple[str, ...] = (
     "notify_channel_interest_reminder",
     "notify_channel_seat_alert",
     "notify_channel_sold_out",
+    "notify_channel_tickets_available",
     "notify_channel_showtime_reminder",
 )
 

@@ -40,6 +40,7 @@ import {
   MdPerson,
   MdRadioButtonChecked,
   MdRadioButtonUnchecked,
+  MdRefresh,
   MdSchedule,
   MdSearch,
   MdTune,
@@ -80,6 +81,7 @@ export const PanelIcon = {
   notificationsNone: MdNotificationsNone,
   radioButtonChecked: MdRadioButtonChecked,
   radioButtonUnchecked: MdRadioButtonUnchecked,
+  refresh: MdRefresh,
   search: MdSearch,
   /** Not Material — see the import. Only Letterboxd links use it. */
   letterboxd: SiLetterboxd,

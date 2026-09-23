@@ -67,6 +67,7 @@ import WatchlistDigestSourcesSection from '@/components/settings/WatchlistDigest
 import SignedOutPanel from '@/components/auth/SignedOutPanel';
 import CinevilleCardModal from '@/components/cineville/CinevilleCardModal';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import PersonAvatar from '@/components/ui/PersonAvatar';
 import AppSwitch from '@/components/ui/AppSwitch';
 import SegmentedControl, { type SegmentedOption } from '@/components/ui/SegmentedControl';
 import EmailVerificationRequiredDialog from '@/components/ui/EmailVerificationRequiredDialog';
@@ -560,6 +561,29 @@ function SettingsScreen() {
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>My profile</ThemedText>
           <View style={styles.card}>
+            {user ? (
+              // The avatar exactly as friends see it: the Letterboxd picture
+              // only once it is switched on, the coloured initial otherwise.
+              <View style={styles.profileHeader}>
+                <PersonAvatar
+                  userId={user.id}
+                  name={user.display_name ?? ''}
+                  avatarUrl={user.avatar_url}
+                  size={56}
+                  fontSize={22}
+                />
+                <View style={styles.profileHeaderText}>
+                  <ThemedText style={styles.profileName} numberOfLines={1}>
+                    {user.display_name ?? ''}
+                  </ThemedText>
+                  <ThemedText style={styles.profileCaption}>
+                    {user.avatar_url
+                      ? 'Your Letterboxd profile picture, as friends see it.'
+                      : 'Your coloured initial. You can use your Letterboxd picture instead under Letterboxd.'}
+                  </ThemedText>
+                </View>
+              </View>
+            ) : null}
             <ThemedText style={styles.label}>Username</ThemedText>
             <TextInput
               style={styles.input}
@@ -1190,6 +1214,27 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     },
     label: {
       fontSize: 12,
+      color: colors.textSecondary,
+    },
+    profileHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      marginBottom: 4,
+    },
+    profileHeaderText: {
+      flex: 1,
+      gap: 2,
+    },
+    profileName: {
+      fontSize: 16,
+      lineHeight: 22,
+      fontWeight: '700',
+      color: colors.text,
+    },
+    profileCaption: {
+      fontSize: 12,
+      lineHeight: 17,
       color: colors.textSecondary,
     },
     emailLabelRow: {

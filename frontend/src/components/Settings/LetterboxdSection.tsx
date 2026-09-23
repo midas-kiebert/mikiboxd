@@ -7,7 +7,8 @@
  * separate failures), so each has its own refresh, its own "last synced" and
  * its own failure line: one list being throttled never blocks the other. The
  * refresh greys out for the cooldown the backend reports, rather than one
- * re-derived here, so the two cannot drift.
+ * re-derived here, so the two cannot drift. The caption only ever says when
+ * the last sync was.
  *
  * A linked name Letterboxd answers 404 for gets a warning under the field
  * (the backend looks it up on every save, and again when a sync fails).
@@ -57,16 +58,10 @@ const formatSynced = (iso: string | null | undefined): string => {
   return relative ? `Last synced ${relative}` : "Last synced just now"
 }
 
-const cooldownLabel = (
+const isCoolingDown = (
   endsAt: string | null | undefined,
   now: DateTime,
-): string | null => {
-  if (!endsAt) return null
-  const minutesLeft = Math.ceil(
-    DateTime.fromISO(endsAt).diff(now, "minutes").minutes,
-  )
-  return minutesLeft > 0 ? `Available again in ${minutesLeft} min` : null
-}
+): boolean => Boolean(endsAt) && DateTime.fromISO(endsAt as string) > now
 
 const LetterboxdSection = () => {
   // Read flow: account and clock first, then the writes, then JSX.
@@ -257,18 +252,17 @@ const SyncRow = ({
   onSync: () => void
   now: DateTime
 }) => {
-  const cooldown = cooldownLabel(cooldownEndsAt, now)
+  const coolingDown = isCoolingDown(cooldownEndsAt, now)
   return (
     <div className="st-list-row">
       <div className="st-list-row__text">
         <span className="st-list-row__title">{title}</span>
         <span className="st-list-row__meta">
-          {syncing ? "Syncing…" : (cooldown ?? formatSynced(lastSynced))}
+          {syncing ? "Syncing…" : formatSynced(lastSynced)}
         </span>
         {failed && !syncing ? (
           <span className="st-list-row__meta st-sync-failed">
-            Last sync failed. It will try again automatically, or you can retry
-            now.
+            Last sync failed
           </span>
         ) : null}
       </div>
@@ -276,9 +270,9 @@ const SyncRow = ({
         type="button"
         className="st-icon-button"
         onClick={onSync}
-        disabled={syncing || cooldown !== null}
+        disabled={syncing || coolingDown}
         aria-label={`Refresh ${title.toLowerCase()}`}
-        title={cooldown ?? `Refresh ${title.toLowerCase()}`}
+        title={`Refresh ${title.toLowerCase()}`}
       >
         <MdSync className={syncing ? "st-spin" : undefined} aria-hidden />
       </button>

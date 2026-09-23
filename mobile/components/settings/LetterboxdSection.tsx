@@ -13,7 +13,7 @@
  * The refresh buttons gray out during the backend's cooldown window (see
  * `SYNC_COOLDOWN` in `letterboxd_sync.py`), using the cooldown-end timestamp
  * the backend computes rather than re-deriving it here, so the two never
- * drift out of sync.
+ * drift out of sync. The caption only ever says when the last sync was.
  */
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
@@ -38,12 +38,8 @@ function formatSynced(iso: string | null | undefined): string {
   return relative ? `Last synced ${relative}` : 'Last synced just now';
 }
 
-function cooldownRemainingLabel(endsAtIso: string | null | undefined, now: DateTime): string | null {
-  if (!endsAtIso) return null;
-  const endsAt = DateTime.fromISO(endsAtIso);
-  const minutesLeft = Math.ceil(endsAt.diff(now, 'minutes').minutes);
-  if (minutesLeft <= 0) return null;
-  return `Available again in ${minutesLeft} min`;
+function isCoolingDown(endsAtIso: string | null | undefined, now: DateTime): boolean {
+  return Boolean(endsAtIso) && DateTime.fromISO(endsAtIso as string) > now;
 }
 
 export default function LetterboxdSection() {
@@ -243,8 +239,7 @@ function SyncRow({
   colors: Colors;
 }) {
   const styles = createStyles(colors);
-  const cooldownLabel = cooldownRemainingLabel(cooldownEndsAt, now);
-  const disabled = syncing || cooldownLabel !== null;
+  const disabled = syncing || isCoolingDown(cooldownEndsAt, now);
 
   return (
     <View style={styles.syncRow}>
@@ -259,11 +254,11 @@ function SyncRow({
           ) : null}
         </View>
         <ThemedText style={styles.syncSubtitle}>
-          {cooldownLabel ?? formatSynced(lastSynced)}
+          {formatSynced(lastSynced)}
         </ThemedText>
         {failed && !syncing ? (
           <ThemedText style={styles.syncFailedText}>
-            Last sync failed. It will try again automatically, or you can retry now.
+            Last sync failed
           </ThemedText>
         ) : null}
       </View>

@@ -233,7 +233,7 @@ class NotificationType(str, Enum):
 
 @unique
 class SeatAlertKind(str, Enum):
-    """Which of the two seat-count notices an interested user is being sent.
+    """Which seat-count notice an interested user is being sent.
 
     They are two notices, not one repeated: "nearly sold out" is a nudge to
     decide, sent once ever on the way up, while "sold out" is the answer to
@@ -245,6 +245,10 @@ class SeatAlertKind(str, Enum):
 
     NEARLY_SOLD_OUT = "nearly_sold_out"
     SOLD_OUT = "sold_out"
+    # A sold-out screening has seats again. The poller keeps a thin watch on
+    # every sold-out screening someone is interested in (see
+    # `services.seat_availability.next_check_at`); this is what it finds.
+    TICKETS_AVAILABLE = "tickets_available"
 
 
 @unique

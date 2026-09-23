@@ -188,6 +188,8 @@ import type {
   ShowtimesGetSeatAvailabilityResponse,
   ShowtimesRequestSeatAvailabilityCheckData,
   ShowtimesRequestSeatAvailabilityCheckResponse,
+  ShowtimesMarkShowtimeViewedData,
+  ShowtimesMarkShowtimeViewedResponse,
   ShowtimesGetSoldOutWatchResponse,
   ShowtimesStopSoldOutWatchResponse,
   ShowtimesStartSoldOutWatchData,
@@ -2750,21 +2752,22 @@ export class ShowtimesService {
 
   /**
    * Request Seat Availability Check
-   * Ask for this screening's first seat reading.
+   * Ask for a fresh seat reading of this screening, by hand.
    *
-   * From here on it is exactly the path selecting a showtime already takes: the
-   * read is queued for the poller, with every cap it has, and attempted straight
-   * away in the background under the same concurrency and per-host guards. What
-   * bounds it is `should_check_immediately` — true only for a showtime that has
-   * never been read at all — so a screening can cost at most one hand-requested
-   * request in its life, however many people tap the button.
+   * Offered for a screening never read at all and for one whose reading is at
+   * least `MANUAL_CHECK_MIN_AGE` old — the rule and the budget behind it are
+   * `seat_availability_service.reserve_manual_check`, which the button's
+   * `can_request_check` mirrors. A granted request is marked due (so the
+   * response already says "checking") and read straight away in the background,
+   * under the same concurrency and per-host guards as a first selection; the
+   * poller picks it up if that read is skipped.
    *
    * Signed in only. Reading the answer is public (see `get_seat_availability`);
    * *causing* a request at a small cinema's ticket shop is not, and an account
    * is what stops the button being an anonymous way to walk the catalogue.
    *
-   * Already-read showtimes are not an error — the caller wanted a number and
-   * there is one, so it comes back as-is.
+   * A refused request is not an error — the caller wanted a number, and gets
+   * whatever is there, with `can_request_check` telling the button to go away.
    * @param data The data for the request.
    * @param data.showtimeId
    * @returns unknown Successful Response
@@ -2776,6 +2779,33 @@ export class ShowtimesService {
     return __request(OpenAPI, {
       method: "POST",
       url: "/api/v1/showtimes/{showtime_id}/seat-availability/check",
+      path: {
+        showtime_id: data.showtimeId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Mark Showtime Viewed
+   * The viewer opened this showtime's sheet or panel.
+   *
+   * Re-arms the "tickets available" notice for them — see
+   * `seat_availability_service.mark_showtime_viewed`. Harmless for a showtime
+   * they have no selection on; clients call it on every open.
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static markShowtimeViewed(
+    data: ShowtimesMarkShowtimeViewedData,
+  ): CancelablePromise<ShowtimesMarkShowtimeViewedResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/showtimes/{showtime_id}/viewed",
       path: {
         showtime_id: data.showtimeId,
       },

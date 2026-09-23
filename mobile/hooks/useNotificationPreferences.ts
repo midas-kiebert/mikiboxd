@@ -81,6 +81,7 @@ const TOGGLE_ICONS: Record<
   notify_on_interest_reminder: "alarm",
   notify_on_seat_alert: "local-fire-department",
   notify_on_sold_out: "event-busy",
+  notify_on_tickets_available: "confirmation-number",
   notify_on_friend_requests: "person-add",
   notify_on_showtime_reminder: "notifications-active",
 };
@@ -94,6 +95,7 @@ export const buildNotificationPreferencesState = (
   notify_on_interest_reminder: !!source?.notify_on_interest_reminder,
   notify_on_seat_alert: !!source?.notify_on_seat_alert,
   notify_on_sold_out: !!source?.notify_on_sold_out,
+  notify_on_tickets_available: !!source?.notify_on_tickets_available,
   notify_on_showtime_reminder: !!source?.notify_on_showtime_reminder,
 });
 
@@ -108,6 +110,9 @@ export const buildNotificationChannelsState = (
   notify_channel_interest_reminder: normalizeChannel(source?.notify_channel_interest_reminder),
   notify_channel_seat_alert: normalizeChannel(source?.notify_channel_seat_alert),
   notify_channel_sold_out: normalizeChannel(source?.notify_channel_sold_out),
+  notify_channel_tickets_available: normalizeChannel(
+    source?.notify_channel_tickets_available
+  ),
   notify_channel_showtime_reminder: normalizeChannel(
     source?.notify_channel_showtime_reminder
   ),

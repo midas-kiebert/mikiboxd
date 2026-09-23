@@ -504,6 +504,17 @@ export default function ShowtimeActionModal({
   const sheetDataEnabled =
     isSheetDataEnabled && visible && selectedShowtimeId !== null && !isTour && isSignedIn;
 
+  // Opening a showtime re-arms its "tickets available" notice: whatever the
+  // last one said has now been seen, so the next time it sells out and gets
+  // tickets back is worth telling them about too. Fire-and-forget — nothing on
+  // screen depends on it, and a failure only means one notice fewer.
+  useEffect(() => {
+    if (!sheetDataEnabled || selectedShowtimeId === null) return;
+    ShowtimesService.markShowtimeViewed({ showtimeId: selectedShowtimeId }).catch(
+      () => {}
+    );
+  }, [sheetDataEnabled, selectedShowtimeId]);
+
   // Window positions of the controls the tour explains, read on demand rather
   // than on layout: layout fires while the sheet is still rising, so it would
   // report where a button was on the way up.
@@ -1104,9 +1115,10 @@ export default function ShowtimeActionModal({
   // row, because a permanent shrug next to a real ticket link is worse than
   // the card simply being the ticket (and seat) actions it can act on.
   const isSeatTrackable = Boolean(seatAvailability?.trackable);
-  // ...and whether a first reading can still be asked for by hand. The server
-  // owns the rule (never read, nothing already on its way); the button just
-  // stops rendering when it goes false, including the moment the tap lands.
+  // ...and whether a fresh reading can be asked for by hand. The server owns
+  // the rule (never read or ten minutes stale, nothing already on its way,
+  // budget left); the button just stops rendering when it goes false,
+  // including the moment the tap lands.
   const canRequestSeatCheck = Boolean(seatAvailability?.can_request_check);
   // Whether the card has a busyness reading (real, pending, or askable) to
   // show at all. False while the query is still loading too, in which case a
@@ -2344,6 +2356,27 @@ export default function ShowtimeActionModal({
                         </ThemedText>
                       ) : null}
                     </View>
+                    {/* A count we already have can be asked for again once
+                        it is ten minutes old, budget permitting — the server
+                        decides, and the button is simply there when it can be
+                        pressed. A re-read in flight holds its slot with a
+                        spinner, so the pill beside it doesn't shift. */}
+                    {isCheckingSeatAvailability ? (
+                      <View style={styles.seatRecheckButton}>
+                        <ActivityIndicator size="small" color={colors.textSecondary} />
+                      </View>
+                    ) : canRequestSeatCheck ? (
+                      <TouchableOpacity
+                        style={styles.seatRecheckButton}
+                        onPress={handleRequestSeatCheck}
+                        activeOpacity={0.7}
+                        hitSlop={SEAT_WATCH_BELL_HIT_SLOP}
+                        accessibilityRole="button"
+                        accessibilityLabel="Check again how many seats are left"
+                      >
+                        <MaterialIcons name="refresh" size={20} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                    ) : null}
                     <View style={[styles.seatInfoValue, { backgroundColor: seatMeta.color }]}>
                       <MaterialIcons
                         name={seatMeta.icon}
@@ -2397,7 +2430,7 @@ export default function ShowtimeActionModal({
                       <ThemedText style={styles.seatInfoCheckedAt}>
                         {isCheckingSeatAvailability
                           ? "Checking now…"
-                          : canRequestSeatCheck
+                          : canRequestSeatCheck && !seatCheckedLabelShort
                             ? "Not tracked yet"
                             : "No count available"}
                       </ThemedText>
@@ -2427,9 +2460,9 @@ export default function ShowtimeActionModal({
                         <ThemedText style={styles.seatInfoCheckButtonText}>Check</ThemedText>
                       </TouchableOpacity>
                     ) : (
-                      // Read once, and the ticket shop had nothing usable to
-                      // say. Nothing to offer here — asking again is what the
-                      // poller is for.
+                      // Read, and the ticket shop had nothing usable to say.
+                      // Once that reading is old enough the Check button
+                      // above takes its place.
                       <View style={[styles.seatInfoValue, styles.seatInfoValueUnknown]}>
                         <MaterialIcons name="help-outline" size={13} color={colors.textSecondary} />
                       </View>
@@ -3343,6 +3376,14 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       color: colors.textSecondary,
     },
     seatWatchBell: {
+      alignItems: "center",
+      justifyContent: "center",
+      width: 20,
+      height: 20,
+    },
+    // Same footprint as the bell, so the spinner that replaces it mid-read
+    // takes exactly its space.
+    seatRecheckButton: {
       alignItems: "center",
       justifyContent: "center",
       width: 20,

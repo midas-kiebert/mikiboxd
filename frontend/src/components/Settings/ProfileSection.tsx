@@ -1,5 +1,7 @@
 /**
- * Profile: username and email — the app's "My profile" card.
+ * Profile: your avatar, username and email — the app's "My profile" card.
+ * The avatar is the one friends see: the Letterboxd picture only once it is
+ * switched on (Letterboxd section), the coloured initial otherwise.
  *
  * Changing either asks for the current password, as the app does; an account
  * with no password yet (signed up with Apple or Google) has nothing to confirm
@@ -19,6 +21,7 @@ import useAuth from "shared/hooks/useAuth"
 import { handleError } from "shared/utils"
 
 import { FriendButton } from "@/components/Friends/friend-controls"
+import { PersonAvatar } from "@/components/Showtimes/detail/PersonAvatar"
 import useCustomToast from "@/hooks/useCustomToast"
 import { emailPattern, usernameMaxLength, usernamePattern } from "@/utils"
 
@@ -161,6 +164,21 @@ const ProfileSection = ({ onGoToPassword }: { onGoToPassword: () => void }) => {
             if (canSave) handleSave()
           }}
         >
+          {user ? (
+            <div className="st-profile-head">
+              <PersonAvatar user={user} size={56} />
+              <div className="st-profile-head__text">
+                <span className="st-profile-head__name">
+                  {user.display_name}
+                </span>
+                <span className="st-profile-head__caption">
+                  {user.avatar_url
+                    ? "Your Letterboxd profile picture, as friends see it."
+                    : "Your coloured initial. You can use your Letterboxd picture instead under Letterboxd."}
+                </span>
+              </div>
+            </div>
+          ) : null}
           <div className="st-fields">
             <SettingsField label="Username" htmlFor="settings-username">
               <input

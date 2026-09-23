@@ -35,3 +35,9 @@ class ShowtimeSelection(SQLModel, table=True):
     # preference: someone can want to hear that a screening is gone without
     # wanting to be hurried while it still has seats, or the other way round.
     sold_out_alert_sent_at: datetime | None = Field(default=None, nullable=True)
+    # When this user was told this sold-out screening had tickets again. Once
+    # per selection: counts wobble by a seat as baskets expire, and a screening
+    # flickering between 0 and 1 must not notify on every flicker.
+    tickets_available_alert_sent_at: datetime | None = Field(
+        default=None, nullable=True
+    )

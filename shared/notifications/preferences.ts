@@ -2,6 +2,9 @@
  * The notification-preference model: which preferences exist, what they are
  * called, what order they appear in, and how a row maps onto backend fields.
  *
+ * "Returned tickets" (`notify_on_tickets_available`) is its own row: a sold-out
+ * screening you are interested in has seats again.
+ *
  * Shared because a row is not always one field. "Seat availability" drives both
  * `notify_on_seat_alert` and `notify_on_sold_out`, and `notify_on_sold_out` has
  * no row of its own — so a client that implemented the list from the field names
@@ -18,6 +21,7 @@ export type NotificationPreferenceKey =
   | "notify_on_interest_reminder"
   | "notify_on_seat_alert"
   | "notify_on_sold_out"
+  | "notify_on_tickets_available"
   | "notify_on_showtime_reminder";
 
 export type NotificationChannelPreferenceKey =
@@ -27,6 +31,7 @@ export type NotificationChannelPreferenceKey =
   | "notify_channel_interest_reminder"
   | "notify_channel_seat_alert"
   | "notify_channel_sold_out"
+  | "notify_channel_tickets_available"
   | "notify_channel_showtime_reminder";
 
 /**
@@ -48,6 +53,7 @@ export const preferenceToChannelKey: Record<
   notify_on_interest_reminder: "notify_channel_interest_reminder",
   notify_on_seat_alert: "notify_channel_seat_alert",
   notify_on_sold_out: "notify_channel_sold_out",
+  notify_on_tickets_available: "notify_channel_tickets_available",
   notify_on_showtime_reminder: "notify_channel_showtime_reminder",
 };
 
@@ -71,6 +77,7 @@ export const NOTIFICATION_LABELS: Record<NotificationPreferenceKey, string> = {
   notify_on_interest_reminder: "Interest reminders",
   notify_on_seat_alert: "Seat availability",
   notify_on_sold_out: "Sold out",
+  notify_on_tickets_available: "Returned tickets",
   notify_on_friend_requests: "Friend requests",
   notify_on_showtime_reminder: "Reminders from friends",
 };
@@ -86,6 +93,7 @@ export const TOGGLE_ORDER: readonly NotificationPreferenceKey[] = [
   "notify_on_showtime_reminder",
   "notify_on_interest_reminder",
   "notify_on_seat_alert",
+  "notify_on_tickets_available",
   "notify_on_friend_requests",
 ];
 

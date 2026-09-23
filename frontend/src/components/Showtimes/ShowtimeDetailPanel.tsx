@@ -40,6 +40,7 @@
 import { Box, Text } from "@chakra-ui/react"
 import { useEffect, useRef } from "react"
 import type { ShowtimePublic } from "shared"
+import { ShowtimesService } from "shared/client"
 
 import { useIsSignedIn, useRequireAccount } from "@/auth/useSession"
 import { SIDE_PANEL_SCROLLER_ATTRIBUTE } from "@/components/Feed/FeedLayout"
@@ -79,6 +80,14 @@ const ShowtimeDetailPanel = ({
       ?.closest(`[${SIDE_PANEL_SCROLLER_ATTRIBUTE}]`)
       ?.scrollTo({ top: 0 })
   }, [showtimeId])
+
+  // Opening a screening re-arms its "tickets available" notice: whatever the
+  // last one said has now been seen, so the next return is news again.
+  // Fire-and-forget — nothing here depends on it.
+  useEffect(() => {
+    if (!isSignedIn) return
+    ShowtimesService.markShowtimeViewed({ showtimeId }).catch(() => {})
+  }, [isSignedIn, showtimeId])
 
   // Render/output using the state and derived values prepared above.
   return (

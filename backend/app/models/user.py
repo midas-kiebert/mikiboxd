@@ -47,6 +47,10 @@ class _UserBase(SQLModel):
     # wanted by different people — one hurries you along while you can still
     # act, the other tells you not to bother.
     notify_on_sold_out: bool = Field(default=True)
+    # "A sold-out showtime you're interested in has tickets again." Its own
+    # preference and its own settings row: it is the one seat notice that
+    # asks you to act fast, and the one someone may want while muting the rest.
+    notify_on_tickets_available: bool = Field(default=True)
     # A friend nudging you about a showtime you're already GOING/INTERESTED on,
     # or invited to and haven't dismissed — distinct from `notify_on_showtime_ping`
     # (the invite itself). This preference is deliberately dual-purpose: it also
@@ -73,6 +77,9 @@ class _UserBase(SQLModel):
         default=NotificationChannel.PUSH
     )
     notify_channel_sold_out: NotificationChannel = Field(
+        default=NotificationChannel.PUSH
+    )
+    notify_channel_tickets_available: NotificationChannel = Field(
         default=NotificationChannel.PUSH
     )
     notify_channel_showtime_reminder: NotificationChannel = Field(
@@ -128,6 +135,7 @@ class UserUpdate(SQLModel):
     notify_on_interest_reminder: bool | None = Field(default=None)
     notify_on_seat_alert: bool | None = Field(default=None)
     notify_on_sold_out: bool | None = Field(default=None)
+    notify_on_tickets_available: bool | None = Field(default=None)
     notify_on_showtime_reminder: bool | None = Field(default=None)
     notify_channel_friend_showtime_match: NotificationChannel | None = Field(
         default=None
@@ -138,6 +146,9 @@ class UserUpdate(SQLModel):
     notify_channel_interest_reminder: NotificationChannel | None = Field(default=None)
     notify_channel_seat_alert: NotificationChannel | None = Field(default=None)
     notify_channel_sold_out: NotificationChannel | None = Field(default=None)
+    notify_channel_tickets_available: NotificationChannel | None = Field(
+        default=None
+    )
     notify_channel_showtime_reminder: NotificationChannel | None = Field(default=None)
     notify_watchlist_digest_enabled: bool | None = Field(default=None)
     use_letterboxd_avatar: bool | None = Field(default=None)

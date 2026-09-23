@@ -17,6 +17,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { type ComponentType, useState } from "react"
 import {
   MdAlarm,
+  MdConfirmationNumber,
   MdEventBusy,
   MdGroups,
   MdLocalFireDepartment,
@@ -59,6 +60,7 @@ const ROW_ICONS: Record<
   notify_on_interest_reminder: MdAlarm,
   notify_on_seat_alert: MdLocalFireDepartment,
   notify_on_sold_out: MdEventBusy,
+  notify_on_tickets_available: MdConfirmationNumber,
   notify_on_friend_requests: MdPersonAdd,
   notify_on_showtime_reminder: MdNotificationsActive,
 }

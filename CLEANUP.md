@@ -77,6 +77,7 @@ Legend:
 - [x] `sold_out_watch.py` — One user waiting on one full showtime for a returned ticket. Unique `user_id` (not a compound key with the showtime) is the "one watch at a time" rule; one-shot, deleted once it finds a seat
 - [x] `cinema_room_capacity.py` — Largest seat count ever seen in one room of one cinema, keyed `(cinema_id, room)`. Shared across every screening in the room, which is what lets the estimate converge at all — a single showtime is read a handful of times, a busy room hundreds
 - [x] `showtime_seat_map.py` — Which individual seats were taken at a showtime's last reading, keyed by showtime. The per-seat half of a seat availability reading, written by the same poller pass from the same response; kept off `Showtime` because every catalogue query selects that row in full and exactly one endpoint ever wants this. Absent means "unknown", never "nothing taken"
+- [ ] `seat_check_request.py` — One hand-requested seat reading ("check" button). In the database, not memory, so the hourly budget and per-screening cooldown hold across every uvicorn worker; pruned past the budget window
 - [x] `showtime_ping.py` — Notification sent to a friend about a showtime
 - [x] `showtime_reminder.py` — Cooldown record for the manual "remind a friend" nudge, one row per (showtime, receiver). Keyed on the receiver rather than the sender pair on purpose: the 72h cooldown is about how often that person may be nudged about that screening, not about who did the nudging
 - [ ] `showtime_ping_link.py` — Short opaque code (not a self-contained token) mapping a shared `/ping/{showtime_id}/{token}` invite link back to who minted it and for which showtime
@@ -169,6 +170,7 @@ Legend:
 - [ ] `showtime_report.py` — Report creation, listing (joined), status updates
 - [x] `user_block.py` — Block create/delete, symmetric `is_blocked_either_way`, `get_hidden_user_ids` (both directions folded into one set — the one every list-filtering caller wants)
 - [x] `showtime_seat_map.py` — One showtime's taken-seat map. `record_seat_map` always replaces, never merges: a reading is a complete snapshot of the room, so merging would pin a freed seat as taken for ever
+- [ ] `seat_check_request.py` — The manual-check log: window counts (global, per host), recently-asked showtimes, and a transaction advisory lock so count-then-insert is atomic across workers
 - [x] `user_report.py` — Report creation, duplicate-open-report check, listing (joined, scalar-subquery count so status filtering doesn't shrink it)
 
 ---

@@ -381,6 +381,52 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
               </Text>
             </Box>
 
+            {/* A count we already have can be asked for again once it is ten
+                minutes old, budget permitting — the server decides, and the
+                button is simply there when it can be pressed. While a re-read
+                is in flight its slot holds a spinner, so nothing shifts. */}
+            {copy && isChecking ? (
+              <Flex
+                align="center"
+                justify="center"
+                flexShrink={0}
+                boxSize="24px"
+                color="fg.muted"
+                aria-hidden
+              >
+                <Spinner size="xs" borderWidth="2px" />
+              </Flex>
+            ) : copy && availability?.can_request_check ? (
+              <PanelPressable
+                type="button"
+                onClick={handleCheck}
+                aria-label={
+                  isSignedIn
+                    ? "Check again how many seats are left"
+                    : "Log in to check how many seats are left"
+                }
+                title="Check again"
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                flexShrink={0}
+                boxSize="24px"
+                borderRadius="full"
+                bg="transparent"
+                color="fg.muted"
+                cursor="pointer"
+                transition="background-color 120ms ease, color 120ms ease"
+                _hover={{ bg: "bg.subtle", color: "fg" }}
+                _focusVisible={{
+                  outline: "2px solid",
+                  outlineColor: "app.tint",
+                  outlineOffset: "1px",
+                }}
+              >
+                <Box as={PanelIcon.refresh} boxSize="20px" />
+              </PanelPressable>
+            ) : null}
+
             {copy && presentation ? (
               <ValuePill
                 bg={`app.${presentation.palette}.primary`}
@@ -441,8 +487,8 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
                 </Box>
               </PanelPressable>
             ) : checkedAt ? (
-              // Read once, and the ticket shop had nothing usable to say.
-              // Nothing to offer here — asking again is what the poller is for.
+              // Read, and the ticket shop had nothing usable to say. Once that
+              // reading is old enough the Check button above takes its place.
               <ValuePill bg="app.surfaceMuted" color="fg.muted">
                 <Box
                   as={PanelIcon.helpOutline}

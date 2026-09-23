@@ -85,6 +85,16 @@ _SEAT_ALERT_COPY: dict[SeatAlertKind, _SeatAlertCopy] = {
         channel_field="notify_channel_sold_out",
         headline=lambda title: f"{title} is sold out",
     ),
+    # The same notification-centre entry and push type as the sold-out watch's
+    # "seats released", which both clients already render and route: it is the
+    # same news, found by the thinner poller watch rather than a user's own.
+    SeatAlertKind.TICKETS_AVAILABLE: _SeatAlertCopy(
+        notification_type=NotificationType.SEATS_RELEASED,
+        push_type="seats_released",
+        enabled_field="notify_on_tickets_available",
+        channel_field="notify_channel_tickets_available",
+        headline=lambda title: f"Tickets available for {title}",
+    ),
 }
 
 logger = getLogger(__name__)
@@ -874,8 +884,12 @@ def send_seat_alerts(
     showtime_ids: list[int],
     kind: SeatAlertKind,
     now: datetime | None = None,
+    exclude_user_ids: Iterable[UUID] = (),
 ) -> int:
     """Tell interested users that these showtimes have crossed `kind`.
+
+    `exclude_user_ids` is for a caller that has already told someone the same
+    news another way — the sold-out watch notifies its own watcher directly.
 
     Called with the showtimes that *just* crossed, and guarded a second time by
     the kind's stamp on each selection, so a screening that hovers around the
@@ -891,12 +905,17 @@ def send_seat_alerts(
     reference_time = now or now_amsterdam_naive()
     copy = _SEAT_ALERT_COPY[kind]
     sent_at_field = showtime_crud.SEAT_ALERT_SENT_AT_FIELDS[kind]
-    candidates = showtime_crud.get_seat_alert_candidates(
-        session=session,
-        showtime_ids=showtime_ids,
-        statuses=SEAT_ALERT_STATUSES,
-        kind=kind,
-    )
+    excluded = set(exclude_user_ids)
+    candidates = [
+        (selection, showtime)
+        for selection, showtime in showtime_crud.get_seat_alert_candidates(
+            session=session,
+            showtime_ids=showtime_ids,
+            statuses=SEAT_ALERT_STATUSES,
+            kind=kind,
+        )
+        if selection.user_id not in excluded
+    ]
     if not candidates:
         return 0
 

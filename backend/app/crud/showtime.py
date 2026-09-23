@@ -591,13 +591,14 @@ def get_interested_reminder_candidates(
 SEAT_ALERT_SENT_AT_FIELDS: dict[SeatAlertKind, str] = {
     SeatAlertKind.NEARLY_SOLD_OUT: "seat_alert_sent_at",
     SeatAlertKind.SOLD_OUT: "sold_out_alert_sent_at",
+    SeatAlertKind.TICKETS_AVAILABLE: "tickets_available_alert_sent_at",
 }
 
 
 def clear_seat_alerts(*, session: Session, showtime_id: int) -> None:
     """Forget that anyone was told anything about this showtime's seat count.
 
-    Both notices at once: the simulation hook this exists for replays a whole
+    Every notice at once: the simulation hook this exists for replays a whole
     run up the scale, and half-cleared stamps would let it fire one notice and
     silently swallow the other.
 

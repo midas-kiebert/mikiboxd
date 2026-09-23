@@ -60,11 +60,13 @@ class ShowtimeSeatAvailabilityPublic(SQLModel):
     # holding an old reading from a ticket link that has since moved to a
     # platform we can't read still shows the number it has.
     trackable: bool = False
-    # Whether the viewer can ask for a first reading by hand. True only for a
-    # trackable screening that has never been read and has no read pending —
-    # the same one-shot rule `services.seat_availability.should_check_immediately`
-    # enforces, mirrored here so the button can disappear the moment it stops
-    # being possible rather than on tap.
+    # Whether the viewer can ask for a fresh reading by hand: a trackable
+    # screening that has not started, has no read pending, was never read or
+    # read at least ten minutes ago, and fits the hand-requested read budget —
+    # the rule `services.seat_availability.reserve_manual_check` enforces,
+    # mirrored here so the button is simply there when it is possible and gone
+    # when it is not. Rows embedded in showtime lists skip the budget half; the
+    # detail endpoints that drive the button apply it.
     can_request_check: bool = False
 
 

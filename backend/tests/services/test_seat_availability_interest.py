@@ -11,10 +11,13 @@ level once there is one.
 """
 
 from datetime import timedelta
+from urllib.parse import urlsplit
 
 from app.core.enums import SeatAvailabilityLevel
 from app.models.showtime import Showtime
 from app.services.seat_availability import (
+    MANUAL_CHECK_MIN_AGE,
+    ManualCheckBudget,
     is_read_pending,
     request_reading_on_interest,
     should_check_immediately,
@@ -244,9 +247,37 @@ def test_a_read_already_on_its_way_is_not_worth_asking_for_again() -> None:
     assert public.can_request_check is False
 
 
-def test_a_showtime_read_once_with_nothing_usable_is_not_offered_again() -> None:
-    """Read, and the platform had no count to give. Not "yet" — the poller owns
-    it from here, and the button would only buy a repeat of the same answer."""
+def test_a_fresh_reading_is_not_offered_again() -> None:
+    """Read minutes ago — asking again would buy a repeat of the same answer."""
+    showtime = _showtime(
+        seats_left=40,
+        seats_capacity=100,
+        seats_checked_at=NOW - timedelta(minutes=5),
+        seats_next_check_at=NOW + timedelta(hours=1),
+    )
+
+    public = to_public(showtime)
+
+    assert public is not None
+    assert public.can_request_check is False
+
+
+def test_a_reading_ten_minutes_old_is_offered_again() -> None:
+    showtime = _showtime(
+        seats_left=40,
+        seats_capacity=100,
+        seats_checked_at=NOW - MANUAL_CHECK_MIN_AGE - timedelta(seconds=1),
+        seats_next_check_at=NOW + timedelta(hours=1),
+    )
+
+    public = to_public(showtime)
+
+    assert public is not None
+    assert public.level is not None
+    assert public.can_request_check is True
+
+
+def test_an_old_read_with_nothing_usable_is_offered_again() -> None:
     showtime = _showtime(
         seats_checked_at=NOW - timedelta(hours=1),
         seats_next_check_at=NOW + timedelta(hours=12),
@@ -255,9 +286,49 @@ def test_a_showtime_read_once_with_nothing_usable_is_not_offered_again() -> None
     public = to_public(showtime)
 
     assert public is not None
-    assert public.trackable is True
     assert public.level is None
+    assert public.can_request_check is True
+
+
+def test_a_started_screening_is_never_offered_a_check() -> None:
+    showtime = _showtime(
+        datetime=NOW - timedelta(minutes=1),
+        seats_checked_at=NOW - timedelta(hours=1),
+        seats_next_check_at=NOW + timedelta(hours=12),
+    )
+
+    public = to_public(showtime)
+
+    assert public is not None
     assert public.can_request_check is False
+
+
+def test_a_spent_budget_withdraws_the_check() -> None:
+    showtime = _showtime(seats_checked_at=None, seats_next_check_at=None)
+    host = urlsplit(READABLE_TICKET_LINK).netloc
+
+    spent_globally = ManualCheckBudget(
+        global_open=False, open_hosts=frozenset({host}), recently_requested=frozenset()
+    )
+    spent_at_host = ManualCheckBudget(
+        global_open=True, open_hosts=frozenset(), recently_requested=frozenset()
+    )
+    asked_recently = ManualCheckBudget(
+        global_open=True,
+        open_hosts=frozenset({host}),
+        recently_requested=frozenset({showtime.id}),
+    )
+    open_budget = ManualCheckBudget(
+        global_open=True, open_hosts=frozenset({host}), recently_requested=frozenset()
+    )
+
+    for budget in (spent_globally, spent_at_host, asked_recently):
+        public = to_public(showtime, budget=budget)
+        assert public is not None
+        assert public.can_request_check is False
+    public = to_public(showtime, budget=open_budget)
+    assert public is not None
+    assert public.can_request_check is True
 
 
 def test_a_reading_survives_its_ticket_link_becoming_unreadable() -> None:

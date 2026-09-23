@@ -27,12 +27,14 @@ before it starts changes by the minute.
 import random
 import threading
 from collections import defaultdict
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import NamedTuple
 from urllib.parse import urlsplit
+from uuid import UUID
 
 import yaml
 from sqlmodel import Session
@@ -45,6 +47,7 @@ from app.core.enums import (
 )
 from app.crud import cinema as cinema_crud
 from app.crud import cinema_room_capacity as room_capacity_crud
+from app.crud import seat_check_request as seat_check_request_crud
 from app.crud import showtime as showtimes_crud
 from app.crud import showtime_seat_map as seat_map_crud
 from app.crud.cinema_room_capacity import RoomCapacityIndex
@@ -195,9 +198,12 @@ SEAT_ALERT_LEVELS = (
 
 
 class SeatCrossings(NamedTuple):
-    """Which of the two seat notices a single reading just earned.
+    """Which seat notice a single reading just earned.
 
-    Never both. A screening that jumps straight from half-empty to sold out has
+    `tickets_available` is the way back down: a screening that read sold out
+    and now reads anything else. Never together with the other two.
+
+    Never both of the first two. A screening that jumps straight from half-empty to sold out has
     technically crossed both lines at once, but "nearly sold out" is a nudge to
     go and buy a seat, and there is no seat — so the crossing is reported as the
     sold-out one alone. The floor still records it, which is what stops the
@@ -206,6 +212,7 @@ class SeatCrossings(NamedTuple):
 
     nearly_sold_out: bool = False
     sold_out: bool = False
+    tickets_available: bool = False
 
 
 # The ratchet stops here rather than at SOLD_OUT. Everything below it only ever
@@ -286,10 +293,10 @@ def _raised_floor(
 # knowing happens to it, and the further out it is, the less anyone can do with
 # the answer.
 #
-# SOLD_OUT is deliberately absent — it is never re-read at all, see
-# `next_check_at`. Anything past the ordinary levels is the sold-out watch's
-# job (`app.services.sold_out_watch`): a much smaller, capped set of showtimes
-# that can afford to look properly often.
+# SOLD_OUT is deliberately absent — it runs on its own schedule, see
+# `_sold_out_next_check_at`. Watching one hard is the Pro sold-out watch's job
+# (`app.services.sold_out_watch`): a much smaller, capped set of showtimes that
+# can afford to look properly often.
 _RECHECK_INTERVALS: dict[
     SeatAvailabilityLevel | None, tuple[timedelta, timedelta, timedelta]
 ] = {
@@ -341,6 +348,42 @@ UNSUPPORTED_RECHECK_AFTER = timedelta(days=7)
 _PENDING_READ_WINDOW = timedelta(minutes=15)
 
 
+# A sold-out screening is watched thinly for returned tickets: hourly while it
+# is far off, never overnight, then every ten minutes through the two hours
+# before it starts — when tickets actually come back — with a last look twenty
+# minutes out. Past that nobody can still buy a ticket and get there, so it is
+# parked for good. Only screenings somebody selected are read at all (the
+# candidate query), so this costs one request an hour per sold-out screening
+# people care about, plus twelve on its last day.
+SOLD_OUT_RECHECK_INTERVAL = timedelta(hours=1)
+SOLD_OUT_FINAL_APPROACH = timedelta(hours=2)
+SOLD_OUT_FINAL_APPROACH_INTERVAL = timedelta(minutes=10)
+SOLD_OUT_LAST_CHECK_BEFORE = timedelta(minutes=20)
+# Hours [start, end) in which the hourly phase does not read. Tickets handed back
+# at 3am are still there at 8, and a ticket shop has no reason to see us then.
+SOLD_OUT_QUIET_HOURS = (0, 8)
+
+
+def _sold_out_next_check_at(*, showtime: Showtime, now: datetime) -> datetime:
+    """When a sold-out `showtime` should next be read — see the constants above.
+
+    Parked at the screening's own start time once the last check is behind it,
+    the same as before this watch existed: the candidate query only takes
+    screenings that have not started, so that due time can never come due.
+    """
+    last_check = showtime.datetime - SOLD_OUT_LAST_CHECK_BEFORE
+    if now >= last_check:
+        return showtime.datetime
+    final_approach = showtime.datetime - SOLD_OUT_FINAL_APPROACH
+    if now >= final_approach:
+        return min(now + SOLD_OUT_FINAL_APPROACH_INTERVAL, last_check)
+    candidate = now + SOLD_OUT_RECHECK_INTERVAL + _RECHECK_JITTER * random.random()
+    quiet_start, quiet_end = SOLD_OUT_QUIET_HOURS
+    if quiet_start <= candidate.hour < quiet_end:
+        candidate = candidate.replace(hour=quiet_end, minute=0, second=0, microsecond=0)
+    return min(candidate, final_approach)
+
+
 def next_check_at(
     *,
     showtime: Showtime,
@@ -355,21 +398,10 @@ def next_check_at(
     """
     level = effective_seat_level(showtime)
     if level is SeatAvailabilityLevel.SOLD_OUT:
-        # Never again. A sold-out screening reads sold out on the next hundred
-        # requests too, and the one case that matters — a ticket handed back —
-        # is what the sold-out watch exists for, at a frequency this poller
-        # could never justify across the catalogue. Parked at the screening's
-        # own start time rather than a null: null means "never read" here and
-        # would put it at the front of every run, while the start time can never
-        # come due — the candidate query only takes screenings that have not
-        # started, so "due" and "eligible" are mutually exclusive for it.
-        #
-        # The cost is deliberate and worth knowing: without a watch on it, a
-        # screening that sells out and then has tickets released keeps reading
-        # "Sold out" until someone looks. `LEVEL_FLOOR_CEILING` stops one rung
-        # short of SOLD_OUT precisely so that state *can* reverse, and this is
-        # the one thing standing between that mechanism and having no effect.
-        return showtime.datetime
+        # A ticket handed back is the one change worth knowing about here, and
+        # `LEVEL_FLOOR_CEILING` stops one rung short of SOLD_OUT precisely so
+        # the level can come back down when one is.
+        return _sold_out_next_check_at(showtime=showtime, now=now)
     interval, close_threshold, close_interval = _RECHECK_INTERVALS[level]
     if showtime.datetime - now <= close_threshold:
         delay = close_interval
@@ -425,9 +457,28 @@ _immediate_check_hosts_lock = threading.Lock()
 _SKIPPED_CHECK_RETRY_AFTER = timedelta(minutes=1)
 
 
-def _defer_skipped_check(*, session: Session, showtime: Showtime) -> None:
-    """Move a showtime off "a read is coming" after declining to read it."""
-    showtime.seats_next_check_at = now_amsterdam_naive() + _SKIPPED_CHECK_RETRY_AFTER
+def _defer_skipped_check(
+    *, session: Session, showtime: Showtime, manual_request_id: int | None = None
+) -> None:
+    """Move a showtime off "a read is coming" after declining to read it.
+
+    A hand-requested read that never happened hands its slot back, so the
+    button comes straight back rather than sitting out a cooldown for a request
+    nobody made. A screening that already has a reading goes back onto its own
+    cadence instead of the short retry — it has a number to show, and the retry
+    exists for the first one.
+    """
+    now = now_amsterdam_naive()
+    if manual_request_id is not None:
+        seat_check_request_crud.delete_by_id(
+            session=session, request_id=manual_request_id
+        )
+    if showtime.seats_checked_at is not None and manual_request_id is not None:
+        showtime.seats_next_check_at = next_check_at(
+            showtime=showtime, now=now, unchanged_streak=showtime.seats_unchanged_streak
+        )
+    else:
+        showtime.seats_next_check_at = now + _SKIPPED_CHECK_RETRY_AFTER
     session.add(showtime)
     session.commit()
 
@@ -452,10 +503,17 @@ def should_check_immediately(*, session: Session, showtime_id: int) -> bool:
     )
 
 
-def check_now(*, session: Session, showtime_id: int) -> None:
+def check_now(
+    *, session: Session, showtime_id: int, manual_request_id: int | None = None
+) -> None:
     """Best-effort immediate read for a showtime someone just showed interest in
     for the first time, so they are not left watching "checking..." for a whole
     poller tick.
+
+    Also the read behind the "check" button, which passes the budget slot it
+    took (`reserve_manual_check`) as `manual_request_id`. That slot is the
+    permission, so the never-read test does not apply to it: the button is
+    offered for stale readings too.
 
     Skipped outright, rather than queued, when the process is already busy doing
     this for other showtimes, or when another one is already in flight at the
@@ -473,14 +531,14 @@ def check_now(*, session: Session, showtime_id: int) -> None:
     showtime at once.
     """
     showtime = session.get(Showtime, showtime_id)
-    if (
-        showtime is None
-        or showtime.seats_checked_at is not None
-        or showtime.ticket_link is None
-    ):
+    if showtime is None or showtime.ticket_link is None:
+        return
+    if manual_request_id is None and showtime.seats_checked_at is not None:
         return
     if not _immediate_check_semaphore.acquire(blocking=False):
-        _defer_skipped_check(session=session, showtime=showtime)
+        _defer_skipped_check(
+            session=session, showtime=showtime, manual_request_id=manual_request_id
+        )
         return
     host: str | None = None
     try:
@@ -488,7 +546,11 @@ def check_now(*, session: Session, showtime_id: int) -> None:
         with _immediate_check_hosts_lock:
             if host in _immediate_check_hosts:
                 host = None
-                _defer_skipped_check(session=session, showtime=showtime)
+                _defer_skipped_check(
+                    session=session,
+                    showtime=showtime,
+                    manual_request_id=manual_request_id,
+                )
                 return
             _immediate_check_hosts.add(host)
         try:
@@ -514,7 +576,7 @@ def check_now(*, session: Session, showtime_id: int) -> None:
             session.commit()
             return
         cinema = session.get(Cinema, showtime.cinema_id)
-        # This is a showtime's *first* reading, so its own running max is a
+        # Usually this is a showtime's *first* reading, so its own running max is a
         # single sample and will read far too small in a room that is already
         # half sold — exactly the case where what the room taught the poller
         # matters most. Threading the index in is what stops that first number
@@ -539,7 +601,7 @@ def check_now(*, session: Session, showtime_id: int) -> None:
         )
         session.add(showtime)
         session.commit()
-        _send_crossing_alerts(
+        send_crossing_alerts(
             session=session, crossings_by_showtime={showtime_id: crossings}
         )
     finally:
@@ -547,6 +609,29 @@ def check_now(*, session: Session, showtime_id: int) -> None:
             with _immediate_check_hosts_lock:
                 _immediate_check_hosts.discard(host)
         _immediate_check_semaphore.release()
+
+
+def mark_showtime_viewed(
+    *, session: Session, showtime_id: int, user_id: UUID
+) -> None:
+    """The user just opened this showtime, so they have seen whatever its
+    returned tickets were: the next time it sells out and gets tickets back is
+    news again, and they are told about that one too.
+
+    Only the tickets-available stamp. The other two notices are once ever on
+    purpose (see `SEAT_ALERT_SENT_AT_FIELDS`), and resetting this one never
+    sends anything by itself — the alert fires on the way *out* of sold out,
+    so a screening already on sale when it is opened stays quiet until it
+    sells out and comes back.
+    """
+    selection = showtimes_crud.get_showtime_selection(
+        session=session, showtime_id=showtime_id, user_id=user_id
+    )
+    if selection is None or selection.tickets_available_alert_sent_at is None:
+        return
+    selection.tickets_available_alert_sent_at = None
+    session.add(selection)
+    session.commit()
 
 
 def is_read_pending(showtime: Showtime, *, now: datetime | None = None) -> bool:
@@ -600,12 +685,150 @@ def is_trackable(showtime: Showtime) -> bool:
     return showtime.ticket_link is not None and supports(showtime.ticket_link)
 
 
-def to_public(showtime: Showtime) -> ShowtimeSeatAvailabilityPublic | None:
+# ── Hand-requested reads ─────────────────────────────────────────────────────
+# The "check" button. Offered once a screening's count is this old — or it has
+# none — and never again for the same screening until this long after the last
+# press, whether or not that press produced a number: a shop whose reads fail
+# would otherwise be one free request per tap.
+MANUAL_CHECK_MIN_AGE = timedelta(minutes=10)
+# On top of the per-screening rule, a budget over everything pressed anywhere,
+# because every press is a live request at a small cinema's ticket shop and the
+# rule above does nothing to stop many people pressing many screenings. Sized
+# against the poller's own ceiling (900/hr overall, 180/hr per shop): pressing
+# can add at most a fraction of that, however popular the button gets. When it
+# is spent the button is simply not offered — it comes back as the window
+# slides, and the poller keeps every selected screening fresh regardless.
+MANUAL_CHECK_BUDGET_WINDOW = timedelta(hours=1)
+MANUAL_CHECK_GLOBAL_LIMIT = 120
+MANUAL_CHECK_HOST_LIMIT = 20
+
+
+class ManualCheckBudget(NamedTuple):
+    """What the manual-check budget allows right now, for a known set of
+    showtimes — loaded once per request so a batch costs two queries, not two
+    per showtime."""
+
+    global_open: bool
+    open_hosts: frozenset[str]
+    recently_requested: frozenset[int]
+
+    def allows(self, showtime: Showtime) -> bool:
+        return (
+            self.global_open
+            and _ticket_host(showtime) in self.open_hosts
+            and showtime.id not in self.recently_requested
+        )
+
+
+def load_manual_check_budget(
+    *, session: Session, showtimes: list[Showtime], now: datetime | None = None
+) -> ManualCheckBudget:
+    reference = now or now_amsterdam_naive()
+    window_start = reference - MANUAL_CHECK_BUDGET_WINDOW
+    hosts = sorted({_ticket_host(showtime) for showtime in showtimes})
+    used_by_host = seat_check_request_crud.count_by_host_since(
+        session=session, since=window_start, hosts=hosts
+    )
+    return ManualCheckBudget(
+        global_open=(
+            seat_check_request_crud.count_since(session=session, since=window_start)
+            < MANUAL_CHECK_GLOBAL_LIMIT
+        ),
+        open_hosts=frozenset(
+            host
+            for host in hosts
+            if used_by_host.get(host, 0) < MANUAL_CHECK_HOST_LIMIT
+        ),
+        recently_requested=frozenset(
+            seat_check_request_crud.get_requested_since(
+                session=session,
+                since=reference - MANUAL_CHECK_MIN_AGE,
+                showtime_ids=[showtime.id for showtime in showtimes],
+            )
+        ),
+    )
+
+
+def is_check_requestable(
+    showtime: Showtime, *, now: datetime, checking: bool
+) -> bool:
+    """The per-screening half of whether the check button is offered.
+
+    Readable at all, not started (nothing reads a screening once it has begun),
+    nothing already on its way — asking twice for the reading being fetched
+    buys nothing — and either never read or read at least
+    `MANUAL_CHECK_MIN_AGE` ago. Sold out is not an exception: a ticket handed
+    back is the one thing the poller will never notice there, so a person asking
+    is worth the request. The other half is `ManualCheckBudget`.
+    """
+    if not is_trackable(showtime) or checking:
+        return False
+    if showtime.datetime <= now:
+        return False
+    return (
+        showtime.seats_checked_at is None
+        or showtime.seats_checked_at <= now - MANUAL_CHECK_MIN_AGE
+    )
+
+
+def reserve_manual_check(*, session: Session, showtime_id: int) -> int | None:
+    """Take a budget slot for a hand-requested read of `showtime_id`, if one is
+    allowed, and mark the showtime as being read.
+
+    Returns the slot's id for `check_now`, or None when the button should not
+    have been there — a stale client, or someone else getting there first. The
+    advisory lock makes the count-then-insert atomic across workers, so the
+    limits hold exactly rather than roughly.
+    """
+    showtime = session.get(Showtime, showtime_id)
+    if showtime is None:
+        raise ShowtimeNotFoundError(showtime_id)
+    now = now_amsterdam_naive()
+    if not is_check_requestable(
+        showtime, now=now, checking=is_read_pending(showtime, now=now)
+    ):
+        return None
+    seat_check_request_crud.lock_budget(session=session)
+    seat_check_request_crud.delete_older_than(
+        session=session, before=now - MANUAL_CHECK_BUDGET_WINDOW
+    )
+    budget = load_manual_check_budget(session=session, showtimes=[showtime], now=now)
+    if not budget.allows(showtime):
+        session.commit()
+        return None
+    request = seat_check_request_crud.create(
+        session=session,
+        showtime_id=showtime_id,
+        host=_ticket_host(showtime),
+        requested_at=now,
+    )
+    # Due now is what `checking` is read off, so the response to this very
+    # request already says a reading is on its way.
+    showtime.seats_next_check_at = now
+    session.add(showtime)
+    session.commit()
+    assert request.id is not None
+    return request.id
+
+
+def to_public(
+    showtime: Showtime, *, budget: ManualCheckBudget | None = None
+) -> ShowtimeSeatAvailabilityPublic | None:
     """This showtime's availability as the client sees it, or None if there is
-    nothing to say about it and never will be — see the schema's docstring."""
+    nothing to say about it and never will be — see the schema's docstring.
+
+    `budget` settles the global half of `can_request_check`. Lists embedding
+    availability in every row leave it out and get the per-screening rule
+    alone: nothing in a list offers the button, and the sheet that does always
+    refetches through `get_seat_availability`, which passes one.
+    """
+    now = now_amsterdam_naive()
     level = effective_seat_level(showtime)
-    checking = is_read_pending(showtime)
+    checking = is_read_pending(showtime, now=now)
     trackable = is_trackable(showtime)
+    can_request_check = is_check_requestable(
+        showtime, now=now, checking=checking
+    ) and (budget is None or budget.allows(showtime))
     if level is None:
         if not checking and not trackable:
             return None
@@ -613,12 +836,7 @@ def to_public(showtime: Showtime) -> ShowtimeSeatAvailabilityPublic | None:
             showtime_id=showtime.id,
             checking=checking,
             trackable=trackable,
-            # The same one-shot rule as `should_check_immediately`, and off
-            # while a read is already on its way — asking twice for the reading
-            # that is currently being fetched buys nothing.
-            can_request_check=(
-                trackable and showtime.seats_checked_at is None and not checking
-            ),
+            can_request_check=can_request_check,
         )
     return ShowtimeSeatAvailabilityPublic(
         showtime_id=showtime.id,
@@ -629,6 +847,7 @@ def to_public(showtime: Showtime) -> ShowtimeSeatAvailabilityPublic | None:
         watchable=(level in WATCHABLE_LEVELS and trackable),
         checking=checking,
         trackable=trackable,
+        can_request_check=can_request_check,
     )
 
 
@@ -638,7 +857,10 @@ def get_seat_availability(
     showtime = session.get(Showtime, showtime_id)
     if showtime is None:
         raise ShowtimeNotFoundError(showtime_id)
-    return to_public(showtime)
+    return to_public(
+        showtime,
+        budget=load_manual_check_budget(session=session, showtimes=[showtime]),
+    )
 
 
 def get_seat_availability_batch(
@@ -659,7 +881,12 @@ def get_seat_availability_batch(
     showtimes_by_id = showtimes_crud.get_showtimes_by_ids(
         session=session, showtime_ids=list(dict.fromkeys(showtime_ids))
     )
-    availabilities = (to_public(showtime) for showtime in showtimes_by_id.values())
+    budget = load_manual_check_budget(
+        session=session, showtimes=list(showtimes_by_id.values())
+    )
+    availabilities = (
+        to_public(showtime, budget=budget) for showtime in showtimes_by_id.values()
+    )
     return [availability for availability in availabilities if availability is not None]
 
 
@@ -777,11 +1004,20 @@ def apply_reading(
         unchanged_streak=showtime.seats_unchanged_streak,
     )
 
+    level = effective_seat_level(showtime)
     sold_out = (
-        effective_seat_level(showtime) is SeatAvailabilityLevel.SOLD_OUT
+        level is SeatAvailabilityLevel.SOLD_OUT
         and previous_level is not SeatAvailabilityLevel.SOLD_OUT
     )
+    # Back from sold out to a real reading. A reading with no level at all is
+    # not evidence of a seat — only of a platform that said nothing usable.
+    tickets_available = (
+        previous_level is SeatAvailabilityLevel.SOLD_OUT
+        and level is not None
+        and level is not SeatAvailabilityLevel.SOLD_OUT
+    )
     return SeatCrossings(
+        tickets_available=tickets_available,
         nearly_sold_out=(
             not sold_out
             and showtime.seats_level_floor in SEAT_ALERT_LEVELS
@@ -791,10 +1027,11 @@ def apply_reading(
     )
 
 
-def _send_crossing_alerts(
+def send_crossing_alerts(
     *,
     session: Session,
     crossings_by_showtime: dict[int, SeatCrossings],
+    exclude_user_ids: Iterable[UUID] = (),
 ) -> None:
     """Send whichever notices this batch of readings earned.
 
@@ -821,10 +1058,21 @@ def _send_crossing_alerts(
                 if crossings.sold_out
             ],
         ),
+        (
+            SeatAlertKind.TICKETS_AVAILABLE,
+            [
+                id
+                for id, crossings in crossings_by_showtime.items()
+                if crossings.tickets_available
+            ],
+        ),
     ):
         if crossed_ids:
             push_notifications.send_seat_alerts(
-                session=session, showtime_ids=crossed_ids, kind=kind
+                session=session,
+                showtime_ids=crossed_ids,
+                kind=kind,
+                exclude_user_ids=exclude_user_ids,
             )
 
 
@@ -932,7 +1180,7 @@ def simulate_reading(
     session.add(showtime)
     session.commit()
 
-    _send_crossing_alerts(
+    send_crossing_alerts(
         session=session, crossings_by_showtime={showtime_id: crossings}
     )
     session.refresh(showtime)
@@ -1071,5 +1319,5 @@ def refresh_seat_availability(
 
     # Deliberately after the commit: the floor and the seat count are what make
     # these fire once each, so they have to be durable before anyone is told.
-    _send_crossing_alerts(session=session, crossings_by_showtime=crossings_by_showtime)
+    send_crossing_alerts(session=session, crossings_by_showtime=crossings_by_showtime)
     return read_count

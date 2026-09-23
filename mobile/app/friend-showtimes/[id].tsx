@@ -33,7 +33,8 @@ import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useFeedDefaults } from '@/hooks/useFeedDefaults';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import { getAvatarColors, getAvatarInitial } from '@/utils/avatar-color';
-import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
+import { isInheritFiltersParam, usePageFilters } from '@/hooks/usePageFilters';
+import { CinemaSelectionScope } from '@/hooks/useCinemaSelection';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import { buildSnapshotTime, useSnapshotRefresh } from '@/utils/reset-infinite-query';
 
@@ -172,7 +173,9 @@ function FriendShowtimesContent({
     setCinemaEditPresetId(null);
   }, []);
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
+  const { inheritFilters } = useLocalSearchParams<{ inheritFilters?: string | string[] }>();
 
+  // Page-scoped: empty unless opened from a feed (see usePageFilters).
   const {
     watchlistOnly,
     appliedWatchlistOnly,
@@ -196,7 +199,8 @@ function FriendShowtimesContent({
     setSelectedLanguages,
     sessionCinemaIds,
     setSessionCinemaIds,
-  } = useSharedTabFilters();
+    cinemaScope,
+  } = usePageFilters(isInheritFiltersParam(inheritFilters));
   const { data: preferredCinemaIds } = useFetchSelectedCinemas();
   // Clearing puts language back to its default, not off (see useFeedDefaults).
   const { defaultLanguages } = useFeedDefaults();
@@ -381,7 +385,7 @@ function FriendShowtimesContent({
   }
 
   return (
-    <>
+    <CinemaSelectionScope.Provider value={cinemaScope}>
       <ShowtimesScreen
         topBarTitle={topBarTitle}
         topBarAccentColor={topBarAccentColor}
@@ -490,7 +494,7 @@ function FriendShowtimesContent({
         onClose={closeCinemaModal}
         initialEditPresetId={cinemaEditPresetId}
       />
-    </>
+    </CinemaSelectionScope.Provider>
   );
 }
 

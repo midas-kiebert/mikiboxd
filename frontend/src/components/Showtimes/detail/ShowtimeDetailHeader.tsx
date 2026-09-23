@@ -41,6 +41,7 @@ import FriendWatchPills from "@/components/Showtimes/detail/FriendWatchPills"
 import { personName } from "@/components/Showtimes/detail/PersonAvatar"
 import { PanelIcon } from "@/components/Showtimes/detail/panel-icons"
 import { cinemaFeedSearch } from "@/features/showtimes/feed-params"
+import { useUnfilteredLinks } from "@/features/showtimes/unfiltered-links"
 
 /** The palette the header is washed with, by what the viewer's relationship is. */
 const accentPalette = (showtime: ShowtimePublic): string | null => {
@@ -147,6 +148,7 @@ type ShowtimeDetailHeaderProps = {
 
 const ShowtimeDetailHeader = ({ showtime }: ShowtimeDetailHeaderProps) => {
   // Read flow: prepare derived values/handlers first, then return component JSX.
+  const links = useUnfilteredLinks()
   const movie = showtime.movie
   const isSynthetic = isSyntheticMovieId(movie.id)
   const start = DateTime.fromISO(showtime.datetime)
@@ -203,7 +205,12 @@ const ShowtimeDetailHeader = ({ showtime }: ShowtimeDetailHeaderProps) => {
         align="flex-start"
       >
         <Flex direction="column" flexShrink={0}>
-          <RouterLink to="/movie/$movieId" params={{ movieId: `${movie.id}` }}>
+          <RouterLink
+            to="/movie/$movieId"
+            params={{ movieId: `${movie.id}` }}
+            search={links.search({}) as never}
+            onClick={links.onFollow}
+          >
             <Box
               position="relative"
               w={POSTER_WIDTH}
@@ -294,7 +301,8 @@ const ShowtimeDetailHeader = ({ showtime }: ShowtimeDetailHeaderProps) => {
                 as on its badge in the feed and in the app. */}
             <RouterLink
               to="/"
-              search={cinemaFeedSearch(showtime.cinema.id)}
+              search={links.search(cinemaFeedSearch(showtime.cinema.id))}
+              onClick={links.onFollow}
               style={{ minWidth: 0, maxWidth: "100%" }}
             >
               <HeaderBadge
@@ -321,7 +329,12 @@ const ShowtimeDetailHeader = ({ showtime }: ShowtimeDetailHeaderProps) => {
 
           <FriendWatchPills showtime={showtime} />
 
-          <RouterLink to="/movie/$movieId" params={{ movieId: `${movie.id}` }}>
+          <RouterLink
+            to="/movie/$movieId"
+            params={{ movieId: `${movie.id}` }}
+            search={links.search({}) as never}
+            onClick={links.onFollow}
+          >
             <Flex align="center" gap="1px" color="app.tint" mt="2px">
               <Text
                 fontSize="11px"

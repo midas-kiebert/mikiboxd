@@ -18,6 +18,7 @@ import type { UserPublic, UserWithFriendStatus } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
 import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
+import { useInheritFiltersParams } from "@/hooks/usePageFilters";
 import { useThemeColors } from "@/hooks/use-theme-color";
 
 type FriendBadgesProps = {
@@ -169,8 +170,12 @@ const FriendBadge = ({
   isFriendOfFriend,
 }: FriendBadgeProps & { isPending?: boolean }) => {
   const router = useRouter();
+  const inheritFiltersParams = useInheritFiltersParams();
   const goToFriendShowtimes = useSingleFireNavigation((id: string, friendName: string) =>
-    router.push({ pathname: "/friend-showtimes/[id]", params: { id, name: friendName } })
+    router.push({
+      pathname: "/friend-showtimes/[id]",
+      params: { id, name: friendName, ...inheritFiltersParams },
+    })
   );
   const sizeStyles: VariantStyles =
     variant === "compact"

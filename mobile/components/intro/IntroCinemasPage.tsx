@@ -82,6 +82,10 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
     });
   }, []);
 
+  const handleOnlyCinema = useCallback((cinemaId: number) => {
+    setSelectedIds(new Set([cinemaId]));
+  }, []);
+
   const handleSelectCinemas = useCallback((cinemaIds: readonly number[]) => {
     setSelectedIds((current) => {
       const next = new Set(current);
@@ -165,6 +169,7 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
             cinemas={cinemaList}
             selectedIds={selectedIds}
             onToggleCinema={handleToggleCinema}
+            onOnlyCinema={handleOnlyCinema}
             onSelectCinemas={handleSelectCinemas}
           />
         )}

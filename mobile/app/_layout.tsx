@@ -40,6 +40,8 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import UpdateRequiredScreen from '@/components/layout/UpdateRequiredScreen';
+import StagingBadge from '@/components/layout/StagingBadge';
+import { API_URL } from '@/constants/api';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
@@ -199,8 +201,9 @@ axios.defaults.transformRequest = [
 ]
 
 // OpenAPI.BASE = "http://192.168.1.121:8000";
-// In dev (`pnpm start`) talk to the staging API/DB; release builds use production.
-OpenAPI.BASE = __DEV__ ? "https://api.staging.mikino.nl" : "https://api.mikino.nl";
+// Dev talks to staging, release builds to production, unless the EAS profile
+// baked in another URL (see constants/api.ts).
+OpenAPI.BASE = API_URL;
 
 // Attach bearer token from secure storage to every generated client request.
 OpenAPI.TOKEN = async () => {
@@ -951,6 +954,7 @@ function RootLayourContent() {
           re-render is visibly working through. Renders nothing until there is
           a switch to cover. */}
       <ThemeSwitchOverlay />
+      <StagingBadge />
     </View>
   )
 }

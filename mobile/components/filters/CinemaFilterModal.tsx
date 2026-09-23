@@ -454,6 +454,10 @@ export default function CinemaFilterModal({
     });
   }, []);
 
+  const handleOnlyCinema = useCallback((cinemaId: number) => {
+    setLocalSelectedCinemaSet(new Set([cinemaId]));
+  }, []);
+
   const handleSelectCinemas = useCallback((cinemaIds: readonly number[]) => {
     setLocalSelectedCinemaSet((current) => {
       const next = new Set(current);
@@ -994,11 +998,15 @@ export default function CinemaFilterModal({
                     ) : null}
                   </View>
                 </View>
+                <ThemedText style={styles.pickerHint}>
+                  Long-press a cinema to select only that one.
+                </ThemedText>
 
                 <CinemaPickerList
                   cinemas={cinemaList}
                   selectedIds={localSelectedCinemaSet}
                   onToggleCinema={handleToggle}
+                  onOnlyCinema={handleOnlyCinema}
                   onSelectCinemas={handleSelectCinemas}
                   onDeselectCinemas={handleDeselectCinemas}
                 />
@@ -1485,8 +1493,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       alignItems: "center",
       justifyContent: "space-between",
       gap: 12,
-      marginBottom: 10,
+      marginBottom: 4,
     },
+    pickerHint: { fontSize: 11, color: colors.textSecondary, marginBottom: 10 },
     pickerHeaderActions: { flexDirection: "row", alignItems: "center", gap: 14 },
     selectionCount: { fontSize: 13, fontWeight: "600", color: colors.textSecondary },
     headerAction: { fontSize: 13, fontWeight: "700", color: colors.tint },

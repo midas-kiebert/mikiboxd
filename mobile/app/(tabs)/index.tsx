@@ -63,6 +63,7 @@ import { useIsAnyBlockingOverlayOpen } from '@/utils/blocking-overlays';
 import { useIntroPhase } from '@/utils/intro';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
+import { InheritFiltersContext } from '@/hooks/usePageFilters';
 import { useSingleFireNavigation } from '@/hooks/useSingleFireNavigation';
 import { buildSnapshotTime, useSnapshotRefresh } from '@/utils/reset-infinite-query';
 import { useRegisterTabReselect } from '@/components/tab-bar';
@@ -648,80 +649,82 @@ function MainShowtimesScreen() {
   };
 
   return (
-    <TopSafeAreaView style={styles.container}>
-      <TopBar />
-      <SearchBar
-        value={searchQuery}
-        onChangeText={setSearchQuery}
-        searchField={searchField}
-        onChangeSearchField={setSearchField}
-        clearOnAndroidBack
-        leftSlot={
-          <FiltersButton onPress={handleOpenFiltersModal} buttonRef={filtersButtonRef} />
-        }
-      />
-      <PresetsRow onApplyPreset={handleApplyPreset} />
-      <ActiveFilterChips {...activeChipsProps} />
-      {appliedGroupByMovie ? (
-        <View style={styles.listWrapper}>
-          <FlatList
-            ref={moviesListRef}
-            data={visibleMovies}
-            renderItem={renderMovie}
-            keyExtractor={byIdKeyExtractor}
-            contentContainerStyle={[styles.movieFeed, pullToRefreshContentStyle]}
-            {...pullToRefreshScrollProps}
-            showsVerticalScrollIndicator={false}
-            ListEmptyComponent={renderMoviesEmpty}
-            ListFooterComponent={<LoadMoreFooter loading={moviesFetchingNextPage} />}
-            onScrollBeginDrag={loadMoreMovies.onScrollBeginDrag}
-            onEndReached={loadMoreMovies.onEndReached}
-            onEndReachedThreshold={2}
-            refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+    <InheritFiltersContext.Provider value>
+      <TopSafeAreaView style={styles.container}>
+        <TopBar />
+        <SearchBar
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          searchField={searchField}
+          onChangeSearchField={setSearchField}
+          clearOnAndroidBack
+          leftSlot={
+            <FiltersButton onPress={handleOpenFiltersModal} buttonRef={filtersButtonRef} />
+          }
+        />
+        <PresetsRow onApplyPreset={handleApplyPreset} />
+        <ActiveFilterChips {...activeChipsProps} />
+        {appliedGroupByMovie ? (
+          <View style={styles.listWrapper}>
+            <FlatList
+              ref={moviesListRef}
+              data={visibleMovies}
+              renderItem={renderMovie}
+              keyExtractor={byIdKeyExtractor}
+              contentContainerStyle={[styles.movieFeed, pullToRefreshContentStyle]}
+              {...pullToRefreshScrollProps}
+              showsVerticalScrollIndicator={false}
+              ListEmptyComponent={renderMoviesEmpty}
+              ListFooterComponent={<LoadMoreFooter loading={moviesFetchingNextPage} />}
+              onScrollBeginDrag={loadMoreMovies.onScrollBeginDrag}
+              onEndReached={loadMoreMovies.onEndReached}
+              onEndReachedThreshold={2}
+              refreshControl={<ThemedRefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+            />
+            {/* An overlay, not the list's ListEmptyComponent: that content
+                scrolls and shifts with RefreshControl's pull, which read as the
+                logo drifting down the screen. Sitting outside the FlatList
+                keeps it fixed in place and (via pointerEvents="none") never
+                intercepts the pull-to-refresh gesture underneath it. */}
+            {showMoviesLoadingLogo ? (
+              <View style={styles.loadingOverlay} pointerEvents="none">
+                <ListLoadingLogo />
+              </View>
+            ) : null}
+          </View>
+        ) : (
+          <ShowtimesListContent
+            listRef={showtimesListRef}
+            showtimes={visibleShowtimes}
+            isLoading={showtimesLoading || isAwaitingShowtimes}
+            isFetching={showtimesFetching}
+            immediateEmptyLoading={isFilterTransitionLoading}
+            isFetchingNextPage={showtimesFetchingNextPage}
+            hasNextPage={showtimesHasNextPage}
+            onLoadMore={() => {
+              if (!showtimesHasNextPage || showtimesFetchingNextPage) return false;
+              return showtimesFetchNextPage();
+            }}
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            emptyText="No screenings found"
+            emptyExtra={searchFieldFallback}
+            openModalOptions={SHOWTIME_MODAL_OPTIONS}
+            inheritFiltersOnMovieNav
           />
-          {/* An overlay, not the list's ListEmptyComponent: that content
-              scrolls and shifts with RefreshControl's pull, which read as the
-              logo drifting down the screen. Sitting outside the FlatList
-              keeps it fixed in place and (via pointerEvents="none") never
-              intercepts the pull-to-refresh gesture underneath it. */}
-          {showMoviesLoadingLogo ? (
-            <View style={styles.loadingOverlay} pointerEvents="none">
-              <ListLoadingLogo />
-            </View>
-          ) : null}
-        </View>
-      ) : (
-        <ShowtimesListContent
-          listRef={showtimesListRef}
-          showtimes={visibleShowtimes}
-          isLoading={showtimesLoading || isAwaitingShowtimes}
-          isFetching={showtimesFetching}
-          immediateEmptyLoading={isFilterTransitionLoading}
-          isFetchingNextPage={showtimesFetchingNextPage}
-          hasNextPage={showtimesHasNextPage}
-          onLoadMore={() => {
-            if (!showtimesHasNextPage || showtimesFetchingNextPage) return false;
-            return showtimesFetchNextPage();
-          }}
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-          emptyText="No screenings found"
-          emptyExtra={searchFieldFallback}
-          openModalOptions={SHOWTIME_MODAL_OPTIONS}
-          inheritFiltersOnMovieNav
-        />
-      )}
-      {/* Floats over whichever feed is on screen, so it goes after both. */}
-      <CinevilleCardButton surface="showtimes" />
-      {/* Renders nothing inline: the tip, if any, is a modal over the screen. */}
-      <FeatureTipsHost />
-      {isShowingIntroFiltersSpotlight ? (
-        <IntroFiltersSpotlight
-          targetRef={filtersButtonRef}
-          onOpenFilters={handleOpenFiltersModal}
-        />
-      ) : null}
-    </TopSafeAreaView>
+        )}
+        {/* Floats over whichever feed is on screen, so it goes after both. */}
+        <CinevilleCardButton surface="showtimes" />
+        {/* Renders nothing inline: the tip, if any, is a modal over the screen. */}
+        <FeatureTipsHost />
+        {isShowingIntroFiltersSpotlight ? (
+          <IntroFiltersSpotlight
+            targetRef={filtersButtonRef}
+            onOpenFilters={handleOpenFiltersModal}
+          />
+        ) : null}
+      </TopSafeAreaView>
+    </InheritFiltersContext.Provider>
   );
 }
 

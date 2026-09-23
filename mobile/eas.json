@@ -41,6 +41,12 @@
     "production-device": {
       "extends": "production",
       "distribution": "internal"
+    },
+    "staging-device": {
+      "extends": "production-device",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://api.staging.mikino.nl"
+      }
     }
   },
   "submit": {

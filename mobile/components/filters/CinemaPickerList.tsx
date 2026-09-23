@@ -7,6 +7,10 @@
  * clear is easier to find than a row of per-section clear links, but the full
  * cinema sheet is long enough that walking back up to it is a chore.
  *
+ * Long-press a cinema to select only that one — the app's take on the web's
+ * double-click (`frontend/src/components/Feed/CinemaChecklist.tsx`). A long
+ * press never fires the tap, so unlike the web there is no toggle before it.
+ *
  * Presentational: the caller owns the selection and decides what it means.
  */
 import { memo, useMemo } from "react";
@@ -19,7 +23,11 @@ import { ThemedText } from "@/components/themed-text";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { getCinemaColorPalette } from "@/utils/cinema-color";
-import { triggerSelectionHaptic } from "@/utils/long-press";
+import {
+  GLOBAL_LONG_PRESS_DELAY_MS,
+  triggerLongPressHaptic,
+  triggerSelectionHaptic,
+} from "@/utils/long-press";
 
 type ThemeColors = typeof import("@/constants/theme").Colors.light;
 type Styles = ReturnType<typeof createStyles>;
@@ -34,6 +42,7 @@ type CinemaChipProps = {
   accentBorder: string;
   checkColor: string;
   onToggle: (cinemaId: number) => void;
+  onOnly: (cinemaId: number) => void;
 };
 
 const CinemaChip = memo(function CinemaChip({
@@ -46,6 +55,7 @@ const CinemaChip = memo(function CinemaChip({
   accentBorder,
   checkColor,
   onToggle,
+  onOnly,
 }: CinemaChipProps) {
   return (
     <TouchableOpacity
@@ -63,10 +73,20 @@ const CinemaChip = memo(function CinemaChip({
         triggerSelectionHaptic();
         onToggle(cinema.id);
       }}
+      onLongPress={() => {
+        triggerLongPressHaptic();
+        onOnly(cinema.id);
+      }}
+      delayLongPress={GLOBAL_LONG_PRESS_DELAY_MS}
       activeOpacity={0.8}
       accessibilityRole="checkbox"
       accessibilityState={{ checked: isSelected }}
       accessibilityLabel={cinema.name}
+      accessibilityHint="Long-press to select only this cinema"
+      accessibilityActions={[{ name: "longpress", label: "Select only this cinema" }]}
+      onAccessibilityAction={(event) => {
+        if (event.nativeEvent.actionName === "longpress") onOnly(cinema.id);
+      }}
     >
       <View style={styles.chipText}>
         <ThemedText numberOfLines={1} style={styles.chipName}>
@@ -94,6 +114,8 @@ type CinemaPickerListProps = {
   cinemas: readonly CinemaPublic[];
   selectedIds: ReadonlySet<number>;
   onToggleCinema: (cinemaId: number) => void;
+  /** Replace the whole selection with this one cinema (a long press). */
+  onOnlyCinema: (cinemaId: number) => void;
   /** Add a whole city at once. */
   onSelectCinemas: (cinemaIds: readonly number[]) => void;
   /** Drop a whole city at once. Omit to leave clearing to the caller's own control. */
@@ -104,6 +126,7 @@ export default function CinemaPickerList({
   cinemas,
   selectedIds,
   onToggleCinema,
+  onOnlyCinema,
   onSelectCinemas,
   onDeselectCinemas,
 }: CinemaPickerListProps) {
@@ -197,6 +220,7 @@ export default function CinemaPickerList({
                     }
                     checkColor={colors.pillActiveText}
                     onToggle={onToggleCinema}
+                    onOnly={onOnlyCinema}
                   />
                 );
               })}

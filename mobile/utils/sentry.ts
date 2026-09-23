@@ -1,6 +1,8 @@
 import * as Sentry from "@sentry/react-native";
 import Constants from "expo-constants";
 
+import { IS_STAGING_BUILD } from "@/constants/api";
+
 // Injected by app.config.js, which reads SENTRY_DSN at build time. Absent for
 // local builds and anyone without Sentry credentials, so every entry point here
 // degrades to a no-op rather than throwing.
@@ -13,7 +15,7 @@ export function initSentry(): void {
 
   Sentry.init({
     dsn,
-    environment: __DEV__ ? "development" : "production",
+    environment: __DEV__ ? "development" : IS_STAGING_BUILD ? "staging" : "production",
     // Crash and error reporting only — no performance tracing, which would
     // sample every navigation for a signal we aren't looking for yet.
     tracesSampleRate: 0,

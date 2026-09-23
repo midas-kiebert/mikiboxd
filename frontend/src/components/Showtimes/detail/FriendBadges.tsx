@@ -32,6 +32,7 @@ import {
 } from "@/components/Showtimes/detail/PersonAvatar"
 import { PanelIcon } from "@/components/Showtimes/detail/panel-icons"
 import { friendFeedSearch } from "@/features/showtimes/feed-params"
+import { useUnfilteredLinks } from "@/features/showtimes/unfiltered-links"
 
 /** The photo inside a pill: the pill's own height less its border and padding. */
 const PILL_AVATAR_SIZE = 22
@@ -70,11 +71,13 @@ type BadgePerson = {
 
 const FriendBadge = ({ user, tone }: Omit<BadgePerson, "key">) => {
   const seat = formatSeatLabel(user.seat_row, user.seat_number)
+  const links = useUnfilteredLinks()
 
   return (
     <Link
       to="/"
-      search={friendFeedSearch(user.id)}
+      search={links.search(friendFeedSearch(user.id))}
+      onClick={links.onFollow}
       style={{ minWidth: 0, maxWidth: "100%" }}
     >
       <Flex

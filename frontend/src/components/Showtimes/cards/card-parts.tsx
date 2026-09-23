@@ -59,6 +59,7 @@ import {
   friendFeedSearch,
 } from "@/features/showtimes/feed-params"
 import { posterSizes, posterSrcSet } from "@/features/showtimes/poster-sources"
+import { useUnfilteredLinks } from "@/features/showtimes/unfiltered-links"
 
 import "./card-parts.css"
 
@@ -310,6 +311,7 @@ export const CinemaTagLink = ({
   size?: "xs" | "sm"
 }) => {
   const navigate = useNavigate()
+  const links = useUnfilteredLinks()
   const { cinema } = showtime
   return (
     <a
@@ -326,7 +328,11 @@ export const CinemaTagLink = ({
         )
           return
         event.preventDefault()
-        void navigate({ to: "/", search: cinemaFeedSearch(cinema.id) as never })
+        links.onFollow()
+        void navigate({
+          to: "/",
+          search: links.search(cinemaFeedSearch(cinema.id)) as never,
+        })
       }}
       // The card answers Enter and Space as a press of its own.
       onKeyDown={(event) => event.stopPropagation()}
@@ -492,6 +498,7 @@ export const AudienceHoverCard = ({
   align?: "start" | "end"
   children: ReactNode
 }) => {
+  const links = useUnfilteredLinks()
   return (
     <HoverCard.Root
       openDelay={150}
@@ -533,14 +540,17 @@ export const AudienceHoverCard = ({
                 <Link
                   key={key}
                   to="/"
-                  search={friendFeedSearch(user.id)}
+                  search={links.search(friendFeedSearch(user.id))}
                   className="mk-avatars-pop__row"
                   // The card underneath opens the panel on its own click; going
                   // to a friend's agenda must not also select the screening.
                   // (React bubbles a portalled element's events through the
                   // component tree it was rendered from, not the DOM tree it
                   // was moved to, so this still reaches the card without it.)
-                  onClick={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    links.onFollow()
+                  }}
                 >
                   <span className="mk-avatars-pop__info">
                     <span className="mk-avatars-pop__name">{nameOf(user)}</span>

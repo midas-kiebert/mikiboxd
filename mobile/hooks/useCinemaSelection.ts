@@ -15,7 +15,7 @@
  * full list here, at the one place a selection is written, so the rest of the
  * app only ever sees a selection that says what the feed is doing.
  */
-import { useCallback } from "react";
+import { createContext, useCallback, useContext } from "react";
 import { commitCinemaSelection } from "shared/filters/cinema-selection";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
@@ -23,10 +23,19 @@ import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelecti
 import { useIsGuest } from "@/utils/auth-session";
 import { saveGuestCinemaSelection } from "@/utils/guest-cinema-selection";
 
-export function useCinemaSelection(): {
+export type CinemaSelection = {
   cinemaIds: number[] | undefined;
   setCinemaIds: (next: number[] | undefined) => void;
-} {
+};
+
+/**
+ * A page with a selection of its own (see `usePageFilters`) provides it here,
+ * and every picker under it reads and writes that one instead of the session's.
+ */
+export const CinemaSelectionScope = createContext<CinemaSelection | null>(null);
+
+export function useCinemaSelection(): CinemaSelection {
+  const scope = useContext(CinemaSelectionScope);
   const { selections, setSelections } = useSessionCinemaSelections();
   const { data: allCinemas } = useFetchCinemas();
   const isGuest = useIsGuest();
@@ -49,5 +58,5 @@ export function useCinemaSelection(): {
     [allCinemas, isGuest, setSelections]
   );
 
-  return { cinemaIds: selections, setCinemaIds };
+  return scope ?? { cinemaIds: selections, setCinemaIds };
 }

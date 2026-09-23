@@ -50,6 +50,7 @@ import { PAGE_NOTICE_BANNER_OFFSET_CSS, TOP_NAV_HEIGHT } from "@/constants"
 import { useDayClock } from "@/features/showtimes/day-clock"
 import { defaultFeedParams } from "@/features/showtimes/feed-params"
 import { useShowtimePanelSlot } from "@/features/showtimes/showtime-panel-slot"
+import { UnfilteredLinksContext } from "@/features/showtimes/unfiltered-links"
 import { useActivityFeed } from "@/features/showtimes/useActivityFeed"
 import { useHeldShowtime } from "@/features/showtimes/useHeldShowtime"
 import useInfiniteScroll from "@/hooks/useInfiniteScroll"
@@ -212,172 +213,176 @@ const ActivityPage = () => {
     ACTIVITY_MODES.find((option) => option.value === mode) ?? ACTIVITY_MODES[0]
 
   // Render/output using the state and derived values prepared above.
+  // Activity has no filters, so its links open their pages with none either
+  // (see `unfiltered-links`) — the screening clicked here must be there too.
   return (
-    <Box
-      px={{ base: 3, md: 8, xl: 12, "2xl": 16 }}
-      pt={{ base: 4, md: 8 }}
-      pb={16}
-    >
-      <Flex
-        maxW={`${CONTENT_MAX_WIDTH}px`}
-        mx="auto"
-        align="flex-start"
-        justify="center"
-        gap={`${COLUMN_GAP}px`}
+    <UnfilteredLinksContext.Provider value>
+      <Box
+        px={{ base: 3, md: 8, xl: 12, "2xl": 16 }}
+        pt={{ base: 4, md: 8 }}
+        pb={16}
       >
-        <Box flex="1 1 auto" minW={0} maxW={`${LIST_MAX_WIDTH}px`}>
-          <header className="ac-head">
-            <div className="ac-head__titles">
-              <h1 className="ac-head__title">Activity</h1>
-              <p className="ac-head__description">{current.description}</p>
-            </div>
-            <div
-              className="ac-modes"
-              role="tablist"
-              aria-label="Whose activity"
-            >
-              {ACTIVITY_MODES.map((option) => {
-                const Icon = option.icon
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    role="tab"
-                    aria-selected={option.value === mode}
-                    className="ac-modes__option"
-                    onClick={() => setMode(option.value)}
-                  >
-                    <Icon className="ac-modes__icon" aria-hidden />
-                    <span className="ac-modes__label">{option.label}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </header>
-
-          {feed.isLoading ? (
-            <Center py={24}>
-              <Spinner size="lg" color="app.tint" />
-            </Center>
-          ) : feed.isError ? (
-            <Center py={24}>
-              <Text color="fg.muted">
-                Activity could not be loaded. Try again in a moment.
-              </Text>
-            </Center>
-          ) : feed.isEmpty ? (
-            <EmptyActivity
-              mode={mode}
-              hasFriends={hasFriends}
-              isLoadingFriends={isLoadingFriends}
-            />
-          ) : (
-            <div className="ac-days">
-              {/* On a phone the panel opens under its row; one whose row has
-                  just left the list stays open up here instead. */}
-              {isMobile && selected && !inList ? (
-                <Box pb={4}>
-                  <ShowtimeDetailPanel
-                    showtime={selected}
-                    onClose={handleClose}
-                  />
-                </Box>
-              ) : null}
-              {days.map((day) => (
-                <section
-                  key={day.key}
-                  className="ac-day"
-                  aria-label={day.label}
-                >
-                  <div className="ac-day__gutter">
-                    <span
-                      className={`ac-day__label${
-                        day.weekday ? " ac-day__label--relative" : ""
-                      }`}
+        <Flex
+          maxW={`${CONTENT_MAX_WIDTH}px`}
+          mx="auto"
+          align="flex-start"
+          justify="center"
+          gap={`${COLUMN_GAP}px`}
+        >
+          <Box flex="1 1 auto" minW={0} maxW={`${LIST_MAX_WIDTH}px`}>
+            <header className="ac-head">
+              <div className="ac-head__titles">
+                <h1 className="ac-head__title">Activity</h1>
+                <p className="ac-head__description">{current.description}</p>
+              </div>
+              <div
+                className="ac-modes"
+                role="tablist"
+                aria-label="Whose activity"
+              >
+                {ACTIVITY_MODES.map((option) => {
+                  const Icon = option.icon
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="tab"
+                      aria-selected={option.value === mode}
+                      className="ac-modes__option"
+                      onClick={() => setMode(option.value)}
                     >
-                      {day.label}
-                    </span>
-                    <span className="ac-day__date">
-                      <span className="ac-day__num">{day.dayOfMonth}</span>
-                      <span className="ac-day__month">{day.month}</span>
-                    </span>
-                    {day.weekday ? (
-                      <span className="ac-day__weekday">{day.weekday}</span>
-                    ) : null}
-                    <DayCount count={dayCounts.get(day.day)} />
-                  </div>
+                      <Icon className="ac-modes__icon" aria-hidden />
+                      <span className="ac-modes__label">{option.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </header>
 
-                  <div className="ac-rows">
-                    {day.showtimes.map((showtime) => {
-                      const delay = entranceDelays.get(showtime.id) ?? 0
-                      return (
-                        <div
-                          key={showtime.id}
-                          className={`ac-rows__item ${FEED_ITEM_CLASS}`}
-                          style={
-                            delay ? { animationDelay: `${delay}ms` } : undefined
-                          }
-                        >
-                          <Row
-                            showtime={showtime}
-                            isSelected={showtime.id === selectedId}
-                            onSelect={handleSelect}
-                          />
-                          {/* No room to dock on a phone: the panel opens
-                              under the row it belongs to. */}
-                          {isMobile && selected?.id === showtime.id ? (
-                            <Box py={2}>
-                              <ShowtimeDetailPanel
-                                showtime={selected}
-                                onClose={handleClose}
-                              />
-                            </Box>
-                          ) : null}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </section>
-              ))}
-
-              <div ref={loadMoreRef} aria-hidden />
-              {feed.isFetchingNextPage ? (
-                <Center py={6}>
-                  <Spinner size="md" color="app.tint" />
-                </Center>
-              ) : null}
-              {!feed.hasNextPage && feed.showtimes.length > 0 ? (
-                <p className="ac-end">That's everything coming up.</p>
-              ) : null}
-            </div>
-          )}
-        </Box>
-
-        {isMobile ? null : (
-          <Box
-            as="aside"
-            // `SIDE_PANEL_SCROLLER_ATTRIBUTE`: what the panel looks for when
-            // it scrolls itself back to the top on a new screening.
-            data-feed-side-panel=""
-            w={DETAIL_WIDTH}
-            flexShrink={0}
-            position="sticky"
-            top={`${PANEL_INSET}px`}
-            maxH={PANEL_MAX_HEIGHT}
-            overflowY="auto"
-            overscrollBehavior="contain"
-          >
-            {panel ?? (
-              <ActivitySummary
+            {feed.isLoading ? (
+              <Center py={24}>
+                <Spinner size="lg" color="app.tint" />
+              </Center>
+            ) : feed.isError ? (
+              <Center py={24}>
+                <Text color="fg.muted">
+                  Activity could not be loaded. Try again in a moment.
+                </Text>
+              </Center>
+            ) : feed.isEmpty ? (
+              <EmptyActivity
                 mode={mode}
-                summary={feed.summary}
-                onSelect={handleSelect}
+                hasFriends={hasFriends}
+                isLoadingFriends={isLoadingFriends}
               />
+            ) : (
+              <div className="ac-days">
+                {/* On a phone the panel opens under its row; one whose row has
+                    just left the list stays open up here instead. */}
+                {isMobile && selected && !inList ? (
+                  <Box pb={4}>
+                    <ShowtimeDetailPanel
+                      showtime={selected}
+                      onClose={handleClose}
+                    />
+                  </Box>
+                ) : null}
+                {days.map((day) => (
+                  <section
+                    key={day.key}
+                    className="ac-day"
+                    aria-label={day.label}
+                  >
+                    <div className="ac-day__gutter">
+                      <span
+                        className={`ac-day__label${
+                          day.weekday ? " ac-day__label--relative" : ""
+                        }`}
+                      >
+                        {day.label}
+                      </span>
+                      <span className="ac-day__date">
+                        <span className="ac-day__num">{day.dayOfMonth}</span>
+                        <span className="ac-day__month">{day.month}</span>
+                      </span>
+                      {day.weekday ? (
+                        <span className="ac-day__weekday">{day.weekday}</span>
+                      ) : null}
+                      <DayCount count={dayCounts.get(day.day)} />
+                    </div>
+
+                    <div className="ac-rows">
+                      {day.showtimes.map((showtime) => {
+                        const delay = entranceDelays.get(showtime.id) ?? 0
+                        return (
+                          <div
+                            key={showtime.id}
+                            className={`ac-rows__item ${FEED_ITEM_CLASS}`}
+                            style={
+                              delay ? { animationDelay: `${delay}ms` } : undefined
+                            }
+                          >
+                            <Row
+                              showtime={showtime}
+                              isSelected={showtime.id === selectedId}
+                              onSelect={handleSelect}
+                            />
+                            {/* No room to dock on a phone: the panel opens
+                                under the row it belongs to. */}
+                            {isMobile && selected?.id === showtime.id ? (
+                              <Box py={2}>
+                                <ShowtimeDetailPanel
+                                  showtime={selected}
+                                  onClose={handleClose}
+                                />
+                              </Box>
+                            ) : null}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </section>
+                ))}
+
+                <div ref={loadMoreRef} aria-hidden />
+                {feed.isFetchingNextPage ? (
+                  <Center py={6}>
+                    <Spinner size="md" color="app.tint" />
+                  </Center>
+                ) : null}
+                {!feed.hasNextPage && feed.showtimes.length > 0 ? (
+                  <p className="ac-end">That's everything coming up.</p>
+                ) : null}
+              </div>
             )}
           </Box>
-        )}
-      </Flex>
-    </Box>
+
+          {isMobile ? null : (
+            <Box
+              as="aside"
+              // `SIDE_PANEL_SCROLLER_ATTRIBUTE`: what the panel looks for when
+              // it scrolls itself back to the top on a new screening.
+              data-feed-side-panel=""
+              w={DETAIL_WIDTH}
+              flexShrink={0}
+              position="sticky"
+              top={`${PANEL_INSET}px`}
+              maxH={PANEL_MAX_HEIGHT}
+              overflowY="auto"
+              overscrollBehavior="contain"
+            >
+              {panel ?? (
+                <ActivitySummary
+                  mode={mode}
+                  summary={feed.summary}
+                  onSelect={handleSelect}
+                />
+              )}
+            </Box>
+          )}
+        </Flex>
+      </Box>
+    </UnfilteredLinksContext.Provider>
   )
 }
 

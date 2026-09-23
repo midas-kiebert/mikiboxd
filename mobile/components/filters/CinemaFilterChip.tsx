@@ -19,7 +19,11 @@ import {
   CHIP_LAYOUT_TRANSITION,
   useImmediateFlashTint,
 } from "@/components/filters/filter-change-animation";
-import { triggerSelectionHaptic } from "@/utils/long-press";
+import {
+  GLOBAL_LONG_PRESS_DELAY_MS,
+  triggerLongPressHaptic,
+  triggerSelectionHaptic,
+} from "@/utils/long-press";
 import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
 type CinemaFilterChipProps = {
@@ -233,6 +237,15 @@ export default function CinemaFilterChip({
     openDropdown();
   };
 
+  // A shortcut past the dropdown for the one row in it that isn't a preset:
+  // long-press goes straight to the picker. A long press never fires the tap,
+  // so the dropdown doesn't flash open on the way.
+  const handleChipLongPress = () => {
+    if (disabled) return;
+    triggerLongPressHaptic();
+    (onOpenCinemaModal ?? openCinemaModal)();
+  };
+
   return (
     <>
       {/* The measured view stays unanimated: it anchors the dropdown, and a
@@ -240,6 +253,8 @@ export default function CinemaFilterChip({
       <View ref={chipRef} collapsable={false} onLayout={handleChipLayout}>
         <TouchableOpacity
           onPress={handleChipPress}
+          onLongPress={handleChipLongPress}
+          delayLongPress={GLOBAL_LONG_PRESS_DELAY_MS}
           activeOpacity={disabled ? 1 : 0.75}
           disabled={disabled}
         >

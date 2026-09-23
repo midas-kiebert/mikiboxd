@@ -22,7 +22,6 @@ import TopSafeAreaView from "@/components/layout/TopSafeAreaView";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
-import type { Language } from "shared/client";
 import type {
   MoviePublic,
   ShowtimePublic,
@@ -59,12 +58,10 @@ import CinemaFilterModal from "@/components/filters/CinemaFilterModal";
 import type { OpenCinemaModalOptions } from "@/components/filters/CinemaFilterModal";
 import ActiveFilterChips from "@/components/filters/ActiveFilterChips";
 import { resolveDaySelectionsForApi } from "@/components/filters/day-filter-utils";
-import {
-  getSelectedStatusesFromShowtimeFilter,
-  type SharedTabShowtimeFilter,
-} from "@/components/filters/shared-tab-filters";
+import { getSelectedStatusesFromShowtimeFilter } from "@/components/filters/shared-tab-filters";
 import { useThemeColors } from "@/hooks/use-theme-color";
-import { useSharedTabFilters } from "@/hooks/useSharedTabFilters";
+import { isInheritFiltersParam, usePageFilters } from "@/hooks/usePageFilters";
+import { CinemaSelectionScope } from "@/hooks/useCinemaSelection";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { buildSnapshotTime, useSnapshotRefresh } from "@/utils/reset-infinite-query";
 import { useIsSignedIn } from "@/utils/auth-session";
@@ -273,12 +270,24 @@ function MovieContent({
   // One popup for the whole list rather than one per row.
   const [addFriendTarget, setAddFriendTarget] = useState<UserWithFriendStatus | null>(null);
 
-  // The tabs' filters (status/day/time/language) are page-scoped here: they only
-  // carry over when `inheritFilters` says this page was opened from the
-  // showtimes tab (or a modal opened from it). Cinema selection stays the one
-  // global "my cinemas" preference shared everywhere.
-  const shared = useSharedTabFilters();
-  const { sessionCinemaIds, setSessionCinemaIds } = shared;
+  // Every filter is page-scoped here, cinema included: it starts from the
+  // feed's only when `inheritFilters` says this page was opened from a feed (or
+  // a modal opened from one), and is empty otherwise (see usePageFilters).
+  const {
+    sessionCinemaIds,
+    setSessionCinemaIds,
+    cinemaScope,
+    selectedShowtimeFilter,
+    setSelectedShowtimeFilter,
+    selectedDays,
+    setSelectedDays,
+    selectedTimeRanges,
+    setSelectedTimeRanges,
+    selectedRuntimeRanges,
+    setSelectedRuntimeRanges,
+    selectedLanguages,
+    setSelectedLanguages,
+  } = usePageFilters(isInheritFiltersParam(inheritFilters));
   // A guest has no account-side "my cinemas" to compare against; theirs is the
   // session selection itself, which is already `sessionCinemaIds`.
   const isSignedIn = useIsSignedIn();
@@ -286,32 +295,12 @@ function MovieContent({
   // Clearing puts language back to its default, not off (see useFeedDefaults).
   const { defaultLanguages } = useFeedDefaults();
 
-  const shouldInheritFilters = useMemo(
-    () => (Array.isArray(inheritFilters) ? inheritFilters[0] : inheritFilters) === "1",
-    [inheritFilters]
-  );
-
-  const [selectedShowtimeFilter, setSelectedShowtimeFilter] = useState<SharedTabShowtimeFilter>(
-    () => (shouldInheritFilters ? shared.appliedShowtimeFilter : "all")
-  );
-  const [selectedDays, setSelectedDays] = useState<string[]>(
-    () => (shouldInheritFilters ? shared.selectedDays : [])
-  );
-  const [selectedTimeRanges, setSelectedTimeRanges] = useState<string[]>(
-    () => (shouldInheritFilters ? shared.selectedTimeRanges : [])
-  );
-  const [selectedRuntimeRanges, setSelectedRuntimeRanges] = useState<string[]>(
-    () => (shouldInheritFilters ? shared.selectedRuntimeRanges : [])
-  );
-  const [selectedLanguages, setSelectedLanguages] = useState<Language[]>(
-    () => (shouldInheritFilters ? shared.selectedLanguages : [])
-  );
   const appliedShowtimeFilter = selectedShowtimeFilter;
 
   const movieId = useMemo(() => Number(id), [id]);
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
 
-  // Safety net: if the showtime that led here belongs to a cinema the global
+  // Safety net: if the showtime that led here belongs to a cinema the inherited
   // cinema filter excludes, fall back to "all cinemas" so it's still visible.
   const originCinemaId = useMemo(() => {
     const normalized = Array.isArray(cinemaId) ? cinemaId[0] : cinemaId;
@@ -322,7 +311,7 @@ function MovieContent({
   useEffect(() => {
     if (originCinemaId === null) return;
     if (sessionCinemaIds && sessionCinemaIds.length > 0 && !sessionCinemaIds.includes(originCinemaId)) {
-      setSessionCinemaIds(undefined);
+      setSessionCinemaIds([]);
     }
   }, [originCinemaId, sessionCinemaIds, setSessionCinemaIds]);
 
@@ -363,7 +352,7 @@ function MovieContent({
           sessionCinemaIds.length > 0 &&
           !sessionCinemaIds.includes(fetchedCinemaId)
         ) {
-          setSessionCinemaIds(undefined);
+          setSessionCinemaIds([]);
         }
       } catch {
         // Ignore — the modal-open effect below already handles an unresolvable showtime.
@@ -554,7 +543,7 @@ function MovieContent({
   const hasMovieFailed = isMovieError || (!isMovieLoading && !movie);
 
   return (
-    <>
+    <CinemaSelectionScope.Provider value={cinemaScope}>
       {hasMovieFailed ? (
         <View style={styles.centered}>
           <ThemedText style={styles.errorText}>Could not load film.</ThemedText>
@@ -851,7 +840,7 @@ function MovieContent({
         onClose={() => setWatchModalKind(null)}
       />
       <FriendOfFriendPopup user={addFriendTarget} onClose={() => setAddFriendTarget(null)} />
-    </>
+    </CinemaSelectionScope.Provider>
   );
 }
 

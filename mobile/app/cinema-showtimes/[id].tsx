@@ -50,7 +50,7 @@ import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { buildSnapshotTime, useSnapshotRefresh } from "@/utils/reset-infinite-query";
-import { useSharedTabFilters } from "@/hooks/useSharedTabFilters";
+import { isInheritFiltersParam, usePageFilters } from "@/hooks/usePageFilters";
 import { getCinemaColorPalette } from "@/utils/cinema-color";
 
 // One request per pause in typing, not one per keystroke — see
@@ -199,12 +199,13 @@ function CinemaShowtimesContent({
   const colors = useThemeColors();
   const styles = createStyles(colors);
   const router = useRouter();
-  const { id, name, city, badgeBgColor, url } = useLocalSearchParams<{
+  const { id, name, city, badgeBgColor, url, inheritFilters } = useLocalSearchParams<{
     id?: string | string[];
     name?: string | string[];
     city?: string | string[];
     badgeBgColor?: string | string[];
     url?: string | string[];
+    inheritFilters?: string | string[];
   }>();
   const routeCinemaId = useMemo(() => Number(getRouteParam(id)), [id]);
   const cinemaId = Number.isFinite(routeCinemaId) && routeCinemaId > 0 ? routeCinemaId : -1;
@@ -252,7 +253,8 @@ function CinemaShowtimesContent({
     setExcludeListIds,
     selectedLanguages,
     setSelectedLanguages,
-  } = useSharedTabFilters();
+    // Page-scoped: empty unless opened from a feed (see usePageFilters).
+  } = usePageFilters(isInheritFiltersParam(inheritFilters));
   // Clearing puts language back to its default, not off (see useFeedDefaults).
   const { defaultLanguages } = useFeedDefaults();
   const { user } = useAuth();
@@ -483,10 +485,8 @@ function CinemaShowtimesContent({
   );
 
   // ─── Render ───────────────────────────────────────────────────────────────────
-  // The applied value, not the chip's: it is what decides which feed is
-  // mounted, and it lands a frame after the tap so that swapping the feed
-  // never happens in the frame the chip's own animation starts. See
-  // `useSharedTabFilters`.
+  // Which feed is mounted. Page-scoped filters apply in the tap's own commit
+  // (see usePageFilters), so this is the same value the chip shows.
   const isLoading = appliedGroupByMovie ? moviesLoading : showtimesLoading;
   const isFetching = appliedGroupByMovie ? moviesFetching : showtimesFetching;
   const resultCount = appliedGroupByMovie ? movies.length : showtimes.length;

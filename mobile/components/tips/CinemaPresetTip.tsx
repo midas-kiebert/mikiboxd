@@ -104,6 +104,10 @@ export default function CinemaPresetTip() {
     });
   }, []);
 
+  const handleOnlyCinema = useCallback((cinemaId: number) => {
+    setSelectedIds(new Set([cinemaId]));
+  }, []);
+
   const handleSelectCinemas = useCallback((cinemaIds: readonly number[]) => {
     setSelectedIds((current) => {
       const next = new Set(current);
@@ -179,6 +183,7 @@ export default function CinemaPresetTip() {
           cinemas={cinemaList}
           selectedIds={selectedIds}
           onToggleCinema={handleToggleCinema}
+          onOnlyCinema={handleOnlyCinema}
           onSelectCinemas={handleSelectCinemas}
         />
       </ScrollView>

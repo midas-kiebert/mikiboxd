@@ -28,6 +28,7 @@ import {
 } from "@/components/Showtimes/cards/card-parts"
 import { useDayClock } from "@/features/showtimes/day-clock"
 import { friendFeedSearch } from "@/features/showtimes/feed-params"
+import { useUnfilteredLinks } from "@/features/showtimes/unfiltered-links"
 
 import type { ActivityMode } from "./activity-modes"
 
@@ -67,6 +68,7 @@ const SummaryShowtime = ({
 }
 
 const ActivitySummary = ({ mode, summary, onSelect }: ActivitySummaryProps) => {
+  const links = useUnfilteredLinks()
   const hint = (
     <p className="ac-sum__hint">
       Pick a screening to see who's going, set your status or invite friends.
@@ -134,7 +136,8 @@ const ActivitySummary = ({ mode, summary, onSelect }: ActivitySummaryProps) => {
                 <Link
                   key={user.id}
                   to="/"
-                  search={friendFeedSearch(user.id)}
+                  search={links.search(friendFeedSearch(user.id))}
+                  onClick={links.onFollow}
                   className="ac-sum__friend"
                   title={`${nameOf(user)}'s agenda`}
                 >

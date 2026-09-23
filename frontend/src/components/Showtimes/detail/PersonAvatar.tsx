@@ -36,6 +36,7 @@ import { getAvatarSources } from "shared/users/avatar-sources"
 
 import { PanelIcon } from "@/components/Showtimes/detail/panel-icons"
 import { friendFeedSearch } from "@/features/showtimes/feed-params"
+import { useUnfilteredLinks } from "@/features/showtimes/unfiltered-links"
 
 type PersonLike = Pick<UserPublic, "id" | "display_name" | "avatar_url">
 
@@ -123,69 +124,77 @@ export const PersonChip = ({
   /** A second line under the name: "Invited · seen", "Row F, seat 12". */
   caption?: ReactNode
   trailing?: ReactNode
-}) => (
-  <Flex align="center" gap={2} minW={0} py="2px">
-    {/* A plain name read as a label, not a link. The chevron says "this goes
-        somewhere" before the pointer arrives; the hover band and underline
-        confirm it once it does. */}
-    <Flex
-      asChild
-      align="center"
-      gap="8px"
-      flex="1"
-      minW={0}
-      mx="-4px"
-      px="4px"
-      py="2px"
-      borderRadius="6px"
-      transition="background-color 120ms ease"
-      _hover={{
-        bg: "bg.muted",
-        "& [data-person-name]": { textDecoration: "underline" },
-      }}
-      _focusVisible={{
-        outline: "2px solid",
-        outlineColor: "app.tint",
-        outlineOffset: "1px",
-      }}
-    >
-      <Link to="/" search={friendFeedSearch(user.id)}>
-        <PersonAvatar user={user} />
-        <Box minW={0}>
-          <Text
-            data-person-name
-            fontSize="13px"
-            fontWeight="600"
-            lineHeight="1.3"
-            textUnderlineOffset="2px"
-            truncate
-            // Only when this is the row's one line: with a caption below it,
-            // the chevron centers against the whole two-line block instead.
-            position={caption ? undefined : "relative"}
-            top={caption ? undefined : "1px"}
-          >
-            {personName(user)}
-          </Text>
-          {caption ? (
-            <Text fontSize="11px" color="fg.muted" lineHeight="1.3" truncate>
-              {caption}
+}) => {
+  const links = useUnfilteredLinks()
+
+  return (
+    <Flex align="center" gap={2} minW={0} py="2px">
+      {/* A plain name read as a label, not a link. The chevron says "this goes
+          somewhere" before the pointer arrives; the hover band and underline
+          confirm it once it does. */}
+      <Flex
+        asChild
+        align="center"
+        gap="8px"
+        flex="1"
+        minW={0}
+        mx="-4px"
+        px="4px"
+        py="2px"
+        borderRadius="6px"
+        transition="background-color 120ms ease"
+        _hover={{
+          bg: "bg.muted",
+          "& [data-person-name]": { textDecoration: "underline" },
+        }}
+        _focusVisible={{
+          outline: "2px solid",
+          outlineColor: "app.tint",
+          outlineOffset: "1px",
+        }}
+      >
+        <Link
+          to="/"
+          search={links.search(friendFeedSearch(user.id))}
+          onClick={links.onFollow}
+        >
+          <PersonAvatar user={user} />
+          <Box minW={0}>
+            <Text
+              data-person-name
+              fontSize="13px"
+              fontWeight="600"
+              lineHeight="1.3"
+              textUnderlineOffset="2px"
+              truncate
+              // Only when this is the row's one line: with a caption below it,
+              // the chevron centers against the whole two-line block instead.
+              position={caption ? undefined : "relative"}
+              top={caption ? undefined : "1px"}
+            >
+              {personName(user)}
             </Text>
-          ) : null}
-        </Box>
-        <Box
-          as={PanelIcon.chevronRight}
-          boxSize="16px"
-          flexShrink={0}
-          ml="-4px"
-          color="fg.subtle"
-          aria-hidden
-        />
-      </Link>
-    </Flex>
-    {trailing ? (
-      <Flex align="center" gap="2px" flexShrink={0}>
-        {trailing}
+            {caption ? (
+              <Text fontSize="11px" color="fg.muted" lineHeight="1.3" truncate>
+                {caption}
+              </Text>
+            ) : null}
+          </Box>
+          <Box
+            as={PanelIcon.chevronRight}
+            boxSize="16px"
+            flexShrink={0}
+            ml="-4px"
+            color="fg.subtle"
+            aria-hidden
+          />
+        </Link>
       </Flex>
-    ) : null}
-  </Flex>
-)
+      {trailing ? (
+        <Flex align="center" gap="2px" flexShrink={0}>
+          {trailing}
+        </Flex>
+      ) : null}
+    </Flex>
+  )
+}

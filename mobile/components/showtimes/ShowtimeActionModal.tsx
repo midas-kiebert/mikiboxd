@@ -86,6 +86,7 @@ import { useShowtimeSeatFloorPlan } from "shared/hooks/useShowtimeSeatFloorPlan"
 import useTrackEvent from "shared/hooks/useTrackEvent";
 
 import CinemaPill from "@/components/badges/CinemaPill";
+import { InheritFiltersContext } from "@/hooks/usePageFilters";
 import {
   formatCheckedAtShort,
   getSeatAvailabilityMeta,
@@ -366,7 +367,10 @@ export default function ShowtimeActionModal({
       })
   );
   const goToUserPage = useSingleFireNavigation((userId: string, name: string) =>
-    router.push({ pathname: "/friend-showtimes/[id]", params: { id: userId, name } })
+    router.push({
+      pathname: "/friend-showtimes/[id]",
+      params: { id: userId, name, ...(inheritFilters ? { inheritFilters: "1" } : {}) },
+    })
   );
   // Generous trailing space so the invite section can always be scrolled to the
   // top, even after typing shrinks the friend list (so the view doesn't jump).
@@ -2014,6 +2018,7 @@ export default function ShowtimeActionModal({
       {/* @gorhom/portal (used by the bottom sheet) does not forward React
           context, so re-provide the QueryClient for hooks rendered inside. */}
       <QueryClientProvider client={queryClient}>
+      <InheritFiltersContext.Provider value={inheritFilters}>
       <CommittedShowtimeReporter
         showtimeId={selectedShowtimeId}
         onCommitted={handleContentCommitted}
@@ -3041,6 +3046,7 @@ export default function ShowtimeActionModal({
         onConfirm={handleInterestedElsewhereConfirm}
         onSkip={handleInterestedElsewhereSkip}
       />
+      </InheritFiltersContext.Provider>
       </QueryClientProvider>
     </BottomSheetModal>
     </>

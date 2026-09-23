@@ -100,3 +100,12 @@ export const useRememberedLanguage = ({
     makeDefault,
   }
 }
+
+/**
+ * For a link that promises an unfiltered page (see `unfiltered-links`): the
+ * rail it lands on must not put the remembered language back on. Spends this
+ * page load's one restore, the same as a rail that already did it.
+ */
+export const skipLanguageRestore = () => {
+  hasRestored = true
+}

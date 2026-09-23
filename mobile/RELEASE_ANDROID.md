@@ -44,6 +44,22 @@ From `mobile/`:
 npx eas build --platform android --profile production-store
 ```
 
+### Pre-release test build against staging
+
+To test a release candidate before the backend ships, build an installable APK
+against staging:
+
+```bash
+npx eas build --platform android --profile staging-device
+```
+
+It is the `production-device` build with `EXPO_PUBLIC_API_URL` pointed at
+`https://api.staging.mikino.nl`, and it shows an orange STAGING badge top-right.
+Same package name, so it installs over the store app; if Android refuses because
+the signing keys differ, uninstall the store app first. Links it shares still
+point at `mikino.nl`, so test link flows on the real build after the backend
+deploy.
+
 ## 2a. Build the Android App Bundle locally (without EAS Build)
 
 If the current Play Console app was originally uploaded with an EAS-managed Android

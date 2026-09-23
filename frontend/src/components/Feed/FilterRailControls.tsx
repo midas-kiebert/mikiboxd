@@ -1,53 +1,66 @@
 /**
- * The vocabulary the filter rail is built from: a section, a pill, a
- * sub-heading.
+ * The vocabulary the filter rail is built from: a section, a pill, a tri-state
+ * row, a sub-heading.
  *
- * Every one of these is the app's control rendered for a mouse. The metrics
- * are lifted from `mobile/components/filters` — the section heading's 11px
+ * Every one of these is the app's control rendered for a mouse. The metrics are
+ * lifted from `mobile/components/filters` — the section heading's 11px
  * uppercase with its 0.6 tracking, the pill's 13px/500 on a fully rounded
  * hairline — so the two clients read as the same product rather than as a site
- * and an app that happen to filter the same things. The colours come from the
- * palette both share, so neither can drift on a green.
+ * and an app that happen to filter the same things.
  *
- * What is different is the ground. These sit on the rail's tinted green card
- * rather than on the page, so the neutrals that work everywhere else do not
- * work here: `fg.muted` is too close to the tint to read, and `bg.subtle` is a
- * grey patch on a green panel. Ink is the tint's own `app.green.secondary`,
- * which the palette tunes to clear 4.9:1 on `app.green.primary`; a pill's rest
- * surface is `bg.panel`, the card white (or near-black) that reads as a raised
- * chip on the tint in both modes; and anything that has to be a wash of the
- * ground is that same ink at low alpha.
+ * The ground is the ordinary panel card, so the ordinary neutrals are what
+ * these are drawn in — `fg` and `fg.muted` for ink, `border` for hairlines,
+ * `app.pill*` for the chips, all of them already tuned against exactly this
+ * surface. Two earlier passes gave the rail a surface of its own (the brand
+ * tint, then a green-cast "ticket stock" with a bespoke `rail.*` palette to
+ * sit on it) and both read as a coloured slab beside the plainly-carded detail
+ * panel across the feed; the palette went with the tint.
  *
- * A pill is *state*: fully round, per the shape rule the app follows
- * everywhere (a squared corner means an action). Nothing here is an action.
+ * Two shape rules, both the app's:
+ *   - A pill is *state*: fully round.
+ *   - A button is an *action*: squared, at `PRESET_BUTTON_RADIUS`. A preset
+ *     therefore never renders as selected, however exactly the filters match
+ *     it — highlighting the matching one is the obvious "improvement" that puts
+ *     actions straight back into the selection family.
+ *
+ * Everything pressable here is `chakra("button")` rather than `Box as="button"`:
+ * `as` swaps the tag without swapping the prop types, so `type="button"` on a
+ * Box is a tsc error waiting at check time.
  */
-import { Box, Flex, Text } from "@chakra-ui/react"
-import { type ReactNode, useState } from "react"
+import { Box, Flex, Text, chakra } from "@chakra-ui/react"
+import { type ChangeEvent, type ReactNode, useState } from "react"
 import { FiChevronDown } from "react-icons/fi"
+import { MdBlock, MdClose } from "react-icons/md"
 import { PRESET_BUTTON_RADIUS } from "shared/filters/filter-control-metrics"
+
+const RailButton = chakra("button")
+const RailTextInput = chakra("input")
 
 /** Matches the app's in-modal pill: 12/6 padding on a 13px label. */
 const PILL_FONT_SIZE = "13px"
 
-/** The tint's own ink, and the two washes of it the card needs. */
-export const RAIL_INK = "app.green.secondary"
-const RAIL_WASH = "app.green.secondary/12"
-const RAIL_HAIRLINE = "app.green.secondary/20"
+/** The card's ink, its quieter voice, and the wash a hovered row takes. */
+export const RAIL_INK = "fg"
+export const RAIL_INK_MUTED = "fg.muted"
+const RAIL_WASH = "bg.subtle"
+/** Focus rings and text-sized actions: the app's own link/icon green. */
+const RAIL_ACCENT = "app.tint"
+/** How long a switch takes to travel — quick enough to feel like the click. */
+const SWITCH_MS = 160
 
 type PillTone = "green" | "red"
 
 /**
  * The two ways a pill can be on. Green is the ordinary "this filter is
- * applied"; red is reserved for the one filter that takes films away rather
- * than narrowing to them, so excluding a list cannot be mistaken for
- * selecting it.
+ * applied"; red is reserved for the filters that take films away rather than
+ * narrowing to them, so hiding a list cannot be mistaken for selecting it.
  */
 const TONES: Record<PillTone, { bg: string; fg: string; border: string }> = {
   green: {
     bg: "app.pillActiveBackground",
     fg: "app.pillActiveText",
-    // An active pill's hairline disappears into its fill, or it reads as a
-    // pale rim around a solid green — the same call the app's pill makes.
+    // An active pill's hairline disappears into its fill, or it reads as a pale
+    // rim around a solid green — the same call the app's pill makes.
     border: "app.pillActiveBackground",
   },
   red: {
@@ -64,6 +77,10 @@ type RailPillProps = {
   tone?: PillTone
   /** For a pill whose label alone does not say what it does. */
   title?: string
+  /** A second line under the label — the city a lone cinema is in, say. */
+  sublabel?: string
+  /** The quieter size, for a pill that is a helper rather than a dimension. */
+  size?: "sm" | "xs"
 }
 
 export const RailPill = ({
@@ -72,34 +89,49 @@ export const RailPill = ({
   onToggle,
   tone = "green",
   title,
+  sublabel,
+  size = "sm",
 }: RailPillProps) => {
   const active = TONES[tone]
 
   return (
-    <Box
-      as="button"
+    <RailButton
       type="button"
       onClick={onToggle}
       aria-pressed={isOn}
       title={title}
-      px="12px"
-      py="6px"
+      display="inline-flex"
+      flexDirection="column"
+      alignItems="flex-start"
+      px={size === "xs" ? "9px" : "12px"}
+      py={size === "xs" ? "3px" : "6px"}
+      // Round even with a second line under the label: these are selections,
+      // and the shape rule does not bend for a taller one.
       borderRadius="full"
       borderWidth="1px"
-      fontSize={PILL_FONT_SIZE}
+      fontSize={size === "xs" ? "12px" : PILL_FONT_SIZE}
       fontWeight="500"
       lineHeight="1.3"
       whiteSpace="nowrap"
       cursor="pointer"
       transition="background-color 120ms ease, border-color 120ms ease, color 120ms ease"
-      bg={isOn ? active.bg : "bg.panel"}
+      bg={isOn ? active.bg : "app.pillBackground"}
       borderColor={isOn ? active.border : "app.pillBorder"}
       color={isOn ? active.fg : "app.pillText"}
       _hover={{ borderColor: isOn ? active.border : "app.checkboxBorder" }}
-      _focusVisible={{ outline: "2px solid", outlineColor: "app.tint", outlineOffset: "1px" }}
+      _focusVisible={{
+        outline: "2px solid",
+        outlineColor: RAIL_ACCENT,
+        outlineOffset: "1px",
+      }}
     >
       {label}
-    </Box>
+      {sublabel ? (
+        <Box as="span" fontSize="10px" opacity={0.75} fontWeight="500">
+          {sublabel}
+        </Box>
+      ) : null}
+    </RailButton>
   )
 }
 
@@ -120,12 +152,6 @@ export const RailPillRow = ({ children }: { children: ReactNode }) => (
  * "Any" is the *unfiltered* default, so its thumb is neutral rather than
  * accented — position says which is selected, colour is reserved for saying a
  * filter is actually doing something. A row of pills has no position to spend.
- *
- * The thumb tones are the app's own: green for going, orange for interested,
- * the card surface for a default that filters nothing. `app.cardBackground` and
- * not `bg.panel` for that neutral thumb, because in dark mode `surfaceMuted`
- * (the track) and `pillBackground` are the same grey and the thumb would
- * vanish into the track.
  */
 const SEGMENT_TONES: Record<
   "green" | "orange" | "neutral",
@@ -133,7 +159,10 @@ const SEGMENT_TONES: Record<
 > = {
   green: { bg: "app.pillActiveBackground", fg: "app.pillActiveText" },
   orange: { bg: "app.orange.primary", fg: "app.orange.secondary" },
-  neutral: { bg: "app.cardBackground", fg: "fg" },
+  // `app.cardBackground`, not `bg.panel`: in dark mode `surfaceMuted` (the
+  // track) and `pillBackground` are the same grey, so a thumb in either
+  // vanishes into the groove it slides along.
+  neutral: { bg: "app.cardBackground", fg: RAIL_INK },
 }
 
 export type RailSegmentedOption<T> = {
@@ -168,8 +197,7 @@ export const RailSegmented = <T extends string | boolean>({
       const tone = SEGMENT_TONES[option.tone ?? "green"]
 
       return (
-        <Box
-          as="button"
+        <RailButton
           type="button"
           key={String(option.value)}
           onClick={() => onChange(option.value)}
@@ -179,7 +207,9 @@ export const RailSegmented = <T extends string | boolean>({
           py="5px"
           borderRadius="full"
           fontSize={PILL_FONT_SIZE}
-          fontWeight={isOn ? "600" : "500"}
+          // One weight for both states: a weight flip reflows the label, and it
+          // lands with the feed's re-render rather than the click.
+          fontWeight="600"
           lineHeight="1.3"
           whiteSpace="nowrap"
           cursor="pointer"
@@ -189,74 +219,202 @@ export const RailSegmented = <T extends string | boolean>({
           _hover={isOn ? undefined : { color: RAIL_INK }}
           _focusVisible={{
             outline: "2px solid",
-            outlineColor: RAIL_INK,
+            outlineColor: RAIL_ACCENT,
             outlineOffset: "1px",
           }}
         >
           {option.label}
-        </Box>
+        </RailButton>
       )
     })}
   </Flex>
 )
 
 /**
+ * A named thing that can be narrowed *to* or taken *away* — a Letterboxd list,
+ * the watchlist, the films you have already seen.
+ *
+ * Three states, not two, and the app's own three: off, "only", "hide". One row
+ * rather than two independent toggles because they are exclusive — a list
+ * cannot both be the only thing shown and be hidden — so picking either side
+ * clears the other rather than producing a filter that matches nothing.
+ */
+export const RailModeRow = ({
+  name,
+  isOnly,
+  isHidden,
+  onOnly,
+  onHide,
+}: {
+  name: string
+  isOnly: boolean
+  isHidden: boolean
+  onOnly: () => void
+  onHide: () => void
+}) => (
+  <Flex align="center" justify="space-between" gap={2} minW={0}>
+    <Text fontSize="13px" color={RAIL_INK} truncate title={name}>
+      {name}
+    </Text>
+    <Flex gap="6px" flexShrink={0}>
+      <RailPill
+        label="Only"
+        size="xs"
+        title={`Show only ${name}`}
+        isOn={isOnly}
+        onToggle={onOnly}
+      />
+      <RailPill
+        label="Hide"
+        size="xs"
+        tone="red"
+        title={`Hide ${name}`}
+        isOn={isHidden}
+        onToggle={onHide}
+      />
+    </Flex>
+  </Flex>
+)
+
+/**
  * A button that *does* something on the card — applies a preset, saves one,
- * clears a selection — as opposed to a pill, which holds state.
+ * clears a selection — as opposed to a pill, which holds state. Squared, at the
+ * radius the app sizes its preset buttons from; the corner is the whole signal.
  *
- * Squared, at the radius the app sizes its preset buttons from, and that is
- * the whole point: every stateful control in the filter UI is fully rounded,
- * so the corner is what says this one is not a selection. A preset's label is
- * the user's own name for it and can never carry that signal itself. The
- * radius comes from `shared/filters` rather than a number here, so the two
- * clients cannot drift on it.
+ * `meta` is a second line under the label, for the thing a row is rather than
+ * the thing it does: a cinema preset's "7 cinemas". `icon` leads the label —
+ * the app marks the account's own cinemas with a star here and nothing else.
  *
- * It follows that an action must never render in a selected style, even when
- * the filters happen to match the preset exactly — highlighting the matching
- * one is the obvious "improvement" that would put these straight back into the
- * selection family.
+ * `isCurrent` says the state this button would apply is the state already in
+ * force, which the app's preset rows show. It is an *outline*, never a fill:
+ * these sit inches from the cinema chips, which are filled when selected, and a
+ * filled preset row read as one more chip.
  */
 export const RailActionButton = ({
   children,
   onClick,
   fullWidth = false,
   title,
+  meta,
+  icon,
+  isCurrent = false,
+  tone = "default",
+  disabled = false,
 }: {
   children: ReactNode
   onClick: () => void
   fullWidth?: boolean
   title?: string
+  meta?: ReactNode
+  icon?: ReactNode
+  isCurrent?: boolean
+  /** "accent" for the one action on a card worth reaching for first. */
+  tone?: "default" | "accent"
+  disabled?: boolean
 }) => (
-  <Box
-    as="button"
+  <RailButton
     type="button"
     onClick={onClick}
     title={title}
+    disabled={disabled}
     w={fullWidth ? "100%" : undefined}
     minW={0}
     px="12px"
     py="7px"
     borderRadius={`${PRESET_BUTTON_RADIUS}px`}
     borderWidth="1px"
-    borderColor="app.green.border"
-    bg="bg.panel"
-    color={RAIL_INK}
+    borderColor={
+      isCurrent ? "app.tint" : tone === "accent" ? "app.green.border" : "border"
+    }
+    bg={tone === "accent" ? "app.green.primary" : "bg.panel"}
+    color={tone === "accent" ? "app.green.secondary" : RAIL_INK}
     fontSize="13px"
     fontWeight="600"
     lineHeight="1.3"
     textAlign="left"
-    cursor="pointer"
-    truncate
+    cursor={disabled ? "default" : "pointer"}
+    opacity={disabled ? 0.55 : 1}
     transition="background-color 120ms ease, border-color 120ms ease"
-    _hover={{ bg: RAIL_WASH }}
+    _hover={
+      disabled
+        ? undefined
+        : {
+            bg: tone === "accent" ? "app.green.primary" : RAIL_WASH,
+            borderColor: "app.checkboxBorder",
+          }
+    }
     _focusVisible={{
       outline: "2px solid",
-      outlineColor: RAIL_INK,
+      outlineColor: RAIL_ACCENT,
       outlineOffset: "1px",
     }}
   >
+    <Flex align="center" gap="6px" minW={0}>
+      {icon ? (
+        <Box flexShrink={0} display="flex">
+          {icon}
+        </Box>
+      ) : null}
+      <Box minW={0} flex="1">
+        <Box truncate>{children}</Box>
+        {meta ? (
+          <Box
+            fontSize="11px"
+            fontWeight="500"
+            color={tone === "accent" ? "app.green.secondary" : RAIL_INK_MUTED}
+            truncate
+          >
+            {meta}
+          </Box>
+        ) : null}
+      </Box>
+    </Flex>
+  </RailButton>
+)
+
+/**
+ * A text-sized action inside a section — "Select all", "Clear", "Add". Carries
+ * no box of its own: a full button every few rows would out-shout the controls
+ * it sits beside, and every one of these is undone in one click.
+ */
+export const RailTextButton = ({
+  children,
+  onClick,
+  title,
+  disabled = false,
+}: {
+  children: ReactNode
+  onClick: () => void
+  title?: string
+  /** Kept on screen rather than removed: these say what they would do, and a
+      label that vanishes the moment it becomes true answers nothing. */
+  disabled?: boolean
+}) => (
+  <RailButton
+    type="button"
+    onClick={onClick}
+    title={title}
+    disabled={disabled}
+    px="2px"
+    bg="transparent"
+    color={disabled ? RAIL_INK_MUTED : RAIL_ACCENT}
+    fontSize="12px"
+    fontWeight="600"
+    lineHeight="1.3"
+    whiteSpace="nowrap"
+    cursor={disabled ? "default" : "pointer"}
+    textDecoration={disabled ? "none" : "underline"}
+    textUnderlineOffset="2px"
+    textDecorationColor="border"
+    _hover={disabled ? undefined : { textDecorationColor: "currentColor" }}
+    _focusVisible={{
+      outline: "2px solid",
+      outlineColor: RAIL_ACCENT,
+      outlineOffset: "2px",
+    }}
+  >
     {children}
-  </Box>
+  </RailButton>
 )
 
 /** The small square actions that sit beside a named row — favourite, rename, delete. */
@@ -272,8 +430,7 @@ export const RailIconButton = ({
   title?: string
   children: ReactNode
 }) => (
-  <Box
-    as="button"
+  <RailButton
     type="button"
     aria-label={label}
     title={title ?? label}
@@ -284,64 +441,387 @@ export const RailIconButton = ({
     justifyContent="center"
     boxSize="28px"
     borderRadius={`${PRESET_BUTTON_RADIUS}px`}
+    bg="transparent"
     color={RAIL_INK}
     cursor="pointer"
     transition="background-color 120ms ease"
     _hover={{ bg: RAIL_WASH }}
     _focusVisible={{
       outline: "2px solid",
-      outlineColor: RAIL_INK,
+      outlineColor: RAIL_ACCENT,
       outlineOffset: "1px",
     }}
   >
     {children}
+  </RailButton>
+)
+
+/**
+ * A switch as a sentence: the whole row is the control, because these are the
+ * features the product is *for* and a toggle you have to aim for is one you
+ * are not being offered.
+ *
+ * The row itself never fills — only the track does, solid `app.tint` with a
+ * white thumb sliding to the right, the same two states the app's own
+ * `AppSwitch` draws (`trackColor: { false: divider, true: tint }`, white
+ * thumb). A first version filled the whole row when on; beside a neutral row
+ * for every other setting it read louder than a switch should, and the app's
+ * own switches never do it either.
+ */
+export const RailSwitchRow = ({
+  label,
+  isOn,
+  onToggle,
+  disabled = false,
+}: {
+  label: string
+  isOn: boolean
+  onToggle: () => void
+  /** Greyed and inert — for a switch that needs something set up first. */
+  disabled?: boolean
+}) => (
+  <RailButton
+    type="button"
+    onClick={onToggle}
+    disabled={disabled}
+    role="switch"
+    aria-checked={isOn}
+    opacity={disabled ? 0.45 : 1}
+    w="100%"
+    display="flex"
+    alignItems="center"
+    gap="9px"
+    px="8px"
+    py="6px"
+    mb="1px"
+    borderRadius="6px"
+    bg="transparent"
+    color={RAIL_INK}
+    cursor={disabled ? "not-allowed" : "pointer"}
+    textAlign="left"
+    _hover={disabled ? undefined : { bg: RAIL_WASH }}
+  >
+    {/* The thumb slides rather than jumping ends, and on the click itself —
+        the value it reads is the rail's optimistic copy, so nothing it waits
+        for is slower than a frame. */}
+    <Box
+      position="relative"
+      w="28px"
+      h="17px"
+      flexShrink={0}
+      borderRadius="full"
+      borderWidth="1px"
+      borderColor={isOn ? RAIL_ACCENT : "border"}
+      bg={isOn ? RAIL_ACCENT : "bg.subtle"}
+      transition={`background-color ${SWITCH_MS}ms ease, border-color ${SWITCH_MS}ms ease`}
+    >
+      <Box
+        position="absolute"
+        top="2px"
+        left="2px"
+        boxSize="11px"
+        borderRadius="full"
+        bg={isOn ? "white" : RAIL_INK_MUTED}
+        transform={isOn ? "translateX(11px)" : "translateX(0)"}
+        transition={`transform ${SWITCH_MS}ms cubic-bezier(0.3, 0.7, 0.4, 1), background-color ${SWITCH_MS}ms ease`}
+      />
+    </Box>
+    {/* Nudged: a label with no descenders leaves its own line-box empty
+        below the letters, so centering it against the switch's box lands
+        the ink high. */}
+    <Box
+      fontSize="13px"
+      fontWeight="600"
+      minW={0}
+      flex="1"
+      position="relative"
+      top="1px"
+    >
+      {label}
+    </Box>
+  </RailButton>
+)
+
+/** The small uppercase label a non-collapsible rail part starts with — the
+ * same spec `RailSection`'s own heading uses, for a block with no accordion. */
+export const RailPartLabel = ({ children }: { children: ReactNode }) => (
+  <Text
+    fontSize="11px"
+    fontWeight="700"
+    textTransform="uppercase"
+    letterSpacing="0.6px"
+    color={RAIL_INK}
+    mb="7px"
+  >
+    {children}
+  </Text>
+)
+
+/**
+ * The heading a single dimension gets *inside* a `RailSection` — "Days",
+ * "Time of day", "Marked by friends" — one size down from the section's own
+ * uppercase title (muted rather than full ink, so the section title still
+ * reads first), with the dimension's own "Clear" riding on the same line when
+ * it has something to clear. A dimension folded into a shared section with no
+ * heading of its own has no way to say, collapsed, which of the section's
+ * several controls is holding a filter — the section's own summary already
+ * lists them, but the open state needs the same anchor the summary gives it.
+ */
+export const RailFacetHeading = ({
+  children,
+  action,
+}: {
+  children: ReactNode
+  action?: ReactNode
+}) => (
+  <Flex align="center" justify="space-between" gap={2} mb="6px" minH="16px">
+    <Text
+      fontSize="11px"
+      fontWeight="700"
+      color={RAIL_INK_MUTED}
+      textTransform="uppercase"
+      letterSpacing="0.6px"
+      truncate
+    >
+      {children}
+    </Text>
+    {action}
+  </Flex>
+)
+
+/**
+ * A block of the rail that is always open — cinemas, quick filters, the
+ * switches — as opposed to `RailSection`, which folds away. Carries the same
+ * tear at its top as every other block, so the rail still reads as one strip
+ * of stubs regardless of which parts can collapse.
+ */
+export const RailPart = ({ children }: { children: ReactNode }) => (
+  <Box>
+    <div className="mk-rail__tear" aria-hidden />
+    <Box px={3} pb="10px">
+      {children}
+    </Box>
   </Box>
+)
+
+/**
+ * A native `date` / `time` / `number` box, dressed for the card.
+ *
+ * Native rather than a picker built here: the browser's own is keyboard
+ * navigable, localised, and already familiar, and the app's equivalent (a
+ * calendar sheet, a dual-handle slider) is answering a touch screen's problem
+ * rather than a mouse's. `color-scheme` is set on the rail in CSS, which is
+ * what makes the dropdown these open follow dark mode.
+ */
+export const RailInput = ({
+  value,
+  onChange,
+  type,
+  label,
+  min,
+  max,
+  step,
+}: {
+  value: string
+  onChange: (value: string) => void
+  type: "date" | "time" | "number"
+  /** The accessible name; these sit under a heading rather than a label. */
+  label: string
+  min?: string | number
+  max?: string | number
+  step?: number
+}) => (
+  <RailTextInput
+    type={type}
+    value={value}
+    aria-label={label}
+    min={min}
+    max={max}
+    step={step}
+    onChange={(event: ChangeEvent<HTMLInputElement>) =>
+      onChange(event.target.value)
+    }
+    flex="1"
+    minW={0}
+    px="8px"
+    py="5px"
+    borderRadius={`${PRESET_BUTTON_RADIUS}px`}
+    borderWidth="1px"
+    borderColor="border"
+    bg="bg.panel"
+    color={RAIL_INK}
+    fontSize="13px"
+    lineHeight="1.3"
+    _focusVisible={{
+      outline: "2px solid",
+      outlineColor: RAIL_ACCENT,
+      outlineOffset: "1px",
+    }}
+  />
 )
 
 /**
  * A heading for a block *inside* a section — one step down from the section's
  * own uppercase label, exactly as `FilterSubLabel` is in the app.
  */
-export const RailSubLabel = ({ label }: { label: string }) => (
-  <Text fontSize="13px" fontWeight="600" color={RAIL_INK} mb="6px">
-    {label}
+export const RailSubLabel = ({
+  label,
+  action,
+}: {
+  label: string
+  /** An action belonging to this block alone — a city's "All", say. */
+  action?: ReactNode
+}) => (
+  <Flex align="center" justify="space-between" gap={2} mb="6px">
+    <Text fontSize="13px" fontWeight="600" color={RAIL_INK} truncate>
+      {label}
+    </Text>
+    {action}
+  </Flex>
+)
+
+/** A line of explanation under a control. Never carries a control of its own. */
+export const RailNote = ({ children }: { children: ReactNode }) => (
+  <Text fontSize="12px" color={RAIL_INK_MUTED} lineHeight="1.4">
+    {children}
   </Text>
 )
+
+/** One filter that is on, as a chip that takes it off. */
+export type RailChipItem = {
+  key: string
+  label: string
+  /** An excluding filter: the ⊘ stands in for the word "Hide", as in the app. */
+  excludes?: boolean
+  /** The chip in full, for a label that summarises ("Fri 5 Sep +3"). */
+  title?: string
+  onRemove: () => void
+}
+
+/**
+ * The app's active-filter chip (`mobile/components/filters/ActiveFilterChip`):
+ * the filter's value, an × after it, and the whole chip is the button that
+ * takes the filter off. One chip per filter, not per value — see
+ * `summarizeChipValues`.
+ *
+ * Coloured and a size up from the app's neutral chip, on purpose: these sit in
+ * a *folded* section, and the one job they have is that nobody searches with a
+ * filter on without noticing. The soft fill and hairline are the rail's own
+ * "this is on" family — the same green as an active pill or "Clear filters",
+ * the same red as a hidden list — so they stand out without shouting.
+ */
+const RailChip = ({
+  label,
+  excludes = false,
+  title,
+  onRemove,
+}: Omit<RailChipItem, "key">) => {
+  const palette = excludes ? "red" : "green"
+  return (
+    <RailButton
+      type="button"
+      onClick={onRemove}
+      aria-label={`Remove filter: ${title ?? (excludes ? `Hide ${label}` : label)}`}
+      title={title ?? label}
+      display="inline-flex"
+      alignItems="center"
+      gap="5px"
+      maxW="100%"
+      minW={0}
+      pl="11px"
+      pr="8px"
+      py="5px"
+      borderRadius="full"
+      borderWidth="1px"
+      borderColor={`app.${palette}.border`}
+      bg={`app.${palette}.primary`}
+      color={`app.${palette}.secondary`}
+      fontSize="13px"
+      fontWeight="600"
+      lineHeight="1.3"
+      cursor="pointer"
+      animation="rail-chip-in 160ms ease-out"
+      transition="filter 120ms ease"
+      _hover={{ filter: "brightness(0.96)" }}
+      _focusVisible={{
+        outline: "2px solid",
+        outlineColor: RAIL_ACCENT,
+        outlineOffset: "1px",
+      }}
+    >
+      {excludes ? (
+        <Box as={MdBlock} boxSize="13px" flexShrink={0} aria-hidden />
+      ) : null}
+      <Box as="span" truncate position="relative" top="1px">
+        {label}
+      </Box>
+      <Box
+        as={MdClose}
+        boxSize="14px"
+        flexShrink={0}
+        opacity={0.8}
+        aria-hidden
+      />
+    </RailButton>
+  )
+}
+
+/**
+ * The app's rule for a filter holding several values: name the first, count
+ * the rest — "Fri 5 Sep +3" — so one filter stays one chip.
+ */
+export const summarizeChipValues = (labels: readonly string[]): string =>
+  labels.length > 1 ? `${labels[0]} +${labels.length - 1}` : (labels[0] ?? "")
 
 type RailSectionProps = {
   title: string
   /**
-   * What the section is currently filtering on, shown in the header while
-   * closed so a collapsed section still says what it is doing.
+   * What the section would filter on, shown in the header while closed and
+   * nothing in it is on — "Any day, any time".
    */
   summary?: string
   /**
-   * Open on mount. True for the dimensions worth the vertical space — the
-   * point of a rail over the app's sheet is that they are already open — and
-   * false for the two long ones, which would otherwise push the card past the
-   * viewport and cost it the pinning that makes it worth having.
+   * Every filter in the section that is on. While the section is closed they
+   * sit under its heading as chips, as the app's active-filter row does: a
+   * folded section is exactly where a filter can be on without anyone noticing.
+   * Open, the controls themselves say it, so the chips step aside.
+   */
+  chips?: readonly RailChipItem[]
+  /**
+   * Open on mount. True for the dimensions worth the vertical space — the point
+   * of a rail over the app's sheet is that they are already open — and false
+   * for the long ones, which would otherwise push the card past the viewport
+   * and cost it the pinning that makes it worth having.
    */
   defaultOpen?: boolean
   children: ReactNode
 }
 
 /**
- * One heading and its controls, divided from its neighbour by a hairline that
- * runs the full width of the card. Full-bleed dividers are why the rail owns
- * its own padding rather than taking it from the panel around it.
+ * One heading and its controls, torn from its neighbour along a perforation
+ * (`FeedFilterRail.css`) rather than divided by a hairline.
+ *
+ * Every section carries its own tear at the top — including the first, which
+ * tears off the rail's heading — so there is no first-child case to get wrong
+ * and the rail reads as a strip of stubs however many sections a given page
+ * shows. Full-bleed tears are also why the rail owns its own padding rather
+ * than taking it from the panel around it: a perforation stopping short of the
+ * edges is a dashed line, not a tear.
  */
 export const RailSection = ({
   title,
   summary,
+  chips = [],
   defaultOpen = true,
   children,
 }: RailSectionProps) => {
   const [isOpen, setIsOpen] = useState(defaultOpen)
+  const showsChips = !isOpen && chips.length > 0
 
   return (
-    <Box borderTopWidth="1px" borderColor={RAIL_HAIRLINE} _first={{ borderTopWidth: 0 }}>
-      <Box
-        as="button"
+    <Box>
+      <div className="mk-rail__tear" aria-hidden />
+      <RailButton
         type="button"
         onClick={() => setIsOpen((open) => !open)}
         aria-expanded={isOpen}
@@ -351,39 +831,60 @@ export const RailSection = ({
         justifyContent="space-between"
         gap={2}
         px={3}
-        py="10px"
+        py="8px"
+        bg="transparent"
         cursor="pointer"
         textAlign="left"
         _hover={{ bg: RAIL_WASH }}
-        _focusVisible={{ outline: "2px solid", outlineColor: RAIL_INK, outlineOffset: "-2px" }}
+        _focusVisible={{
+          outline: "2px solid",
+          outlineColor: RAIL_ACCENT,
+          outlineOffset: "-2px",
+        }}
       >
         <Text
           fontSize="11px"
-          fontWeight="600"
+          fontWeight="700"
           textTransform="uppercase"
           letterSpacing="0.6px"
           color={RAIL_INK}
+          flexShrink={0}
         >
           {title}
         </Text>
         <Flex align="center" gap="6px" minW={0}>
-          {!isOpen && summary ? (
-            <Text fontSize="12px" fontWeight="600" color={RAIL_INK} truncate>
+          {!isOpen && !showsChips && summary ? (
+            <Text
+              fontSize="12px"
+              fontWeight="600"
+              color={RAIL_INK_MUTED}
+              truncate
+              position="relative"
+              top="1px"
+            >
               {summary}
             </Text>
           ) : null}
           <Box
             as={FiChevronDown}
-            color={RAIL_INK}
+            color={RAIL_INK_MUTED}
             flexShrink={0}
             transition="transform 160ms ease"
             transform={isOpen ? "rotate(180deg)" : "rotate(0deg)"}
           />
         </Flex>
-      </Box>
+      </RailButton>
+
+      {showsChips ? (
+        <Flex wrap="wrap" gap="6px" px={3} pb="10px">
+          {chips.map(({ key, ...chip }) => (
+            <RailChip key={key} {...chip} />
+          ))}
+        </Flex>
+      ) : null}
 
       {isOpen ? (
-        <Box px={3} pb={3}>
+        <Box px={3} pb="10px">
           {children}
         </Box>
       ) : null}

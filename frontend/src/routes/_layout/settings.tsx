@@ -1,82 +1,22 @@
 /**
- * TanStack Router route module for settings. It connects URL state to the matching page component.
+ * TanStack Router route module for settings. The page is open to guests, as
+ * the app's Settings tab is: they get the settings kept in this browser, and
+ * an offer to sign in for the rest (see `Settings/SettingsPage.tsx`). A
+ * section is addressed by the URL's hash, e.g. `/settings#privacy`.
  */
-import { Container, Heading, Tabs } from "@chakra-ui/react"
 import { createFileRoute } from "@tanstack/react-router"
 
-import Page from "@/components/Common/Page"
-import RequireAccount from "@/components/Common/RequireAccount"
-import Appearance from "@/components/UserSettings/Appearance"
-import BlockedAccounts from "@/components/UserSettings/BlockedAccounts"
-import ChangePassword from "@/components/UserSettings/ChangePassword"
-import DeleteAccount from "@/components/UserSettings/DeleteAccount"
-import LetterboxdLists from "@/components/UserSettings/LetterboxdLists"
-import Notifications from "@/components/UserSettings/Notifications"
-import UserInformation from "@/components/UserSettings/UserInformation"
-import WatchlistDigest from "@/components/UserSettings/WatchlistDigest"
-import useAuth from "shared/hooks/useAuth"
-
-const tabsConfig = [
-  { value: "my-profile", title: "My profile", component: UserInformation },
-  { value: "password", title: "Password", component: ChangePassword },
-  { value: "letterboxd", title: "Letterboxd", component: LetterboxdLists },
-  { value: "digest", title: "Digest", component: WatchlistDigest },
-  {
-    value: "notifications",
-    title: "Notifications",
-    component: Notifications,
-  },
-  { value: "appearance", title: "Appearance", component: Appearance },
-  { value: "blocked", title: "Blocked accounts", component: BlockedAccounts },
-  { value: "danger-zone", title: "Danger zone", component: DeleteAccount },
-]
+import DeferredPage from "@/components/Common/DeferredPage"
+import SettingsPage from "@/components/Settings/SettingsPage"
 
 export const Route = createFileRoute("/_layout/settings")({
-  component: GatedUserSettings,
+  component: SettingsRoute,
 })
 
-function GatedUserSettings() {
+function SettingsRoute() {
   return (
-    <RequireAccount feature="your settings">
-      <UserSettings />
-    </RequireAccount>
-  )
-}
-
-function UserSettings() {
-  // Read flow: route state and data hooks first, then handlers, then page JSX.
-  const { user: currentUser } = useAuth()
-  const finalTabs = currentUser?.is_superuser
-    ? tabsConfig.filter((tab) => tab.value !== "danger-zone")
-    : tabsConfig
-
-  if (!currentUser) {
-    return null
-  }
-
-  // Render/output using the state and derived values prepared above.
-  return (
-    <Page>
-      <Container maxW="full">
-        <Heading size="lg" textAlign={{ base: "center", md: "left" }} py={12}>
-          User Settings
-        </Heading>
-
-        <Tabs.Root defaultValue="my-profile" variant="subtle">
-          <Tabs.List>
-            {finalTabs.map((tab) => (
-              <Tabs.Trigger key={tab.value} value={tab.value}>
-                {tab.title}
-              </Tabs.Trigger>
-            ))}
-          </Tabs.List>
-          {finalTabs.map((tab) => (
-            <Tabs.Content key={tab.value} value={tab.value}>
-              <tab.component />
-            </Tabs.Content>
-          ))}
-        </Tabs.Root>
-      </Container>
-    </Page>
+    <DeferredPage>
+      <SettingsPage />
+    </DeferredPage>
   )
 }

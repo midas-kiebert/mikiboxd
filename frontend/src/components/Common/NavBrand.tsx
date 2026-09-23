@@ -58,6 +58,11 @@ const NavBrand = ({ onNavigate }: NavBrandProps) => {
           color="fg"
           truncate
           display={{ base: "none", sm: "block" }}
+          // Nudged: "MiKiNO" has no descenders, so its own line-box leaves
+          // empty space below the letters that flex-centering still splits
+          // evenly against the mark beside it, landing the ink high.
+          position="relative"
+          top="1px"
         >
           MiKiNO
         </Text>

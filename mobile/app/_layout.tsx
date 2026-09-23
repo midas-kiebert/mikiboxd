@@ -320,7 +320,11 @@ Notifications.setNotificationHandler({
     shouldShowBanner: true,
     shouldShowList: true,
     shouldPlaySound: true,
-    shouldSetBadge: false,
+    // iOS writes the badge absolutely from the payload, and the backend puts
+    // the true count on every push (`push_notifications.badge_count`), so
+    // applying it in the foreground keeps the icon right rather than leaving it
+    // to the next poll in `useAppIconBadge`.
+    shouldSetBadge: true,
   }),
 });
 

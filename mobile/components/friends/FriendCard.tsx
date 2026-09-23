@@ -13,12 +13,12 @@ import type { UserWithFriendStatus } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import PersonAvatar from "@/components/ui/PersonAvatar";
 import FriendVisibilityControl from "@/components/friends/FriendVisibilityControl";
 import { useFriendActions } from "@/hooks/useFriendActions";
 import { useFriendStatusSharing } from "@/hooks/useFriendStatusSharing";
 import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useThemeColors } from "@/hooks/use-theme-color";
-import { getAvatarColors, getAvatarInitial } from "@/utils/avatar-color";
 import { triggerImpactHaptic, triggerSelectionHaptic } from "@/utils/long-press";
 
 type FriendCardProps = {
@@ -66,7 +66,6 @@ export default function FriendCard({ user, showStatusBadge = false }: FriendCard
   );
 
   const friendName = getFriendName(user);
-  const avatarColors = getAvatarColors(user.id, colors);
 
   const handleConfirmRemoveFriend = () => {
     setIsRemoveDialogVisible(false);
@@ -145,11 +144,14 @@ export default function FriendCard({ user, showStatusBadge = false }: FriendCard
       onPress={handleOpenFriendShowtimes}
       disabled={!canOpenFriendShowtimes}
     >
-      <View style={[styles.avatar, { backgroundColor: avatarColors.primary }]}>
-        <ThemedText style={[styles.avatarText, { color: avatarColors.secondary }]}>
-          {getAvatarInitial(friendName)}
-        </ThemedText>
-      </View>
+      <PersonAvatar
+        userId={user.id}
+        name={friendName}
+        avatarUrl={user.avatar_url}
+        size={38}
+        fontSize={16}
+        style={styles.avatar}
+      />
       <View style={styles.info}>
         <ThemedText style={styles.name} numberOfLines={1} ellipsizeMode="tail">
           {friendName}

@@ -1,6 +1,7 @@
 /**
  * The "Letterboxd" card in Settings: the linked username, watchlist/watched
- * counts, and a manual refresh button for each list.
+ * counts, a manual refresh button for each list, and the opt-in for using
+ * the Letterboxd profile picture as the account's avatar.
  *
  * Watchlist and watched are synced independently on the backend (separate
  * cooldowns, separate failure states), so each gets its own button, its own
@@ -19,8 +20,11 @@ import { DateTime } from 'luxon';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { MeService } from 'shared';
 import useAuth from 'shared/hooks/useAuth';
+import useLetterboxdAvatarPreference from 'shared/hooks/useLetterboxdAvatarPreference';
 
 import { ThemedText } from '@/components/themed-text';
+import LetterboxdAvatarTip from '@/components/tips/LetterboxdAvatarTip';
+import AppSwitch from '@/components/ui/AppSwitch';
 import { useThemeColors } from '@/hooks/use-theme-color';
 
 type Colors = ReturnType<typeof useThemeColors>;
@@ -44,6 +48,7 @@ export default function LetterboxdSection() {
   const styles = createStyles(colors);
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const avatarPreference = useLetterboxdAvatarPreference();
 
   const [username, setUsername] = useState('');
   // Seeded with `undefined` rather than the live value — if the currentUser
@@ -61,10 +66,17 @@ export default function LetterboxdSection() {
   // Local rather than the shared `useSaveLetterboxdUsername` hook: that hook
   // only accepts a non-empty username, but Settings is also where an existing
   // link is unlinked (an emptied field saves `null`).
+  // Asked once, right after a username is linked for the first time, while the
+  // user is thinking about Letterboxd. Skipped if the picture is already on.
+  const [isAvatarPromptOpen, setIsAvatarPromptOpen] = useState(false);
+
   const saveUsername = useMutation({
     mutationFn: (value: string) =>
       MeService.updateUserMe({ requestBody: { letterboxd_username: value || null } }),
-    onSuccess: () => {
+    onSuccess: (_updated, value) => {
+      if (value && !user?.letterboxd_username && !user?.use_letterboxd_avatar) {
+        setIsAvatarPromptOpen(true);
+      }
       queryClient.invalidateQueries({ queryKey: ['currentUser'] });
     },
     onError: (error) => {
@@ -104,6 +116,9 @@ export default function LetterboxdSection() {
 
   return (
     <View style={styles.card}>
+      {isAvatarPromptOpen ? (
+        <LetterboxdAvatarTip onClose={() => setIsAvatarPromptOpen(false)} />
+      ) : null}
       <ThemedText style={styles.label}>Letterboxd username</ThemedText>
       <View style={styles.inputRow}>
         <ThemedText style={styles.prefix}>letterboxd.com/</ThemedText>
@@ -168,6 +183,24 @@ export default function LetterboxdSection() {
             now={now}
             colors={colors}
           />
+
+          <View style={styles.divider} />
+
+          <View style={styles.avatarRow}>
+            <View style={styles.syncTextBlock}>
+              <ThemedText style={styles.syncTitle}>Use my profile picture</ThemedText>
+              <ThemedText style={styles.syncSubtitle}>
+                {avatarPreference.pictureUrl
+                  ? 'Show your Letterboxd profile picture to friends on MiKiNO.'
+                  : 'Show your Letterboxd profile picture to friends on MiKiNO. We\'ll fetch it from Letterboxd as soon as you turn this on.'}
+              </ThemedText>
+            </View>
+            <AppSwitch
+              value={avatarPreference.enabled}
+              onValueChange={avatarPreference.setEnabled}
+              accessibilityLabel="Use my Letterboxd profile picture"
+            />
+          </View>
         </>
       ) : null}
     </View>
@@ -305,6 +338,11 @@ const createStyles = (colors: Colors) =>
       marginTop: 2,
     },
     syncRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    avatarRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 10,

@@ -15,6 +15,7 @@ from app.core.enums import (
     NotificationType,
     SeatAlertKind,
 )
+from app.crud import friendship as friendship_crud
 from app.crud import notification as notification_crud
 from app.crud import push_token as push_token_crud
 from app.crud import showtime as showtime_crud
@@ -87,6 +88,50 @@ _SEAT_ALERT_COPY: dict[SeatAlertKind, _SeatAlertCopy] = {
 }
 
 logger = getLogger(__name__)
+
+
+def badge_count(*, session: Session, user_id: UUID) -> int:
+    """The number iOS shows on the app icon for this user.
+
+    Deliberately *not* the same number as the in-app bell. The bell counts
+    unseen events and zeroes the moment it is opened; the Friends tab carries
+    its own badge for outstanding friend requests. From the home screen there
+    is only one number, so it has to cover both — a friend request that badged
+    nothing until you happened to open the app is exactly the notification
+    people were missing.
+
+    So: unseen notification-centre entries and invites (the bell's number),
+    plus *pending* received friend requests. The friend-request part survives
+    opening the app and only clears on accept or decline, which is the truth
+    of it — the request is still sitting there either way.
+
+    Unlike ``me_service.get_notifications_unseen_count`` this does not prune
+    past-showtime rows first: that path commits, and this one is called from
+    inside notify functions that are mid-transaction. The next read from the
+    client prunes soon enough, and a badge one stale row high for a few minutes
+    is not worth a surprise commit during a push fan-out.
+    """
+    return (
+        notification_crud.get_unseen_count(session=session, user_id=user_id)
+        + showtime_ping_crud.get_unseen_showtime_ping_count(
+            session=session, receiver_id=user_id
+        )
+        + friendship_crud.count_received_friend_requests(
+            session=session, receiver_id=user_id
+        )
+    )
+
+
+def _badges_for(*, session: Session, user_ids: Iterable[UUID]) -> dict[UUID, int]:
+    """``badge_count`` per recipient, for the fan-out sends.
+
+    One entry per *distinct* user, so a recipient with three devices is counted
+    once and all three get the same number.
+    """
+    return {
+        user_id: badge_count(session=session, user_id=user_id)
+        for user_id in set(user_ids)
+    }
 
 
 def _token_hint(token: str) -> str:
@@ -353,6 +398,10 @@ def notify_friends_on_showtime_selection(
         )
 
         if push_tokens:
+            badges = _badges_for(
+                session=session,
+                user_ids=[token.user_id for token in push_tokens],
+            )
             messages = [
                 {
                     "to": token.token,
@@ -362,6 +411,7 @@ def notify_friends_on_showtime_selection(
                     "priority": "high",
                     "sound": "default",
                     "channelId": ANDROID_PUSH_CHANNEL_ID,
+                    "badge": badges[token.user_id],
                 }
                 for token in push_tokens
             ]
@@ -423,7 +473,9 @@ def notify_inviters_on_response(
 
     responder_name = responder.display_name or "A friend"
     now = now_amsterdam_naive()
-    title = f"{responder_name} is {_status_verb_phrase(new_status)} {showtime.movie.title}"
+    title = (
+        f"{responder_name} is {_status_verb_phrase(new_status)} {showtime.movie.title}"
+    )
     day_word = _relative_day_word(showtime.datetime, now)
     if day_word:
         title = f"{title} {day_word}"
@@ -472,6 +524,10 @@ def notify_inviters_on_response(
             user_ids=push_recipient_ids,
         )
         if push_tokens:
+            badges = _badges_for(
+                session=session,
+                user_ids=[token.user_id for token in push_tokens],
+            )
             messages = [
                 {
                     "to": token.token,
@@ -481,6 +537,7 @@ def notify_inviters_on_response(
                     "priority": "high",
                     "sound": "default",
                     "channelId": ANDROID_PUSH_CHANNEL_ID,
+                    "badge": badges[token.user_id],
                 }
                 for token in push_tokens
             ]
@@ -537,6 +594,7 @@ def notify_user_on_friend_request(
     if not push_tokens:
         return
 
+    badge = badge_count(session=session, user_id=receiver_id)
     messages = [
         {
             "to": token.token,
@@ -550,6 +608,7 @@ def notify_user_on_friend_request(
             "sound": "default",
             "channelId": ANDROID_PUSH_CHANNEL_ID,
             "categoryId": FRIEND_REQUEST_NOTIFICATION_CATEGORY_ID,
+            "badge": badge,
         }
         for token in push_tokens
     ]
@@ -606,6 +665,7 @@ def notify_user_on_friend_request_accepted(
     if not push_tokens:
         return
 
+    badge = badge_count(session=session, user_id=requester_id)
     messages = [
         {
             "to": token.token,
@@ -618,6 +678,7 @@ def notify_user_on_friend_request_accepted(
             "priority": "high",
             "sound": "default",
             "channelId": ANDROID_PUSH_CHANNEL_ID,
+            "badge": badge,
         }
         for token in push_tokens
     ]
@@ -680,6 +741,7 @@ def notify_user_on_showtime_ping(
     if not push_tokens:
         return
 
+    badge = badge_count(session=session, user_id=receiver_id)
     messages = [
         {
             "to": token.token,
@@ -695,6 +757,7 @@ def notify_user_on_showtime_ping(
             "sound": "default",
             "channelId": ANDROID_PUSH_CHANNEL_ID,
             "categoryId": SHOWTIME_PING_NOTIFICATION_CATEGORY_ID,
+            "badge": badge,
         }
         for token in push_tokens
     ]
@@ -767,6 +830,11 @@ def notify_user_on_showtime_reminder(
     if not push_tokens:
         return False
 
+    # A reminder leaves no notification-centre entry, so this number is
+    # unchanged by the push that carries it. Sent anyway: iOS writes the badge
+    # absolutely on every delivery, so including it re-syncs a badge that has
+    # drifted rather than leaving whatever stale number is sitting there.
+    badge = badge_count(session=session, user_id=receiver_id)
     messages = [
         {
             "to": token.token,
@@ -781,6 +849,7 @@ def notify_user_on_showtime_reminder(
             "priority": "high",
             "sound": "default",
             "channelId": ANDROID_PUSH_CHANNEL_ID,
+            "badge": badge,
         }
         for token in push_tokens
     ]
@@ -855,6 +924,7 @@ def send_seat_alerts(
 
     push_messages: list[dict] = []
     push_message_tokens: list[str] = []
+    push_message_user_ids: list[UUID] = []
     alerted_selections: list[ShowtimeSelection] = []
 
     for selection, showtime in candidates:
@@ -916,6 +986,7 @@ def send_seat_alerts(
                 }
             )
             push_message_tokens.append(token)
+            push_message_user_ids.append(recipient.id)
         alerted_selections.append(selection)
 
     for selection in alerted_selections:
@@ -923,7 +994,15 @@ def send_seat_alerts(
         session.add(selection)
     session.commit()
 
+    # Stamped after the loop, not inside it: one run can alert the same person
+    # about several showtimes, and every message carries an *absolute* badge.
+    # Counting once at the end means they all agree on the final number rather
+    # than each showing the count as it stood partway through the fan-out.
     if push_messages:
+        badges = _badges_for(session=session, user_ids=push_message_user_ids)
+        for message, user_id in zip(push_messages, push_message_user_ids, strict=True):
+            message["badge"] = badges[user_id]
+
         try:
             results = _send_expo_messages(push_messages)
         except Exception:
@@ -973,6 +1052,7 @@ def notify_user_on_seats_released(
     if not push_tokens:
         return
 
+    badge = badge_count(session=session, user_id=user_id)
     messages = [
         {
             "to": token.token,
@@ -986,6 +1066,7 @@ def notify_user_on_seats_released(
             "priority": "high",
             "sound": "default",
             "channelId": ANDROID_PUSH_CHANNEL_ID,
+            "badge": badge,
         }
         for token in push_tokens
     ]
@@ -1063,6 +1144,7 @@ def send_interested_showtime_reminders(
 
     push_messages: list[dict] = []
     push_message_tokens: list[str] = []
+    push_message_user_ids: list[UUID] = []
     reminded_selections: list[ShowtimeSelection] = []
     for user_id, user_candidates in candidates_by_user.items():
         recipient = recipients_by_id.get(user_id)
@@ -1072,7 +1154,9 @@ def send_interested_showtime_reminders(
             formatted_datetime = showtime.datetime.strftime("%a, %b %d at %H:%M")
             day_word = _relative_day_word(showtime.datetime, reference_time)
             if day_word:
-                subject = f"Are you still interested in {showtime.movie.title} {day_word}?"
+                subject = (
+                    f"Are you still interested in {showtime.movie.title} {day_word}?"
+                )
             else:
                 subject = f"Are you still interested in {showtime.movie.title}?"
             body = _showtime_subtitle(
@@ -1119,9 +1203,18 @@ def send_interested_showtime_reminders(
                     }
                 )
                 push_message_tokens.append(token)
+                push_message_user_ids.append(user_id)
             reminded_selections.append(selection)
 
     if push_messages:
+        # Like the friend reminder, this leaves no centre entry — the badge is
+        # carried along to re-sync it, not to raise it.
+        badges = _badges_for(session=session, user_ids=push_message_user_ids)
+        for message, recipient_id in zip(
+            push_messages, push_message_user_ids, strict=True
+        ):
+            message["badge"] = badges[recipient_id]
+
         try:
             results = _send_expo_messages(push_messages)
         except Exception:

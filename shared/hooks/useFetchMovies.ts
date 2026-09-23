@@ -17,6 +17,10 @@ export type MovieFilters = {
     runtimeMin?: number;
     runtimeMax?: number;
     selectedStatuses?: GoingStatus[];
+    /** With `selectedStatuses`: only the viewer's own marks. */
+    onlyYou?: boolean;
+    /** Only these friends' going/interested marks. */
+    friendIds?: string[];
     selectedListIds?: string[];
     excludeListIds?: string[];
     selectedLanguages?: Language[];
@@ -35,6 +39,12 @@ type useFetchMoviesProps = {
      * meeting the loader again.
      */
     firstPageLimit?: number;
+    /**
+     * Screenings carried on each film, which the API caps at ten and defaults
+     * to five. A card that only names the next screening needs one; a card
+     * that draws the film's timetable wants all it can get.
+     */
+    showtimeLimit?: number;
     snapshotTime?: string;
     filters?: MovieFilters;
     enabled?: boolean;
@@ -45,14 +55,15 @@ export function useFetchMovies(
     {
         limit = 15,
         firstPageLimit = limit,
+        showtimeLimit,
         snapshotTime,
         filters = {},
         enabled = true,
     }: useFetchMoviesProps = {}
 ): UseInfiniteQueryResult<InfiniteData<MoviesReadMoviesResponse>, Error>{
     const queryClient = useQueryClient();
-    const result = useInfiniteQuery<MoviesReadMoviesResponse, Error, InfiniteData<MoviesReadMoviesResponse>, [string, string | undefined, MovieFilters], number>({
-        queryKey: ["movies", snapshotTime, filters],
+    const result = useInfiniteQuery<MoviesReadMoviesResponse, Error, InfiniteData<MoviesReadMoviesResponse>, [string, string | undefined, MovieFilters, number | undefined], number>({
+        queryKey: ["movies", snapshotTime, filters, showtimeLimit],
         enabled,
         refetchOnMount: false,
         refetchOnWindowFocus: false,
@@ -64,6 +75,7 @@ export function useFetchMovies(
                 // offsets below are cumulative row counts, which only start at
                 // zero before anything has been fetched.
                 limit: pageParam === 0 ? firstPageLimit : limit,
+                showtimeLimit,
                 snapshotTime,
                 ...filters
             });

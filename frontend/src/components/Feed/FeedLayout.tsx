@@ -36,12 +36,28 @@ import { Box, Flex } from "@chakra-ui/react"
 import {
   type ReactNode,
   type Ref,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
   useState,
 } from "react"
 
+import {
+  RAIL_STRIP_GAP,
+  RAIL_STRIP_WIDTH,
+  RailCollapseHandle,
+  RailFoldedProvider,
+  RailStrip,
+  useRailCollapsed,
+} from "@/components/Feed/RailCollapse"
+import { usePublishFeedListCenter } from "@/components/Feed/feed-search-slot"
+import {
+  type PinnedColumn,
+  detailCardStyle,
+  detailColumnStyle,
+  useDetailColumn,
+} from "@/components/Feed/useDetailColumn"
 import { PAGE_NOTICE_BANNER_OFFSET_CSS, TOP_NAV_HEIGHT } from "@/constants"
 import { useIsMobile } from "@/hooks/useIsMobile"
 
@@ -106,37 +122,22 @@ const PAGE_INSET_X = 40
 const ROW_INSET_TOP = 16
 
 /**
- * How far below the toolbar the two floating cards start — well below the list,
- * so they read as panels set into the page rather than as more chrome hung off
- * the bar.
+ * How far below the toolbar the two floating cards start — level with the
+ * top of the list, so a card's top edge and the first row's top edge line up
+ * rather than the panels hanging lower than the cards beside them.
  *
  * It is also the offset they pin at, measured from the toolbar's own bottom
  * edge, so the inset a card has while the page is at rest is the one it keeps
  * while pinned. Those being one number is what stops a card jumping on the
  * first scroll.
  */
-const PANEL_INSET_TOP = 56
+const PANEL_INSET_TOP = ROW_INSET_TOP
 
 /** How close a pinned card may come to the bottom of the viewport. */
 const PANEL_INSET_BOTTOM = 16
 
 /** Between the columns. */
 const COLUMN_GAP = 24
-
-/**
- * How long the detail column takes to open or close, and how long the card
- * inside it takes to fade.
- *
- * Two clocks rather than one, because the column and the card are doing
- * different jobs. The column's width is a *layout* change — the list beside it
- * genuinely gets narrower — and that wants to be unhurried enough to read as
- * the page making room. The card is just arriving, and it must be gone before
- * the column has finished closing around it: a card that fades on the same
- * clock as the width appears to be crushed rather than dismissed. So closing
- * fades first and narrows after, and opening widens first and fades in last.
- */
-const DETAIL_WIDTH_MS = 220
-const DETAIL_FADE_MS = 140
 
 /**
  * Marks the element a floating column actually scrolls in.
@@ -200,33 +201,58 @@ type FeedLayoutProps = {
    * no nav bar above them and no bottom bar below.
    */
   hasNav?: boolean
+  /**
+   * For a grid of cards rather than a list of rows. The list takes the whole
+   * column instead of `LIST_MAX_WIDTH`, and the detail column is always there
+   * at full width — empty until something is selected — rather than opening.
+   *
+   * An opening column narrows the list, and a narrower grid reflows: fewer
+   * columns, every card moved, the one just clicked often carried out of
+   * view. It also reflowed on every frame of the column's animation, which
+   * made opening the panel the slowest thing on the page. With the space
+   * held, selecting a card changes nothing about where anything is.
+   */
+  grid?: boolean
+  /**
+   * A grid with nothing docked beside it: the list takes the whole column,
+   * like `grid`, but no detail column is reserved at all.
+   *
+   * For a feed that has no panel to open. The films feed is one — a film's
+   * detail is its own page — so holding a fifth of the window empty next to
+   * it would be holding it for something that never arrives.
+   */
+  fillWidth?: boolean
+  /**
+   * The narrowest the list may get beside a full rail — one card, on the
+   * ticket wall. Below it the rail folds to its strip by itself, since the
+   * detail column is the one thing on the page that cannot give up its room
+   * (the showtime panel opens in it). 0 never folds it.
+   */
+  minListWidth?: number
+  /** Shown as a count on the collapsed rail, so a narrowed feed looks it. */
+  activeFilterCount?: number
+  /**
+   * Under the rail card, in the same column: the ticket wall's tickets-per-row
+   * control. Asked for `compact` when the rail is folded to its strip.
+   */
+  railFooter?: (variant: "full" | "compact") => ReactNode
 }
 
 /**
- * A column held at an exact size with its transition switched off, which is how
- * both the cold open and the mid-close reopen get a start value to animate from.
- * `gap` travels with `width` because the leading margin is on the same clock:
- * pinning one without the other moves the column by the gap in a single frame.
+ * How a panel's content asks to be lifted above a page-wide scrim: the filter
+ * rail does while its cinema sheet is out, so it stays bright beside it. The
+ * content raises itself, but a floating panel's own `zIndex` is a stacking
+ * context that would keep it underneath, so the panel follows it up.
  */
-type PinnedColumn = { width: number; gap: number }
+export const RAISED_PANEL_ATTRIBUTE = "data-raise-panel"
+/** Above the root layout's notice banner (2000); the cinema sheet's level. */
+export const RAISED_PANEL_Z_INDEX = 2100
 
-/** A column that is not on screen: both the start of an open and the end of a close. */
-const CLOSED_COLUMN: PinnedColumn = { width: 0, gap: 0 }
-
-const measureColumn = (element: HTMLElement | null): PinnedColumn =>
-  element
-    ? {
-        width: element.getBoundingClientRect().width,
-        gap:
-          Number.parseFloat(getComputedStyle(element).marginInlineStart) || 0,
-      }
-    : CLOSED_COLUMN
-
-/**
- * `arming` is the commit that renders the panel, with the column pinned so that
- * render cannot eat into the animation; see the state machine in `FeedLayout`.
- */
-type DetailPhase = "closed" | "arming" | "open" | "closing"
+/** A responsive width, as the margin that cancels it — see `floating`. */
+const negate = (width: Record<string, string>) =>
+  Object.fromEntries(
+    Object.entries(width).map(([key, value]) => [key, `-${value}`]),
+  )
 
 /**
  * One of the two floating columns. Sticky rather than full-height, so the card
@@ -260,6 +286,7 @@ const SidePanel = ({
   panelRef,
   leadingGap = 0,
   trailingGap = 0,
+  floating = false,
   children,
 }: {
   width: Record<string, string>
@@ -270,23 +297,31 @@ const SidePanel = ({
   panelRef?: Ref<HTMLDivElement>
   leadingGap?: number
   trailingGap?: number
+  /**
+   * Takes no room in the row: a trailing margin of minus its own width lets
+   * the list start where it starts, so the panel floats over the list's left
+   * edge. Still sticky, still its real width. The folded rail opens this way
+   * when there is no room to dock it.
+   */
+  floating?: boolean
   children: ReactNode
 }) => (
   <Box
     as="aside"
     ref={panelRef}
     data-feed-side-panel=""
-    w={pinned ? `${pinned.width}px` : collapsed ? "0px" : width}
-    ms={pinned ? `${pinned.gap}px` : collapsed ? "0px" : `${leadingGap}px`}
-    me={`${trailingGap}px`}
-    transition={
-      pinned
-        ? "none"
-        : `width ${DETAIL_WIDTH_MS}ms ease, margin-inline-start ${DETAIL_WIDTH_MS}ms ease`
+    {...detailColumnStyle(width, leadingGap, { isOpen: !collapsed, pinned })}
+    me={floating ? negate(width) : `${trailingGap}px`}
+    zIndex={floating ? 4 : undefined}
+    css={
+      floating
+        ? {
+            [`&:has([${RAISED_PANEL_ATTRIBUTE}])`]: {
+              zIndex: RAISED_PANEL_Z_INDEX,
+            },
+          }
+        : undefined
     }
-    // The card keeps its own width while the column shuts around it, so it
-    // leaves rather than being squeezed.
-    overflowX="hidden"
     flexShrink={0}
     position="sticky"
     top={PANEL_STICKY_TOP}
@@ -302,29 +337,11 @@ const SidePanel = ({
     bg={bare ? undefined : "bg.panel"}
     borderWidth={bare ? undefined : "1px"}
     borderColor={bare ? undefined : "border"}
-    borderRadius={bare ? undefined : "md"}
-    boxShadow={bare ? undefined : "sm"}
+    borderRadius={bare && !floating ? undefined : "md"}
+    boxShadow={floating ? "lg" : bare ? undefined : "sm"}
     p={bare ? 0 : 3}
   >
-    <Box
-      // Full width of the *content* box while open, so a panel long enough to
-      // scroll does not have its own scrollbar cut a strip off its right edge.
-      // Pinned to the column's width only while it shuts, which is the case the
-      // fixed width is actually for: the card has to leave at full size rather
-      // than be squeezed into nothing on the way out.
-      w={collapsed ? width : "100%"}
-      opacity={collapsed ? 0 : 1}
-      // Opening: the column widens, and the card arrives into the space that
-      // is already there. Closing: the card goes first, so the width finishes
-      // on an empty column.
-      transition={
-        collapsed
-          ? `opacity ${DETAIL_FADE_MS}ms ease`
-          : `opacity ${DETAIL_FADE_MS}ms ease ${DETAIL_WIDTH_MS - DETAIL_FADE_MS}ms`
-      }
-    >
-      {children}
-    </Box>
+    <Box {...detailCardStyle(width, !collapsed)}>{children}</Box>
   </Box>
 )
 
@@ -334,124 +351,153 @@ const FeedLayout = ({
   children,
   detail,
   hasNav = true,
+  grid = false,
+  fillWidth = false,
+  minListWidth = 0,
+  activeFilterCount = 0,
+  railFooter,
 }: FeedLayoutProps) => {
   const isMobile = useIsMobile()
   const showRail = Boolean(rail) && !isMobile
   const maxPanelHeight = panelMaxHeight(hasNav)
 
   /**
-   * The detail column opens and closes rather than appearing and vanishing.
-   *
-   * The thing that makes this harder than a CSS class toggle is that rendering
-   * the panel is *expensive* — measured at 43-110ms of blocked main thread, it
-   * being a poster, five sections and a handful of queries. A CSS transition
-   * keeps its own clock while the main thread is blocked, so flipping the width
-   * in the same commit that renders the panel loses however long that render
-   * takes: nothing paints, the clock runs on, and the first frame the eye
-   * actually gets is already a third of the way through. Measured reopening
-   * mid-close, the column sat still at 112px for 62ms and then appeared at
-   * 213px — a jump of 101px in one frame, which is the lurch that reads as the
-   * panel snapping open. The band it happened in is exactly the one that gets
-   * reported: too late for the close to still be near full width, too early for
-   * it to have finished and unmounted.
-   *
-   * So the column is never asked to animate out of a commit that renders the
-   * panel. `arming` is that commit: the panel renders, and the column is held
-   * at an exact size with its transition off, so the expensive frame cannot
-   * consume any of the animation. Two frames later — one is not enough, an
-   * effect runs after a commit but before it has necessarily painted — the pin
-   * comes off and the column travels.
-   *
-   * `paintedColumn` is what a mid-close reopen pins to. It has to be the last
-   * size the column was *painted* at rather than what it measures at the moment
-   * of the click, because those differ by exactly the blocked render: the
-   * transition would have carried on shrinking behind it. Sampling every frame
-   * while closing gives the painted value for free — a blocked main thread runs
-   * no frames, so the last sample is the last thing drawn.
+   * The detail column opens and closes rather than appearing and vanishing —
+   * see `useDetailColumn` for why that takes a state machine rather than a
+   * class toggle.
    *
    * `lastDetail` is what the close animates out: by then the caller has already
    * stopped passing a panel. A ref rather than state because writing it is
    * idempotent and must not cause a render of its own — the node identity
    * changes every render, so a state write here would never settle.
    */
-  const hasDetail = Boolean(detail) && !isMobile
+  // A grid keeps its column open for good, so it never enters the machine;
+  // a full-width feed has no detail column to open at all.
+  const hasDetail = Boolean(detail) && !isMobile && !grid && !fillWidth
   const lastDetail = useRef<ReactNode>(null)
   if (detail) lastDetail.current = detail
-
-  const [detailPhase, setDetailPhase] = useState<DetailPhase>(
-    hasDetail ? "open" : "closed",
-  )
-  const [pinnedColumn, setPinnedColumn] = useState<PinnedColumn | null>(null)
-  const detailColumnRef = useRef<HTMLDivElement>(null)
-  const paintedColumn = useRef<PinnedColumn>(CLOSED_COLUMN)
-  // The phase as the *previous* commit left it, for the effect below, which
-  // reacts to `hasDetail` alone: taking the phase as a dependency would re-run
-  // it — and cancel the frames an arming column is waiting on — every time it
-  // moved the phase on itself.
-  const detailPhaseRef = useRef(detailPhase)
-  detailPhaseRef.current = detailPhase
-
-  const isDetailMounted = detailPhase !== "closed"
-  const isDetailOpen = detailPhase === "open"
-
-  // The unmount is scheduled here, alongside the click that causes it, rather
-  // than from an effect keyed on the phase. A phase-keyed effect only clears
-  // the timer in the *commit* that leaves `closing`, and a reopen arriving in
-  // the last twenty milliseconds of the close does not get that far in time:
-  // the render is slow enough that the timer comes due while it runs, so it
-  // fires in the gap between this effect and that commit and takes the panel
-  // to `closed` after it had already been armed to reopen. Reopening at a
-  // 200-220ms gap left the panel shut for good. Clearing it in this effect's
-  // own cleanup is synchronous with the click and cannot lose that race.
-  useEffect(() => {
-    if (hasDetail) {
-      // From `closed` there is nothing on screen to pin to and the column
-      // starts from nothing; from `closing` it picks up where it was drawn.
-      setPinnedColumn(
-        detailPhaseRef.current === "closed"
-          ? CLOSED_COLUMN
-          : paintedColumn.current,
-      )
-      setDetailPhase("arming")
-      return
-    }
-    if (detailPhaseRef.current === "closed") return
-    // Read before the phase changes: this still measures the open column.
-    paintedColumn.current = measureColumn(detailColumnRef.current)
-    setPinnedColumn(null)
-    setDetailPhase("closing")
-    // Unmounted once it is shut, so a closed panel's queries — the seat
-    // availability poll, most of all — do not keep running behind the page.
-    const timer = setTimeout(() => setDetailPhase("closed"), DETAIL_WIDTH_MS)
-    return () => clearTimeout(timer)
-  }, [hasDetail])
-
-  useEffect(() => {
-    if (detailPhase !== "arming") return
-    let second = 0
-    const first = requestAnimationFrame(() => {
-      second = requestAnimationFrame(() => {
-        setPinnedColumn(null)
-        setDetailPhase("open")
-      })
-    })
-    return () => {
-      cancelAnimationFrame(first)
-      cancelAnimationFrame(second)
-    }
-  }, [detailPhase])
-
-  useEffect(() => {
-    if (detailPhase !== "closing") return
-    let frame = requestAnimationFrame(function sample() {
-      paintedColumn.current = measureColumn(detailColumnRef.current)
-      frame = requestAnimationFrame(sample)
-    })
-    return () => cancelAnimationFrame(frame)
-  }, [detailPhase])
+  const {
+    isMounted: isDetailMounted,
+    isOpen: isDetailOpen,
+    pinned: pinnedColumn,
+    columnRef: detailColumnRef,
+  } = useDetailColumn(hasDetail)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const toolbarRef = useRef<HTMLDivElement>(null)
+  const rowRef = useRef<HTMLDivElement>(null)
+  const railRulerRef = useRef<HTMLDivElement>(null)
+  // The nav's search field centres itself over this.
+  const listRef = useRef<HTMLDivElement>(null)
+  usePublishFeedListCenter(listRef)
+  const stripRef = useRef<HTMLDivElement>(null)
+  const floatingRailRef = useRef<HTMLDivElement>(null)
+
+  /**
+   * The rail folds to a strip when the reader folds it, and by itself when
+   * the list beside a full rail would be narrower than `minListWidth`.
+   *
+   * Worked out from the row, a hidden ruler at the rail's full width, and the
+   * detail column — never from the list itself, which is exactly what changes
+   * when the rail folds, so measuring it would flip back and forth. None of
+   * those move when the rail does, so the answer holds still once acted on.
+   *
+   * Folded for lack of room, the strip opens the rail *over* the list
+   * (`floating`) rather than docking it back, which would only squeeze the
+   * list again; a click on the page outside it puts it away. Folded by
+   * choice, with room to spare, the strip docks it again.
+   */
+  const [isRailFoldedByReader, setRailFoldedByReader] = useRailCollapsed()
+  const [isRailTight, setIsRailTight] = useState(false)
+  const [isRailFloating, setIsRailFloating] = useState(false)
+  const isRailFolded = isRailFoldedByReader || isRailTight
+  const measuresRailRoom = showRail && minListWidth > 0
+  useLayoutEffect(() => {
+    const row = rowRef.current
+    const ruler = railRulerRef.current
+    if (!measuresRailRoom || !row || !ruler) {
+      setIsRailTight(false)
+      return
+    }
+    const update = () => {
+      const column = detailColumnRef.current
+      const detailRoom = column ? column.offsetWidth + COLUMN_GAP : 0
+      const listRoom =
+        row.clientWidth -
+        2 * PAGE_INSET_X -
+        ruler.offsetWidth -
+        COLUMN_GAP -
+        detailRoom
+      setIsRailTight(listRoom < minListWidth)
+    }
+    update()
+    // The ruler and the column too: their widths step with the breakpoint.
+    const observer = new ResizeObserver(update)
+    observer.observe(row)
+    observer.observe(ruler)
+    if (detailColumnRef.current) observer.observe(detailColumnRef.current)
+    return () => observer.disconnect()
+  }, [measuresRailRoom, minListWidth])
+
+  // Room again, or folded away: nothing is left floating over the list.
+  useEffect(() => {
+    if (!isRailTight) setIsRailFloating(false)
+  }, [isRailTight])
+
+  // A click elsewhere on the page puts the floating rail away. Only clicks
+  // inside this layout count: the rail's own sheets and menus are portalled
+  // to the body, and picking something in them must not close it.
+  useEffect(() => {
+    if (!isRailFloating) return
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (!scrollRef.current?.contains(target)) return
+      if (floatingRailRef.current?.contains(target)) return
+      if (stripRef.current?.contains(target)) return
+      setIsRailFloating(false)
+    }
+    document.addEventListener("pointerdown", onPointerDown)
+    return () => document.removeEventListener("pointerdown", onPointerDown)
+  }, [isRailFloating])
+
+  const toggleRailFromStrip = useCallback(() => {
+    if (isRailTight) {
+      setIsRailFloating((current) => !current)
+      return
+    }
+    setRailFoldedByReader(false)
+  }, [isRailTight, setRailFoldedByReader])
+  const foldRail = useCallback(
+    () => setRailFoldedByReader(true),
+    [setRailFoldedByReader],
+  )
+
+  // The docked rail's scroll lane, which its card ends short of — for the
+  // collapse handle to sit on the card's edge rather than the column's.
+  const dockedRailRef = useRef<HTMLDivElement>(null)
+  const [railLane, setRailLane] = useState(0)
+  const isRailDocked = showRail && !isRailFolded
+  useLayoutEffect(() => {
+    const aside = dockedRailRef.current
+    if (!isRailDocked || !aside) return
+    const update = () => setRailLane(aside.offsetWidth - aside.clientWidth)
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(aside)
+    return () => observer.disconnect()
+  }, [isRailDocked])
+
+  const railWithFooter = (
+    <>
+      {rail}
+      {/* A hair of padding, or the scrolling column clips the card's shadow. */}
+      {railFooter ? (
+        <Box mt={3} pb="2px">
+          {railFooter("full")}
+        </Box>
+      ) : null}
+    </>
+  )
 
   // Publish the toolbar's height for the panels to pin below. A layout effect
   // rather than an ordinary one, so the first paint already has the real number
@@ -520,24 +566,86 @@ const FeedLayout = ({
           instead, which is the same 24px it always had.
         */}
         <Flex
+          ref={rowRef}
+          position="relative"
           align="flex-start"
           px={isMobile ? 0 : `${PAGE_INSET_X}px`}
           pt={isMobile ? 0 : `${ROW_INSET_TOP}px`}
         >
-          {showRail ? (
+          {/* The rail's full width, measured while it is folded too. */}
+          {measuresRailRoom ? (
+            <Box
+              ref={railRulerRef}
+              w={RAIL_WIDTH}
+              h={0}
+              position="absolute"
+              visibility="hidden"
+              pointerEvents="none"
+              aria-hidden
+            />
+          ) : null}
+
+          {showRail && !isRailFolded ? (
+            <>
+              <SidePanel
+                width={RAIL_WIDTH}
+                maxH={maxPanelHeight}
+                bare
+                trailingGap={COLUMN_GAP}
+                panelRef={dockedRailRef}
+              >
+                {railWithFooter}
+              </SidePanel>
+              <RailCollapseHandle
+                gap={COLUMN_GAP}
+                inset={railLane}
+                top={PANEL_STICKY_TOP}
+                onCollapse={foldRail}
+              />
+            </>
+          ) : null}
+
+          {showRail && isRailFolded ? (
+            <SidePanel
+              width={RAIL_STRIP_WIDTH}
+              maxH={maxPanelHeight}
+              bare
+              trailingGap={RAIL_STRIP_GAP}
+            >
+              <RailStrip
+                stripRef={stripRef}
+                activeFilterCount={activeFilterCount}
+                isOpen={isRailFloating}
+                onToggle={toggleRailFromStrip}
+                footer={railFooter?.("compact")}
+              />
+            </SidePanel>
+          ) : null}
+
+          {showRail && isRailFolded && isRailFloating ? (
             <SidePanel
               width={RAIL_WIDTH}
               maxH={maxPanelHeight}
               bare
-              trailingGap={COLUMN_GAP}
+              floating
+              panelRef={floatingRailRef}
             >
+              {/* No footer: the strip beside it already has it, compact. */}
               {rail}
             </SidePanel>
           ) : null}
 
           <Box flex="1" minW={0}>
-            <Box maxW={`${LIST_MAX_WIDTH}px`} w="100%" mx="auto" pb={16}>
-              {children}
+            <Box
+              ref={listRef}
+              maxW={grid || fillWidth ? undefined : `${LIST_MAX_WIDTH}px`}
+              w="100%"
+              mx="auto"
+              pb={16}
+            >
+              <RailFoldedProvider value={showRail && isRailFolded}>
+                {children}
+              </RailFoldedProvider>
             </Box>
           </Box>
 
@@ -546,7 +654,17 @@ const FeedLayout = ({
             inside this scroller, and a sticky header needs a background and a
             padding of its own to pin against — it cannot borrow the wrapper's.
           */}
-          {isDetailMounted ? (
+          {fillWidth ? null : grid && !isMobile ? (
+            <SidePanel
+              width={DETAIL_WIDTH}
+              maxH={maxPanelHeight}
+              bare
+              panelRef={detailColumnRef}
+              leadingGap={COLUMN_GAP}
+            >
+              {detail}
+            </SidePanel>
+          ) : isDetailMounted ? (
             <SidePanel
               width={DETAIL_WIDTH}
               maxH={maxPanelHeight}

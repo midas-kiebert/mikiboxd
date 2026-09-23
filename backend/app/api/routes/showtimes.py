@@ -21,6 +21,7 @@ from app.api.deps import (
 from app.core.config import settings
 from app.core.enums import GoingStatus
 from app.crud import showtime_ping as showtime_ping_crud
+from app.crud import showtime_ping_link as showtime_ping_link_crud
 from app.crud import showtime_report as showtime_report_crud
 from app.inputs.movie import Filters, get_filters
 from app.mailer import (
@@ -31,14 +32,18 @@ from app.mailer import (
 )
 from app.models.auth_schemas import Message
 from app.models.showtime import Showtime
-from app.models.user import is_report_banned
+from app.models.user import User, is_report_banned
 from app.schemas.seat_availability import (
     ShowtimeSeatAvailabilityPublic,
     SoldOutWatchPublic,
 )
 from app.schemas.seat_floor_plan import SeatFloorPlanPublic
 from app.schemas.showtime import ShowtimePublic, ShowtimeSelectionUpdate
-from app.schemas.showtime_ping import SentShowtimePingPublic, ShowtimePingLinkToken
+from app.schemas.showtime_ping import (
+    SentShowtimePingPublic,
+    ShowtimeInviteContext,
+    ShowtimePingLinkToken,
+)
 from app.schemas.showtime_report import ShowtimeReportCreate
 from app.schemas.showtime_visibility import (
     ShowtimeVisibilityPublic,
@@ -246,6 +251,40 @@ def receive_ping_from_link(
         showtime_id=showtime_id,
         receiver_id=current_user.id,
         token=token,
+    )
+
+
+@router.get(
+    "/{showtime_id}/invite-context/{token}",
+    response_model=ShowtimeInviteContext,
+    include_in_schema=False,
+)
+def get_showtime_invite_context(
+    *, session: SessionDep, showtime_id: int, token: str
+) -> ShowtimeInviteContext:
+    """Unauthenticated: what the web install prompt shows for a shared invite.
+
+    The sender is named only when the token really was minted for this
+    showtime, so a guessed or mismatched link never puts a name on screen.
+    """
+    showtime = session.get(Showtime, showtime_id)
+    if showtime is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="Showtime not found"
+        )
+
+    link = showtime_ping_link_crud.get_showtime_ping_link(session=session, token=token)
+    sender = (
+        session.get(User, link.sender_id)
+        if link is not None and link.showtime_id == showtime_id
+        else None
+    )
+    return ShowtimeInviteContext(
+        sender_name=sender.display_name if sender is not None else None,
+        movie_title=showtime.movie.title,
+        movie_poster_link=showtime.movie.poster_link,
+        cinema_name=showtime.cinema.name,
+        datetime=showtime.datetime,
     )
 
 

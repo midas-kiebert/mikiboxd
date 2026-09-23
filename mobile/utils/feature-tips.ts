@@ -32,6 +32,7 @@ export type FeatureTipId =
   | 'verify-email'
   | 'watchlist-digest'
   | 'letterboxd-username'
+  | 'letterboxd-avatar'
   | 'add-friends'
   | 'cinema-presets'
   | 'filter-presets'
@@ -41,6 +42,7 @@ const FEATURE_TIP_IDS: readonly FeatureTipId[] = [
   'verify-email',
   'watchlist-digest',
   'letterboxd-username',
+  'letterboxd-avatar',
   'add-friends',
   'cinema-presets',
   'filter-presets',
@@ -101,6 +103,7 @@ const TIP_COOLDOWN_MS: Record<FeatureTipId, number> = {
   'add-friends': ONE_DAY_MS,
   'notification-permission': ONE_DAY_MS,
   'letterboxd-username': THREE_DAYS_MS,
+  'letterboxd-avatar': THREE_DAYS_MS,
   'filter-presets': THREE_DAYS_MS,
   // The quietest of the lot: a niche convenience the user has lived without,
   // and one the backend only offers at all once it is switched on there.

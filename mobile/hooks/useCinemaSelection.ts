@@ -16,6 +16,7 @@
  * app only ever sees a selection that says what the feed is doing.
  */
 import { useCallback } from "react";
+import { commitCinemaSelection } from "shared/filters/cinema-selection";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
 import { useSessionCinemaSelections } from "shared/hooks/useSessionCinemaSelections";
 
@@ -36,9 +37,12 @@ export function useCinemaSelection(): {
       // nothing and must keep its meaning — the seeding in useSharedTabFilters
       // reads it to decide whether there is anything to seed.
       const resolved =
-        next !== undefined && next.length === 0 && allCinemas && allCinemas.length > 0
-          ? allCinemas.map((cinema) => cinema.id)
-          : next;
+        next === undefined
+          ? undefined
+          : commitCinemaSelection(
+              next,
+              (allCinemas ?? []).map((cinema) => cinema.id)
+            );
       setSelections(resolved);
       if (isGuest) saveGuestCinemaSelection(resolved ?? []);
     },

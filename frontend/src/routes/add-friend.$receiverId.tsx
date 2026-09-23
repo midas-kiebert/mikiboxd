@@ -1,11 +1,12 @@
 import { Button, Center, Flex, Spinner, Text, VStack } from "@chakra-ui/react"
 import { useMutation } from "@tanstack/react-query"
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, useParams } from "@tanstack/react-router"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { ApiError, FriendsService } from "shared"
 import { storage } from "shared/storage"
 
 import InstallAppGate from "@/components/Common/InstallAppGate"
+import { useFriendInviteContext } from "@/features/install-prompt"
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -31,10 +32,22 @@ export const Route = createFileRoute("/add-friend/$receiverId" as never)({
 })
 
 function AddFriendLinkRoute() {
+  const { receiverId } = useParams({ strict: false }) as { receiverId: string }
+  const inviterName = useFriendInviteContext(receiverId)?.display_name ?? null
+
   return (
     <InstallAppGate
-      headline="A friend invited you to MiKiNO"
-      body="Add them back to see which films they want to see, and get invited to the screenings they are going to."
+      headline={
+        inviterName
+          ? `${inviterName} wants to add you on MiKiNO`
+          : "A friend wants to add you on MiKiNO"
+      }
+      body={`MiKiNO is a free app for going to the cinema with friends. Once you are friends, you can see which films ${
+        inviterName ?? "they"
+      } want${inviterName ? "s" : ""} to watch and invite each other to screenings.`}
+      nextStep="Install the app and create an account to accept."
+      iosReopenHint="After installing, open the link again to accept."
+      skipLabel="I'll use the website instead"
     >
       <AddFriendLinkPage />
     </InstallAppGate>

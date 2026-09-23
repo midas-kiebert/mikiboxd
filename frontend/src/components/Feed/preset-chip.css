@@ -1,0 +1,126 @@
+/*
+ * The quick-filter chip's own press animation: a band of light flashing out
+ * of its middle to both edges, the same choreography the app answers a
+ * preset tap with (`mobile/components/filters/PresetButton.tsx`). Plain CSS
+ * rather than a JS-driven animation — see `card-parts.css`'s note on the same
+ * choice — and the numbers below are that file's timings translated straight
+ * across: `mk-preset-chip-flash`'s 320ms is `FLASH_GROW_MS + FLASH_HOLD_MS +
+ * FLASH_FADE_MS` (110+60+150) there, and its keyframe offsets are that file's
+ * `FLASH_GROW_END`/`FLASH_APPEAR_END`/`FLASH_FADE_START` fractions of it.
+ *
+ * The flash pane overhangs the chip by 18% on each side (`FLASH_OVERHANG` in
+ * the app) so its soft, near-transparent ends land outside the visible chip
+ * regardless of scale — only the gradient's broad, near-solid middle is ever
+ * shown. The gradient stops below are that overhang's math (`BUTTON_EDGE_LOW`/
+ * `BUTTON_EDGE_HIGH`) as percentages of the overhung pane, not eyeballed.
+ */
+
+.mk-preset-chip {
+  position: relative;
+  overflow: hidden;
+  max-width: 100%;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--chakra-colors-app-pill-border);
+  background: var(--chakra-colors-app-pill-background);
+  color: var(--chakra-colors-fg);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mk-preset-chip:hover:not(:disabled) {
+  border-color: var(--chakra-colors-app-tint);
+}
+
+.mk-preset-chip:disabled {
+  cursor: default;
+}
+
+.mk-preset-chip__label {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: opacity 150ms ease-out;
+  transition-delay: 0ms;
+}
+
+/* Held off until the flash has already opened out and started clearing (the
+   flash's own hold+fade start, 170ms in), so the dim never reads as the thing
+   that cut the flash short — see `PresetButton`'s `DIM_DELAY_MS`. */
+.mk-preset-chip[data-applying="true"] .mk-preset-chip__label {
+  transition-delay: 170ms;
+}
+
+.mk-preset-chip[data-satisfied="true"] .mk-preset-chip__label {
+  /* Same range as every other disabled control in the filter UI. */
+  opacity: 0.45;
+}
+
+.mk-preset-chip__flash {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  left: -18%;
+  right: -18%;
+  pointer-events: none;
+  transform-origin: center;
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    color-mix(
+        in srgb,
+        var(--chakra-colors-app-pill-flash-background) 50%,
+        transparent
+      )
+      6.24%,
+    var(--chakra-colors-app-pill-flash-background) 16.24%,
+    var(--chakra-colors-app-pill-flash-background) 83.76%,
+    color-mix(
+        in srgb,
+        var(--chakra-colors-app-pill-flash-background) 50%,
+        transparent
+      )
+      93.76%,
+    transparent 100%
+  );
+  /* Only ever mounted for the duration of one press (see `PresetChip`), so
+     there is no idle state to worry about — nothing to hide before the first
+     click, unlike the app's version which had to guard a shared value's rest
+     position explicitly. */
+  animation: mk-preset-chip-flash 320ms linear forwards;
+}
+
+@keyframes mk-preset-chip-flash {
+  0% {
+    transform: scaleX(0.16);
+    opacity: 0;
+  }
+  4% {
+    opacity: 1;
+  }
+  34.375% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  53.125% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-preset-chip__flash {
+    animation: none;
+    opacity: 0;
+  }
+  .mk-preset-chip__label {
+    transition-delay: 0ms !important;
+  }
+}

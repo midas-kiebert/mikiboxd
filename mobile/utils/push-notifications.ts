@@ -491,6 +491,11 @@ export const clearPushTokenRegistrationStateForCurrentUser = (userId?: string): 
 };
 
 export async function unregisterPushTokenForCurrentDevice(): Promise<void> {
+  // Ahead of the guard below, and of the network call: the icon badge counts
+  // things waiting for the account that is on its way out, and a leftover
+  // number on the home screen after signing out is worse than a missed one.
+  void Notifications.setBadgeCountAsync(0).catch(() => {});
+
   // No token was ever registered from this build, and reading one would throw.
   if (!isRemotePushAvailable) return;
 

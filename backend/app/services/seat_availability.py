@@ -11,10 +11,10 @@ converges on the real capacity of that particular screening — including
 screenings sold at reduced capacity, which a per-room number would get wrong.
 The cost is that a showtime first polled when it is already half sold reads
 low, which makes the fullest levels fire late rather than early. Late is the
-safe direction. Two things skip the estimate and set it outright: a platform
-that hands back a room's real total (currently only Eagerly's seat map), and
-a manual entry in `seat_capacity_overrides.yaml` for cinemas/rooms no
-platform ever reveals it for.
+safe direction. Two things skip the estimate and set it outright: a manual
+entry in `seat_capacity_overrides.yaml`, which always wins, and a platform
+that hands back a room's real total (Eagerly, Tricket, Ticketlab,
+ActiveTickets).
 
 How often a showtime is re-read is decided here too, and written down as
 `Showtime.seats_next_check_at` so the selecting query stays a single indexed
@@ -84,6 +84,29 @@ def _capacity_override(*, cinema_key: str | None, room: str | None) -> int | Non
     if cinema_key is None or room is None:
         return None
     return _capacity_overrides().get(cinema_key, {}).get(room)
+
+
+def move_to_room(showtime: Showtime, room: str) -> None:
+    """Put `showtime` in `room`, forgetting what its old room taught it.
+
+    Capacity and the level floor only ever grow, which is right while the
+    room stays put and wrong the moment a cinema moves a screening: the old
+    room's number would ride along forever, and the next reading would teach
+    it to the new room's shared estimate too. LAB111 moving screenings out of
+    its 128-seat LAB 1 left LAB 2 (56) and LAB 4 (44) reading as 128-seat rooms
+    that way. The stale `room_key` goes as well, so the seat picker does not
+    draw the old room's floor plan until a reading names the new one, and the
+    showtime is made due at once so that reading is not hours away.
+
+    Both the scraper and the seat reading can be first to notice a move, so
+    both go through here.
+    """
+    if showtime.room is not None and showtime.room != room:
+        showtime.seats_capacity = None
+        showtime.seats_level_floor = None
+        showtime.room_key = None
+        showtime.seats_next_check_at = None
+    showtime.room = room
 
 
 @lru_cache(maxsize=1)
@@ -712,8 +735,14 @@ def apply_reading(
 
     # A room's capacity is the same fact for every screening in it, so the two
     # estimates feed each other: this reading raises the room's number, and the
-    # room's number raises this screening's.
-    if room_capacities is not None and showtime.room is not None:
+    # room's number raises this screening's. A room with a manual override has
+    # no estimate to share — the override already set the number, and folding
+    # the index in could only ever push it back up.
+    if (
+        room_capacities is not None
+        and showtime.room is not None
+        and _capacity_override(cinema_key=cinema_key, room=showtime.room) is None
+    ):
         room_key = (showtime.cinema_id, showtime.room)
         if showtime.seats_capacity:
             room_capacities[room_key] = max(
@@ -806,7 +835,7 @@ def _apply_reading(
     cinema_key: str | None = None,
 ) -> None:
     if availability.room is not None:
-        showtime.room = availability.room
+        move_to_room(showtime, availability.room)
     # Falls back to the name where the platform states no separate key, so the
     # floor-plan lookup has one column to join on rather than two rules. Only
     # ever written, never cleared: a reading that could not see the room (a
@@ -816,18 +845,29 @@ def _apply_reading(
     if room_key is not None:
         showtime.room_key = room_key
 
+    # A manual entry in `seat_capacity_overrides.yaml` is the room's size,
+    # full stop. Cinemas almost never change how many seats a room has, and
+    # when one does the file is edited by hand, so it wins over everything a
+    # reading could suggest, larger or smaller.
+    override = _capacity_override(cinema_key=cinema_key, room=showtime.room)
+    if override is not None:
+        showtime.seats_capacity = override
+        if availability.seats_left is not None and availability.seats_left > override:
+            logger.warning(
+                f"Seat reading for showtime {showtime.id} has {availability.seats_left} "
+                f"seats left, more than the {override} in seat_capacity_overrides.yaml "
+                f"for {cinema_key}/{showtime.room}; the override may be out of date"
+            )
     # A platform that hands back every seat (Eagerly, Tricket, Ticketlab) or
     # a full seat count for a numbered room (ActiveTickets) tells us the
-    # room's real total outright; a manual entry in
-    # `seat_capacity_overrides.yaml` is the same kind of fact, just typed in
-    # by hand for a room no platform ever reveals it for. Either beats the
-    # running-max estimate immediately, rather than only once it's converged,
-    # and neither should ever be undercut by a later, thinner reading.
-    known_capacity = availability.capacity or _capacity_override(
-        cinema_key=cinema_key, room=showtime.room
-    )
-    if known_capacity is not None:
-        showtime.seats_capacity = max(showtime.seats_capacity or 0, known_capacity)
+    # room's real total outright. That beats the running-max estimate
+    # immediately, rather than only once it's converged, and should never be
+    # undercut by a later, thinner reading.
+    elif availability.capacity is not None:
+        showtime.seats_capacity = max(
+            showtime.seats_capacity or 0, availability.capacity
+        )
+    known_capacity = override or availability.capacity
 
     if availability.seats_left is not None:
         showtime.seats_left = availability.seats_left

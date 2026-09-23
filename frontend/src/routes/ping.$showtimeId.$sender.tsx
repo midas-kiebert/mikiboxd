@@ -1,11 +1,15 @@
 import { Button, Center, Flex, Spinner, Text, VStack } from "@chakra-ui/react"
 import { useMutation } from "@tanstack/react-query"
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, useParams } from "@tanstack/react-router"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { ApiError, ShowtimesService } from "shared"
 import { storage } from "shared/storage"
 
 import InstallAppGate from "@/components/Common/InstallAppGate"
+import {
+  formatScreeningTime,
+  useShowtimeInviteContext,
+} from "@/features/install-prompt"
 
 const getErrorMessage = (error: unknown): string => {
   if (!(error instanceof ApiError)) return "Could not process the invite link."
@@ -28,10 +32,37 @@ export const Route = createFileRoute("/ping/$showtimeId/$sender" as never)({
 })
 
 function PingLinkRoute() {
+  const { showtimeId, sender } = useParams({ strict: false }) as {
+    showtimeId: string
+    sender: string
+  }
+  const invite = useShowtimeInviteContext(showtimeId, sender)
+  const senderName = invite?.sender_name ?? null
+
   return (
     <InstallAppGate
-      headline="You have been invited to a screening"
-      body="MiKiNO keeps your invites, tells you who else is going, and shows what else is playing near you."
+      headline={
+        senderName
+          ? `${senderName} invited you to a screening`
+          : "You have been invited to a screening"
+      }
+      card={
+        invite
+          ? {
+              posterUrl: invite.movie_poster_link,
+              title: invite.movie_title,
+              subtitle: `${formatScreeningTime(invite.datetime)} · ${invite.cinema_name}`,
+            }
+          : null
+      }
+      body="MiKiNO is a free app for going to the cinema with friends. It shows what is on at your selected cinemas, which films your friends want to see, and lets you invite each other to screenings."
+      nextStep={
+        senderName
+          ? `Install it and create an account to reply to ${senderName}'s invite.`
+          : "Install it and create an account to reply to the invite."
+      }
+      iosReopenHint="After installing, open the link again and the invite will be waiting for you."
+      skipLabel="I'll use the website instead"
     >
       <PingLinkPage />
     </InstallAppGate>

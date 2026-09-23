@@ -47,7 +47,7 @@ export $(grep -E '^(POSTGRES_USER|POSTGRES_DB)=' .env | xargs)
 export STACK_NAME=mikiboxd-staging
 export DOMAIN=staging.mikino.nl
 export API_HOST=https://api.staging.mikino.nl
-export FRONTEND_HOST=https://dashboard.staging.mikino.nl
+export FRONTEND_HOST=https://staging.mikino.nl
 export PUBLIC_HOST=https://staging.mikino.nl
 export BACKEND_CORS_ORIGINS='https://staging.mikino.nl,https://www.staging.mikino.nl,https://api.staging.mikino.nl'
 

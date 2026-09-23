@@ -6,8 +6,10 @@
  * were tidier and answered the wrong question — "is anyone I know going" is
  * something you want to read, not open — and they made the panel disagree with
  * the app, where the same audience is a single glanceable block. A pill carries
- * the two facts a face cannot: the name, and a status dot in the status's own
- * colour.
+ * the face, the full name and the status's own colour, so it answers "who" at
+ * a glance without giving up the name a face alone cannot carry. The photo
+ * sits where a status dot used to, inside the pill's existing height, so the
+ * section grows no taller for having faces in it.
  *
  * Friends of friends are drawn dashed and muted, the app's mark for "reachable
  * through someone, not actually yours". The distinction earns its keep: they
@@ -16,18 +18,23 @@
  * A name links to that person's agenda, because "who else is going?" is almost
  * always followed by "what else are they going to?".
  *
- * Deliberately carries no Letterboxd mark per pill. Those used to hang off the
- * end of a name as a 13px glyph you had to hover to identify; they are spelled
- * out by name in their own rows underneath instead, where the panel has room
- * for them (`detail/ShowtimeAttendance`).
+ * Deliberately carries no Letterboxd mark per pill: those are the header's
+ * watchlisted/watched pills (`detail/FriendWatchPills`).
  */
 import { Box, Flex, Text } from "@chakra-ui/react"
 import { Link } from "@tanstack/react-router"
 import type { UserPublic } from "shared"
 import { formatSeatLabel } from "shared/showtimes/seat-label"
 
-import { personName } from "@/components/Showtimes/detail/PersonAvatar"
-import { defaultFeedParams } from "@/features/showtimes/feed-params"
+import {
+  PersonAvatar,
+  personName,
+} from "@/components/Showtimes/detail/PersonAvatar"
+import { PanelIcon } from "@/components/Showtimes/detail/panel-icons"
+import { friendFeedSearch } from "@/features/showtimes/feed-params"
+
+/** The photo inside a pill: the pill's own height less its border and padding. */
+const PILL_AVATAR_SIZE = 22
 
 /** Past this many the list ends in a "+N" rather than growing without limit. */
 const MAX_VISIBLE = 30
@@ -54,7 +61,10 @@ const INTERESTED: BadgeTone = {
 
 type BadgePerson = {
   key: string
-  user: Pick<UserPublic, "id" | "display_name" | "seat_row" | "seat_number">
+  user: Pick<
+    UserPublic,
+    "id" | "display_name" | "avatar_url" | "seat_row" | "seat_number"
+  >
   tone: BadgeTone
 }
 
@@ -63,16 +73,16 @@ const FriendBadge = ({ user, tone }: Omit<BadgePerson, "key">) => {
 
   return (
     <Link
-      to="/$userId/showtimes"
-      params={{ userId: user.id }}
-      search={defaultFeedParams}
+      to="/"
+      search={friendFeedSearch(user.id)}
       style={{ minWidth: 0, maxWidth: "100%" }}
     >
       <Flex
         align="center"
         gap="5px"
-        minH="20px"
-        px="7px"
+        minH={`${PILL_AVATAR_SIZE + 4}px`}
+        pl="1px"
+        pr="8px"
         py="1px"
         borderRadius="full"
         borderWidth="1px"
@@ -84,27 +94,46 @@ const FriendBadge = ({ user, tone }: Omit<BadgePerson, "key">) => {
         minW={0}
         maxW="100%"
         transition="filter 120ms ease"
-        _hover={{ filter: "brightness(0.97)" }}
+        _hover={{
+          filter: "brightness(0.97)",
+          "& [data-person-name]": { textDecoration: "underline" },
+        }}
       >
-        {/* Filled for your own friends, hollow for everyone else — the same
-            mark the app uses, so "mine" and "reachable" read at a glance. */}
-        <Box
-          as="span"
-          boxSize="6px"
-          borderRadius="full"
-          flexShrink={0}
-          bg={tone.dashed ? "transparent" : "currentColor"}
-          borderWidth={tone.dashed ? "1px" : 0}
-          borderColor="currentColor"
-        />
-        <Text fontSize="11px" fontWeight="600" lineHeight="1.3" truncate>
+        <PersonAvatar user={user} size={PILL_AVATAR_SIZE} />
+        <Text
+          data-person-name
+          fontSize="12px"
+          fontWeight="600"
+          lineHeight="1.3"
+          textUnderlineOffset="2px"
+          minW={0}
+          truncate
+        >
           {personName(user)}
-          {seat ? (
-            <Box as="span" fontWeight="500" opacity={0.9}>
-              {` (${seat})`}
-            </Box>
-          ) : null}
         </Text>
+        {seat ? (
+          <Flex
+            align="center"
+            gap="3px"
+            flexShrink={0}
+            pl="6px"
+            ml="1px"
+            borderLeftWidth="1px"
+            borderColor="currentColor"
+            opacity={0.9}
+          >
+            <Box as={PanelIcon.eventSeat} boxSize="11px" aria-hidden />
+            <Text
+              fontSize="11px"
+              fontWeight="600"
+              lineHeight="1"
+              position="relative"
+              top="1px"
+            >
+              {seat}
+            </Text>
+          </Flex>
+        ) : null}
       </Flex>
     </Link>
   )
@@ -158,12 +187,12 @@ const FriendBadges = ({
       {overflow > 0 ? (
         <Flex
           align="center"
-          minH="20px"
-          px="7px"
+          minH={`${PILL_AVATAR_SIZE + 4}px`}
+          px="8px"
           borderRadius="full"
           bg="app.surfaceMuted"
           color="fg.muted"
-          fontSize="11px"
+          fontSize="12px"
           fontWeight="600"
         >
           +{overflow}

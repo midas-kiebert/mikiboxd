@@ -18,16 +18,14 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useCallback } from "react"
 import type { GoingStatus, ShowtimePublic } from "shared"
+import type { ShowtimeViewerState } from "shared/client"
 import { ShowtimesService } from "shared/client"
 import { showtimeSeatAvailabilityQueryKey } from "shared/hooks/useShowtimeSeatAvailability"
 
 import { useRequireAccount } from "@/auth/useSession"
 import useCustomToast from "@/hooks/useCustomToast"
 
-import {
-  putShowtimeInFeeds,
-  refetchStatusScopedFeeds,
-} from "./showtime-cache"
+import { putShowtimeInFeeds, refetchStatusScopedFeeds } from "./showtime-cache"
 
 /** A seat, or the absence of one — `null` clears whatever was stored. */
 export type SeatChoice = {
@@ -46,7 +44,7 @@ type SelectionVariables = {
  * The viewer state a showtime gets the first time a guest-turned-member acts
  * on it, before any payload has carried one.
  */
-const NO_VIEWER_STATE_YET = { going: "NOT_GOING" as GoingStatus }
+const NO_VIEWER_STATE_YET: ShowtimeViewerState = { going: "NOT_GOING" }
 
 const withStatus = (
   showtime: ShowtimePublic,
@@ -118,12 +116,18 @@ export const useShowtimeSelection = (showtime: ShowtimePublic) => {
   /**
    * Pressing the status you already have clears it, which is how the app's
    * three buttons behave: they are one setting, not three toggles.
+   *
+   * `waitFor` holds back the *write*, never the paint: invites sent on the way
+   * to marking a status have to land first, because each of them and the
+   * status write all rebuild this showtime's visibility rows, and two of those
+   * at once deadlock Postgres.
    */
   const setStatus = useCallback(
-    (status: GoingStatus) => {
+    async (status: GoingStatus, waitFor?: Promise<unknown>) => {
       if (!requireAccount()) return
       const next = status === showtime.viewer?.going ? "NOT_GOING" : status
       putShowtimeInFeeds(queryClient, withStatus(showtime, next))
+      if (waitFor) await waitFor.catch(() => undefined)
       mutate({ status: next, previous: showtime })
     },
     [mutate, queryClient, requireAccount, showtime],

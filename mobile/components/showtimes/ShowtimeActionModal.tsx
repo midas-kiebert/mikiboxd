@@ -116,6 +116,7 @@ import {
 import FriendOfFriendPopup from "@/components/friends/FriendOfFriendPopup";
 import InlineFriendRequestButtons from "@/components/friends/InlineFriendRequestButtons";
 import { ThemedText } from "@/components/themed-text";
+import PersonAvatar from "@/components/ui/PersonAvatar";
 import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { formatShowtimeTimeRange } from "@/utils/showtime-time";
@@ -125,7 +126,6 @@ import {
   UNKNOWN_METADATA_PLACEHOLDER,
   isSyntheticMovieId,
 } from "@/constants/synthetic-movies";
-import { getAvatarColors, getAvatarInitial } from "@/utils/avatar-color";
 import { useIsSignedIn } from "@/utils/auth-session";
 import { useSignInGate } from "@/components/auth/SignInGateProvider";
 import { useRegisterBlockingOverlay } from "@/utils/blocking-overlays";
@@ -1729,6 +1729,7 @@ export default function ShowtimeActionModal({
         return {
           id: friend.id,
           label: friend.display_name?.trim() || "Friend",
+          avatarUrl: friend.avatar_url ?? null,
           availability,
           watchStatus: getWatchStatus(friend.id),
           isWatchlisted: watchlistedIds.has(friend.id),
@@ -1813,10 +1814,18 @@ export default function ShowtimeActionModal({
     const nonFriendParticipantsById = new Map(
       nonFriendParticipants.map((entry) => [entry.user.id, entry.user])
     );
+    // Sent pings don't carry the receiver's picture themselves, so it's read
+    // off the friend list (or, for a receiver who has since dropped out of
+    // it, the non-friend participant entry) by id instead.
+    const friendAvatarById = new Map((friends ?? []).map((friend) => [friend.id, friend.avatar_url]));
     const sentEntries = sentPings.map((ping) => ({
       key: `sent-${ping.id}`,
       userId: ping.receiver_id,
       name: ping.receiver_name,
+      avatarUrl:
+        nonFriendParticipantsById.get(ping.receiver_id)?.avatar_url ??
+        friendAvatarById.get(ping.receiver_id) ??
+        null,
       invitedByLabel: "Invited by you" as string | null,
       statusLabel: ping.dismissed_at ? "Dismissed" : ping.seen_at ? "Seen" : "Pending",
       statusColor: ping.dismissed_at
@@ -1831,6 +1840,7 @@ export default function ShowtimeActionModal({
       key: `co-${entry.friend.id}`,
       userId: entry.friend.id,
       name: entry.friend.display_name?.trim() || "Friend",
+      avatarUrl: entry.friend.avatar_url ?? null,
       invitedByLabel: `Invited by ${entry.inviter.display_name?.trim() || "a friend"}` as
         | string
         | null,
@@ -1855,6 +1865,7 @@ export default function ShowtimeActionModal({
         key: `friend-inviter-${sender.id}`,
         userId: sender.id,
         name: sender.display_name?.trim() || "Friend",
+        avatarUrl: sender.avatar_url ?? null,
         invitedByLabel: "Invited you" as string | null,
         statusLabel: null,
         statusColor: colors.textSecondary,
@@ -1867,6 +1878,7 @@ export default function ShowtimeActionModal({
         key: `non-friend-${entry.user.id}`,
         userId: entry.user.id,
         name: entry.user.display_name?.trim() || "Friend",
+        avatarUrl: entry.user.avatar_url ?? null,
         invitedByLabel: (entry.invited_by_you
           ? "Invited by you"
           : entry.invited_you
@@ -1880,7 +1892,7 @@ export default function ShowtimeActionModal({
         nonFriendUser: entry.user as (typeof nonFriendParticipants)[number]["user"] | null,
       }));
     return [...sentEntries, ...coInvitedEntries, ...friendInviterEntries, ...nonFriendEntries];
-  }, [sentPings, coInvitedFriends, nonFriendParticipants, invitedByUsers, colors]);
+  }, [sentPings, coInvitedFriends, nonFriendParticipants, invitedByUsers, friends, colors]);
   const showtimeStartsAt = showtime ? DateTime.fromISO(showtime.datetime) : null;
   const dateLabel = showtimeStartsAt?.isValid ? showtimeStartsAt.toFormat("cccc d LLLL") : null;
   const isSyntheticMovie = showtime ? isSyntheticMovieId(showtime.movie.id) : false;
@@ -2606,7 +2618,6 @@ export default function ShowtimeActionModal({
               ) : (
                 <View style={styles.invitedList}>
                   {invitedTabEntries.map((entry) => {
-                    const avatarColors = getAvatarColors(entry.userId, colors);
                     return (
                       <TouchableOpacity
                         key={entry.key}
@@ -2614,18 +2625,14 @@ export default function ShowtimeActionModal({
                         onPress={() => handleGoToUserPage(entry.userId, entry.name)}
                         activeOpacity={0.7}
                       >
-                        <View
-                          style={[
-                            styles.invitedRowAvatar,
-                            { backgroundColor: avatarColors.primary },
-                          ]}
-                        >
-                          <ThemedText
-                            style={[styles.invitedRowAvatarText, { color: avatarColors.secondary }]}
-                          >
-                            {getAvatarInitial(entry.name)}
-                          </ThemedText>
-                        </View>
+                        <PersonAvatar
+                          userId={entry.userId}
+                          name={entry.name}
+                          avatarUrl={entry.avatarUrl}
+                          size={24}
+                          fontSize={11}
+                          style={styles.invitedRowAvatar}
+                        />
                         <View style={styles.invitedRowTextCol}>
                           <ThemedText style={styles.invitedRowName} numberOfLines={1}>
                             {entry.name}
@@ -2738,6 +2745,7 @@ export default function ShowtimeActionModal({
                               key={friend.id}
                               userId={friend.id}
                               name={friend.label}
+                              avatarUrl={friend.avatarUrl}
                               watchStatus={friend.watchStatus}
                               pingStatus={getPingRowStatus(friend.availability)}
                               mode="invite"

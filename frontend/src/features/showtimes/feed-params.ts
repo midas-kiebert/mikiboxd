@@ -16,7 +16,9 @@
  * useful: it is linkable, it survives a refresh, and back/forward step through
  * filter changes for free.
  */
+import type { SearchSchemaInput } from "@tanstack/react-router"
 import type { GoingStatus, Language, SearchField } from "shared/client"
+import { isCinemaSelectionDifferentFromPreferred } from "shared/filters/cinema-selection"
 import { resolveDaySelectionsForApi } from "shared/filters/day-filter-utils"
 import { getRuntimeBoundsFromSelections } from "shared/filters/runtime-range-utils"
 import {
@@ -45,8 +47,22 @@ export type FeedParams = {
   times: string[]
   /** Runtime range tokens. */
   runtime: string[]
-  /** Which of the viewer's own selections to show. */
+  /**
+   * Going / interested marks to narrow to — friends' and your own, or with
+   * `mine` only your own.
+   */
   status: SharedTabShowtimeFilter
+  /**
+   * Only your own marks: your agenda, as a filter on the one feed rather than
+   * a page of its own. With `status` at "all" it means everything you marked.
+   */
+  mine: boolean
+  /**
+   * Only these friends' plans (user ids). One friend is that friend's agenda —
+   * the page it used to be, header and all (`Feed/FeedSubjectHeader`). Wins
+   * over `mine`.
+   */
+  friends: string[]
   /** Collapse a movie's showtimes into one row. */
   group: boolean
   watchlist: WatchlistMode
@@ -66,6 +82,8 @@ export const defaultFeedParams: FeedParams = {
   times: [],
   runtime: [],
   status: "all",
+  mine: false,
+  friends: [],
   group: false,
   watchlist: "any",
   watched: "any",
@@ -105,6 +123,14 @@ const oneOf = <T extends string>(
 ): T => (allowed.includes(value as T) ? (value as T) : fallback)
 
 /**
+ * What a link to a feed route may pass: any subset of the params, since
+ * `parseFeedParams` fills in the rest. Typing `validateSearch`'s argument with
+ * this (rather than `Record<string, unknown>`) is what keeps the router from
+ * demanding every param on every `<Link>`.
+ */
+export type FeedSearchInput = Partial<FeedParams> & SearchSchemaInput
+
+/**
  * The route's `validateSearch`. Anything unrecognised falls back to its default
  * rather than throwing, so a hand-edited or stale URL degrades to a working
  * feed instead of an error page.
@@ -120,6 +146,8 @@ export const parseFeedParams = (
   times: toStringArray(search.times),
   runtime: toStringArray(search.runtime),
   status: toSharedTabShowtimeFilter(search.status as SharedTabShowtimeFilter),
+  mine: toBoolean(search.mine),
+  friends: toStringArray(search.friends),
   group: toBoolean(search.group),
   watchlist: oneOf<WatchlistMode>(
     search.watchlist,
@@ -158,19 +186,79 @@ export const stripDefaultFeedParams = (
   return out as Partial<FeedParams>
 }
 
-/** True when anything other than the free-text search is narrowing the feed. */
-export const countActiveFilters = (params: FeedParams): number => {
+/**
+ * A link's `search` for the home feed narrowed to one friend — what their
+ * agenda page used to be. Links go here rather than to that page, which only
+ * redirects now; see `Feed/FeedSubjectHeader`.
+ */
+export const friendFeedSearch = (userId: string): Partial<FeedParams> => ({
+  friends: [userId],
+})
+
+/** The same for one cinema: its programme, as the cinema page used to show it. */
+export const cinemaFeedSearch = (cinemaId: number): Partial<FeedParams> => ({
+  cinemas: [cinemaId],
+})
+
+/**
+ * True when anything other than the free-text search is narrowing the feed.
+ *
+ * `preferredCinemaIds` is the account's own cinemas. Sitting on those is the
+ * resting state rather than a filter, and the website writes them into the URL
+ * the moment a chip is touched, so without them every visitor who changes one
+ * cinema would be told they have a cinema filter on *and* one they never set.
+ * The rule is the app's — see `isCinemaSelectionDifferentFromPreferred`.
+ */
+export const countActiveFilters = (
+  params: FeedParams,
+  preferredCinemaIds?: readonly number[],
+): number => {
   let count = 0
   if (params.days.length) count += 1
-  if (params.cinemas.length) count += 1
+  // Without the account's cinemas to compare against — signed out, or the
+  // query has not landed — there is no resting state to be away from, so any
+  // explicit selection counts, which is where this started.
+  const cinemasAreFiltering =
+    preferredCinemaIds === undefined
+      ? params.cinemas.length > 0
+      : isCinemaSelectionDifferentFromPreferred({
+          sessionCinemaIds: params.cinemas.length ? params.cinemas : undefined,
+          preferredCinemaIds,
+        })
+  if (cinemasAreFiltering) count += 1
+  // Counted separately from a cinema selection: it is not one, it is the
+  // override that ignores the account's usual cinemas, and it can be the only
+  // thing narrowing (widening, really) the feed.
+  if (params.allCinemas) count += 1
   if (params.times.length) count += 1
   if (params.runtime.length) count += 1
-  if (params.status !== "all") count += 1
+  if (params.status !== "all" || params.mine) count += 1
+  if (params.friends.length) count += 1
   if (params.watchlist !== "any") count += 1
   if (params.watched !== "any") count += 1
   if (params.lists.length || params.excludeLists.length) count += 1
   if (params.languages.length) count += 1
   return count
+}
+
+/**
+ * The dimensions that choose *films* rather than screenings — whether a film
+ * is on your watchlist, seen, on a list, or the right length, and the search
+ * text — at their defaults. A page about one film pins these (`useFeedParams`'s
+ * `pinned`): the film is already chosen, so all they could do is hide its whole
+ * run. What is left narrows the screenings: cinemas, language, days, time of
+ * day, and whose plans.
+ */
+export const FILM_LEVEL_FEED_PARAMS: Partial<FeedParams> = {
+  q: defaultFeedParams.q,
+  field: defaultFeedParams.field,
+  allCinemas: defaultFeedParams.allCinemas,
+  runtime: defaultFeedParams.runtime,
+  group: defaultFeedParams.group,
+  watchlist: defaultFeedParams.watchlist,
+  watched: defaultFeedParams.watched,
+  lists: defaultFeedParams.lists,
+  excludeLists: defaultFeedParams.excludeLists,
 }
 
 /**
@@ -183,8 +271,12 @@ export const feedParamsToApiFilters = (params: FeedParams) => {
   const { runtimeMin, runtimeMax } = getRuntimeBoundsFromSelections(
     params.runtime,
   )
+  // "Only mine" with no status picked is everything you marked, which is what
+  // "interested" already means (going counts as interested too).
   const selectedStatuses: GoingStatus[] | undefined =
-    getSelectedStatusesFromShowtimeFilter(params.status)
+    getSelectedStatusesFromShowtimeFilter(
+      params.mine && params.status === "all" ? "interested" : params.status,
+    )
 
   return {
     query: params.q.trim() || undefined,
@@ -202,6 +294,8 @@ export const feedParamsToApiFilters = (params: FeedParams) => {
     watchedOnly: params.watched === "only" || undefined,
     hideWatched: params.watched === "hide" || undefined,
     selectedStatuses,
+    onlyYou: (params.mine && !params.friends.length) || undefined,
+    friendIds: params.friends.length ? params.friends : undefined,
     selectedListIds: params.lists.length ? params.lists : undefined,
     excludeListIds: params.excludeLists.length
       ? params.excludeLists

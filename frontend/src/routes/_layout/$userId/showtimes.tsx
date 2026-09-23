@@ -1,21 +1,21 @@
 /**
- * TanStack Router route module for a friend's agenda. It connects URL state to
- * the matching page component.
+ * TanStack Router route module for the old address of a friend's agenda.
  *
- * Shares its search schema with the other feeds, so filters carry across.
+ * A friend's agenda is no longer a page of its own: it is the home feed with
+ * that one friend picked under "Only these friends" (`FeedParams.friends`),
+ * headed by their name, picture and settings (`Feed/FeedSubjectHeader`). The
+ * address stays so shared links, the app's links and bookmarks still land.
  */
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, redirect } from "@tanstack/react-router"
 
-import ShowtimesPage from "@/components/Showtimes/ShowtimesPage"
-import { parseFeedParams } from "@/features/showtimes/feed-params"
+import { friendFeedSearch } from "@/features/showtimes/feed-params"
 
 //@ts-ignore
 export const Route = createFileRoute("/_layout/$userId/showtimes")({
-  component: FriendAgendaRoute,
-  validateSearch: (search: Record<string, unknown>) => parseFeedParams(search),
+  beforeLoad: ({ params }: { params: { userId: string } }) => {
+    throw redirect({
+      to: "/",
+      search: friendFeedSearch(params.userId) as never,
+    })
+  },
 })
-
-function FriendAgendaRoute() {
-  const { userId } = Route.useParams() as { userId: string }
-  return <ShowtimesPage userId={userId} />
-}

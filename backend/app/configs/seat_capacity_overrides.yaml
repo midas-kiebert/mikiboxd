@@ -4,8 +4,13 @@
 # just Eagerly's seat map — see app/scraping/seat_availability.py). Everywhere
 # else, `Showtime.seats_capacity` is a running max of every `seats_left`
 # reading and only converges on the true number after enough of them have
-# landed. An entry here is used immediately instead, as soon as any reading
-# comes in for that cinema/room — see `app/services/seat_availability.py`.
+# landed. An entry here is used instead, as soon as any reading comes in for
+# that cinema/room, and it always wins: over the running max, over the shared
+# per-room estimate, and over a total the platform itself reports, whether
+# larger or smaller. Cinemas almost never change a room's seat count, so when
+# one does, update the number here. A reading with more seats left than the
+# override logs a warning, which is the sign that it is out of date. See
+# `app/services/seat_availability.py`.
 #
 # Keyed by cinema `key` — `Cinema.key`, from `backend/data/cinemas.yaml`, the
 # stable identifier and not the display name. Note that this is *not* the same

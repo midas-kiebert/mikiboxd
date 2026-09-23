@@ -1,7 +1,6 @@
 /**
  * TanStack Router route module for login. It connects URL state to the matching page component.
  */
-import { Container, Image, Input, Text } from "@chakra-ui/react"
 import {
   Link as RouterLink,
   createFileRoute,
@@ -9,16 +8,12 @@ import {
   useNavigate,
 } from "@tanstack/react-router"
 import { type SubmitHandler, useForm } from "react-hook-form"
-import { FiLock, FiMail } from "react-icons/fi"
 
-import { Button } from "@/components/ui/button"
-import { Field } from "@/components/ui/field"
-import { InputGroup } from "@/components/ui/input-group"
-import { PasswordInput } from "@/components/ui/password-input"
+import { AuthField, AuthShell } from "@/components/Auth/AuthShell"
+import SocialSignIn from "@/components/Auth/SocialSignIn"
 import { defaultFeedParams } from "@/features/showtimes/feed-params"
 import type { Body_login_login_access_token as AccessToken } from "shared"
 import useAuth, { isLoggedIn } from "shared/hooks/useAuth"
-import Logo from "/assets/images/mikino-logo.png"
 import { emailPattern, passwordRules } from "../utils"
 
 export const Route = createFileRoute("/login")({
@@ -46,13 +41,9 @@ function Login() {
   const navigate = useNavigate()
   const { redirect: redirectTo } = Route.useSearch()
   // Data hooks keep this module synced with backend data and shared cache state.
-  const { loginMutation, error, resetError } = useAuth(
-    () =>
-      redirectTo
-        ? navigate({ href: redirectTo })
-        : navigate({ to: "/", search: defaultFeedParams }), // onLoginSuccess
-    () => navigate({ to: "/login" }), // onLogout
-  )
+  // No onLoginSuccess: it would also fire for the Apple/Google buttons, whose
+  // new accounts have to go to /pick-username rather than on to `redirect`.
+  const { loginMutation, socialLoginMutation, error, resetError } = useAuth()
   const {
     register,
     handleSubmit,
@@ -75,75 +66,64 @@ function Login() {
       await loginMutation.mutateAsync(data)
     } catch {
       // error is handled by useAuth hook
+      return
     }
+    if (redirectTo) void navigate({ href: redirectTo })
+    else void navigate({ to: "/", search: defaultFeedParams })
   }
 
   // Render/output using the state and derived values prepared above.
   return (
-    <>
-      <Container
-        as="form"
-        onSubmit={handleSubmit(onSubmit)}
-        h="100vh"
-        maxW="sm"
-        alignItems="stretch"
-        justifyContent="center"
-        gap={4}
-        centerContent
-      >
-        <Image
-          src={Logo}
-          alt="MiKiNO logo"
-          height="auto"
-          maxW="2xs"
-          alignSelf="center"
-          mb={2}
+    <AuthShell
+      title="Log in"
+      lede="Welcome back. Your agenda, friends and invites are waiting."
+      switchTo={{
+        text: "New to MiKiNO? An account is free, and it's how you plan with friends.",
+        label: "Create an account",
+        to: "/signup",
+      }}
+    >
+      <form className="au-card" onSubmit={handleSubmit(onSubmit)} noValidate>
+        <SocialSignIn
+          mode="sign-in"
+          socialLoginMutation={socialLoginMutation}
+          resetError={resetError}
+          redirectTo={redirectTo}
         />
-        <Text fontSize="2xl" fontWeight="bold" textAlign="center">
-          MiKiNO
-        </Text>
-        <Text color="fg.muted" textAlign="center" mb={2}>
-          Discover what's playing at cinemas in your city, and coordinate
-          showtimes with friends.
-        </Text>
-        <Field invalid={!!errors.username} errorText={errors.username?.message}>
-          <InputGroup w="100%" startElement={<FiMail />}>
-            <Input
-              id="username"
-              {...register("username", {
-                required: "Username is required",
-                pattern: emailPattern,
-              })}
-              placeholder="Email"
-              type="email"
-            />
-          </InputGroup>
-        </Field>
-        <PasswordInput
+        <AuthField
+          id="username"
+          label="Email"
+          type="email"
+          autoComplete="email"
+          placeholder="you@example.com"
+          error={errors.username?.message}
+          {...register("username", {
+            required: "Email is required",
+            pattern: emailPattern,
+          })}
+        />
+        <AuthField
+          id="password"
+          label="Password"
           type="password"
-          startElement={<FiLock />}
+          autoComplete="current-password"
+          error={errors.password?.message}
+          aside={
+            <RouterLink to="/recover-password" className="au-link">
+              Forgot password?
+            </RouterLink>
+          }
           {...register("password", passwordRules())}
-          placeholder="Password"
-          errors={errors}
         />
-        {error && (
-          <Text color="red.500" fontSize="sm" textAlign="center">
-            {error}
-          </Text>
-        )}
-        <RouterLink to="/recover-password" className="main-link">
-          Forgot Password?
-        </RouterLink>
-        <Button variant="solid" type="submit" loading={isSubmitting} size="md">
-          Log In
-        </Button>
-        <Text>
-          Don't have an account?{" "}
-          <RouterLink to="/signup" className="main-link">
-            Sign Up
-          </RouterLink>
-        </Text>
-      </Container>
-    </>
+        {error ? <p className="au-error au-error--form">{error}</p> : null}
+        <button
+          type="submit"
+          className="au-button au-button--primary"
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? "Logging in…" : "Log in"}
+        </button>
+      </form>
+    </AuthShell>
   )
 }

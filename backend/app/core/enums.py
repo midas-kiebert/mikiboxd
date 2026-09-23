@@ -192,6 +192,22 @@ class ShowtimePingSort(str, Enum):
 
 
 @unique
+class FeedOverviewSectionKind(str, Enum):
+    """The lists the website's feed overview can show, in priority order.
+
+    Declaration order is the priority `services.feed_overview` fills the card
+    in, most urgent first.
+    """
+
+    INVITED = "invited"
+    SELLING_FAST = "selling_fast"
+    CUSTOM = "custom"
+    PLANS = "plans"
+    FRIENDS_GOING = "friends_going"
+    WATCHLIST = "watchlist"
+
+
+@unique
 class NotificationType(str, Enum):
     """Kind of event a stored notification-centre entry represents.
 
@@ -337,3 +353,16 @@ class ScreenSide(str, Enum):
 
     TOP = "top"
     BOTTOM = "bottom"
+
+
+@unique
+class ActivityMode(str, Enum):
+    """The Activity screen's three slices, in both clients.
+
+    ALL is the viewer and their friends; YOU is the viewer's own agenda,
+    invites included; FRIENDS drops the viewer's own selections.
+    """
+
+    ALL = "all"
+    YOU = "you"
+    FRIENDS = "friends"

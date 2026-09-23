@@ -8,11 +8,23 @@
  */
 import { createFileRoute } from "@tanstack/react-router"
 
+import DeferredPage from "@/components/Common/DeferredPage"
 import MoviesPage from "@/components/Movies/MoviesPage"
-import { parseFeedParams } from "@/features/showtimes/feed-params"
+import {
+  type FeedSearchInput,
+  parseFeedParams,
+} from "@/features/showtimes/feed-params"
 
 //@ts-ignore
 export const Route = createFileRoute("/_layout/movies")({
-  component: MoviesPage,
-  validateSearch: (search: Record<string, unknown>) => parseFeedParams(search),
+  component: DeferredMoviesPage,
+  validateSearch: (search: FeedSearchInput) => parseFeedParams(search),
 })
+
+function DeferredMoviesPage() {
+  return (
+    <DeferredPage>
+      <MoviesPage />
+    </DeferredPage>
+  )
+}

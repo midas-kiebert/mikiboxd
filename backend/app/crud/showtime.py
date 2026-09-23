@@ -1,9 +1,11 @@
 from collections.abc import Sequence
-from datetime import datetime, time, timedelta
+from dataclasses import dataclass
+from datetime import date, datetime, time, timedelta
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import Float, case, func, nulls_last
+from sqlalchemy import select as sa_select
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnElement
 from sqlmodel import Session, Time, cast, col, or_, select
@@ -12,7 +14,11 @@ from app.core.enums import GoingStatus, SearchField, SeatAlertKind
 from app.core.viewer import ViewerId
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud import user_block as user_block_crud
-from app.crud.movie import apply_language_filter, apply_search_filter
+from app.crud.movie import (
+    apply_language_filter,
+    apply_search_filter,
+    status_owner_clause,
+)
 from app.crud.movie_set_filters import apply_movie_set_filters
 from app.inputs.movie import Filters
 from app.models.deleted_showtime import DeletedShowtime
@@ -334,6 +340,84 @@ def create_showtime(
     return db_obj
 
 
+@dataclass(frozen=True)
+class FriendSelection:
+    """A friend's selection on a showtime, with the seat they gave for it."""
+
+    friend: User
+    going_status: GoingStatus
+    seat_row: str | None
+    seat_number: str | None
+
+
+def get_friend_selections_for_showtimes(
+    *,
+    session: Session,
+    showtime_ids: Sequence[int],
+    user_id: UUID,
+    going_statuses: Sequence[GoingStatus] = ACTIVE_GOING_STATUSES,
+) -> dict[int, list[FriendSelection]]:
+    """Every friend selection the viewer can see across a page of showtimes.
+
+    One query for the whole page, carrying the seat with the selection it
+    belongs to. `get_friends_for_showtime` is this for a single showtime and a
+    single status — asking it per row is what made a feed page cost a query per
+    row per status, and the seat another on top.
+
+    Showtimes nobody the viewer can see has selected are absent from the result.
+    """
+    if len(showtime_ids) == 0:
+        return {}
+
+    # Five columns: past what sqlmodel's `select` overloads cover.
+    stmt = (
+        sa_select(
+            col(ShowtimeSelection.showtime_id),
+            col(ShowtimeSelection.going_status),
+            col(ShowtimeSelection.seat_row),
+            col(ShowtimeSelection.seat_number),
+            User,
+        )
+        .join(ShowtimeSelection, col(ShowtimeSelection.user_id) == User.id)
+        .join(
+            ShowtimeVisibilityEffective,
+            (col(ShowtimeVisibilityEffective.owner_id) == col(User.id))
+            & (
+                col(ShowtimeVisibilityEffective.showtime_id)
+                == col(ShowtimeSelection.showtime_id)
+            )
+            & (col(ShowtimeVisibilityEffective.viewer_id) == user_id),
+        )
+        # A direct Friendship, not just visibility: under FRIENDS_OF_FRIENDS
+        # mode, ShowtimeVisibilityEffective can include a friend-of-a-friend
+        # with no Friendship row at all — those belong in
+        # `get_visible_non_friends_for_showtimes`'s badge, not this one.
+        .join(
+            Friendship,
+            (col(Friendship.user_id) == user_id)
+            & (col(Friendship.friend_id) == User.id),
+        )
+        .where(
+            col(ShowtimeSelection.showtime_id).in_(showtime_ids),
+            col(ShowtimeSelection.going_status).in_(going_statuses),
+        )
+    )
+
+    selections_by_showtime_id: dict[int, list[FriendSelection]] = {}
+    for showtime_id, going_status, seat_row, seat_number, friend in session.execute(
+        stmt
+    ).all():
+        selections_by_showtime_id.setdefault(showtime_id, []).append(
+            FriendSelection(
+                friend=friend,
+                going_status=going_status,
+                seat_row=seat_row,
+                seat_number=seat_number,
+            )
+        )
+    return selections_by_showtime_id
+
+
 def get_friends_for_showtime(
     *,
     session: Session,
@@ -351,35 +435,13 @@ def get_friends_for_showtime(
     Returns:
         list[User]: A list of User objects representing friends who have selected the showtime.
     """
-    stmt = (
-        select(User)
-        .join(ShowtimeSelection, col(ShowtimeSelection.user_id) == User.id)
-        .join(
-            ShowtimeVisibilityEffective,
-            (col(ShowtimeVisibilityEffective.owner_id) == col(User.id))
-            & (
-                col(ShowtimeVisibilityEffective.showtime_id)
-                == col(ShowtimeSelection.showtime_id)
-            )
-            & (col(ShowtimeVisibilityEffective.viewer_id) == user_id),
-        )
-        # A direct Friendship, not just visibility: under FRIENDS_OF_FRIENDS
-        # mode, ShowtimeVisibilityEffective can include a friend-of-a-friend
-        # with no Friendship row at all — those belong in
-        # `get_visible_non_friends_for_showtime`'s badge, not this one.
-        .join(
-            Friendship,
-            (col(Friendship.user_id) == user_id)
-            & (col(Friendship.friend_id) == User.id),
-        )
-        .where(
-            col(ShowtimeSelection.showtime_id) == showtime_id,
-            col(ShowtimeSelection.going_status) == going_status,
-        )
-    )
-    result = session.execute(stmt)
-    friends: list[User] = list(result.scalars().all())
-    return friends
+    selections = get_friend_selections_for_showtimes(
+        session=session,
+        showtime_ids=[showtime_id],
+        user_id=user_id,
+        going_statuses=[going_status],
+    ).get(showtime_id, [])
+    return [selection.friend for selection in selections]
 
 
 def get_visible_non_friends_for_showtime(
@@ -407,26 +469,61 @@ def get_visible_non_friends_for_showtime(
     `get_friends_for_showtime`. Blocked users are dropped too: a grant can
     outlive a block that had no direct friendship or ping to tear down.
     """
+    visible = get_visible_non_friends_for_showtimes(
+        session=session,
+        showtime_ids=[showtime_id],
+        user_id=user_id,
+        exclude_user_ids=exclude_user_ids,
+        going_statuses=[going_status],
+    ).get(showtime_id, [])
+    return [user for _, user in visible]
+
+
+def get_visible_non_friends_for_showtimes(
+    *,
+    session: Session,
+    showtime_ids: Sequence[int],
+    user_id: UUID,
+    exclude_user_ids: set[UUID],
+    going_statuses: Sequence[GoingStatus] = ACTIVE_GOING_STATUSES,
+) -> dict[int, list[tuple[GoingStatus, User]]]:
+    """`get_visible_non_friends_for_showtime` for a whole page, in one query.
+
+    Every status comes back together, tagged, because a page needs both and
+    the caller already has to split them. Blocked users are resolved once for
+    the page rather than once per showtime.
+    """
+    if len(showtime_ids) == 0:
+        return {}
+
     hidden_ids = user_block_crud.get_hidden_user_ids(session=session, user_id=user_id)
-    exclude_user_ids = exclude_user_ids | hidden_ids
+    excluded = exclude_user_ids | hidden_ids
 
     stmt = (
-        select(User)
+        select(col(ShowtimeSelection.showtime_id), User)
         .join(ShowtimeSelection, col(ShowtimeSelection.user_id) == col(User.id))
         .join(
             ShowtimeVisibilityEffective,
             (col(ShowtimeVisibilityEffective.owner_id) == col(User.id))
             & (col(ShowtimeVisibilityEffective.viewer_id) == user_id)
-            & (col(ShowtimeVisibilityEffective.showtime_id) == showtime_id),
+            & (
+                col(ShowtimeVisibilityEffective.showtime_id)
+                == col(ShowtimeSelection.showtime_id)
+            ),
         )
         .where(
-            col(ShowtimeSelection.showtime_id) == showtime_id,
-            col(ShowtimeSelection.going_status) == going_status,
-            col(User.id).not_in(exclude_user_ids),
+            col(ShowtimeSelection.showtime_id).in_(showtime_ids),
+            col(ShowtimeSelection.going_status).in_(going_statuses),
+            col(User.id).not_in(excluded),
         )
+        .add_columns(col(ShowtimeSelection.going_status))
         .distinct()
     )
-    return list(session.exec(stmt).all())
+
+    visible_by_showtime_id: dict[int, list[tuple[GoingStatus, User]]] = {}
+    for showtime_id, user, going_status in session.execute(stmt).all():
+        visible_by_showtime_id.setdefault(showtime_id, []).append((going_status, user))
+    return visible_by_showtime_id
 
 
 def get_friends_with_showtime_selection(
@@ -782,18 +879,10 @@ def _build_main_page_showtimes_query(
             & (col(visible_row.showtime_id) == col(Showtime.id))
             & (col(visible_row.viewer_id) == user_id),
         )
-        # friends_only drops the viewer's own selections from the OR below,
-        # leaving only rows made visible by someone else's selection.
-        owner_clause = (
-            col(visible_row.viewer_id).is_not(None)
-            if filters.friends_only
-            else or_(
-                col(ShowtimeSelection.user_id) == user_id,
-                col(visible_row.viewer_id).is_not(None),
-            )
-        )
         stmt = stmt.where(
-            owner_clause,
+            status_owner_clause(
+                filters=filters, viewer_id=user_id, visible_row=visible_row
+            ),
             col(ShowtimeSelection.going_status).in_(filters.selected_statuses),
         ).distinct()
 
@@ -823,20 +912,20 @@ def get_main_page_showtimes(
     return showtimes
 
 
-def get_agenda_showtimes(
+def _build_agenda_query(
     *,
-    session: Session,
     user_id: UUID,
     snapshot_time: datetime,
     include_interested: bool,
     include_invited: bool,
-    limit: int,
-    offset: int,
-) -> list[Showtime]:
+) -> Any:
     """
     Upcoming showtimes for the user's personal agenda: ones they are GOING to
     (always), INTERESTED in (when ``include_interested``), or have an active
-    received invite for (when ``include_invited``). Ordered by datetime.
+    received invite for (when ``include_invited``).
+
+    Shared by the page and the per-day counts, so the two can never disagree
+    about which showtimes the agenda holds. Unordered and unlimited.
     """
     going_subquery = select(ShowtimeSelection.showtime_id).where(
         col(ShowtimeSelection.user_id) == user_id,
@@ -858,14 +947,52 @@ def get_agenda_showtimes(
         )
         conditions.append(col(Showtime.id).in_(invited_subquery))
 
+    return select(Showtime).where(
+        col(Showtime.datetime) >= snapshot_time, or_(*conditions)
+    )
+
+
+def get_agenda_showtimes(
+    *,
+    session: Session,
+    user_id: UUID,
+    snapshot_time: datetime,
+    include_interested: bool,
+    include_invited: bool,
+    limit: int,
+    offset: int,
+) -> list[Showtime]:
+    """A page of the user's agenda (see `_build_agenda_query`), by datetime."""
     stmt = (
-        select(Showtime)
-        .where(col(Showtime.datetime) >= snapshot_time, or_(*conditions))
+        _build_agenda_query(
+            user_id=user_id,
+            snapshot_time=snapshot_time,
+            include_interested=include_interested,
+            include_invited=include_invited,
+        )
         .order_by(col(Showtime.datetime))
         .limit(limit)
         .offset(offset)
     )
     return list(session.exec(stmt).all())
+
+
+def count_agenda_showtimes_by_day(
+    *,
+    session: Session,
+    user_id: UUID,
+    snapshot_time: datetime,
+    include_interested: bool,
+    include_invited: bool,
+) -> list[tuple[date, int]]:
+    """How many agenda showtimes fall on each day, soonest first."""
+    stmt = _build_agenda_query(
+        user_id=user_id,
+        snapshot_time=snapshot_time,
+        include_interested=include_interested,
+        include_invited=include_invited,
+    )
+    return _count_by_day(session=session, stmt=stmt)
 
 
 def count_main_page_showtimes(
@@ -886,6 +1013,42 @@ def count_main_page_showtimes(
 
     count_stmt = select(func.count()).select_from(stmt.subquery())
     return session.execute(count_stmt).scalar_one()
+
+
+def count_main_page_showtimes_by_day(
+    *,
+    session: Session,
+    user_id: ViewerId,
+    filters: Filters,
+    letterboxd_username: str | None = None,
+) -> list[tuple[date, int]]:
+    """How many main-page showtimes fall on each day, soonest first.
+
+    Days are `day_bucket_date_clause`'s: a screening before the cutoff counts
+    towards the evening before, as both clients group it.
+    """
+    stmt, force_empty = _build_main_page_showtimes_query(
+        session=session,
+        user_id=user_id,
+        filters=filters,
+        letterboxd_username=letterboxd_username,
+    )
+    if force_empty:
+        return []
+    return _count_by_day(session=session, stmt=stmt)
+
+
+def _count_by_day(*, session: Session, stmt: Any) -> list[tuple[date, int]]:
+    """Group a `select(Showtime)` statement's rows by day bucket and count them.
+
+    Counted over the statement as a subquery, so a `DISTINCT` in it (the status
+    filter's join can match one showtime once per selection) still counts each
+    showtime once.
+    """
+    rows = stmt.subquery()
+    day = day_bucket_date_clause(rows.c.datetime).label("day")
+    count_stmt = select(day, func.count()).group_by(day).order_by(day)
+    return [(row[0], row[1]) for row in session.execute(count_stmt).all()]
 
 
 def add_showtime_selection(

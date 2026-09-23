@@ -1,0 +1,373 @@
+/*
+ * The login and signup pages (`AuthShell.tsx`).
+ *
+ * Plain classes over Chakra's theme variables, the idiom of
+ * `Settings/settings.css`: the same card, field and button shapes, so signing
+ * in reads as part of the site rather than a page from somewhere else.
+ */
+
+.au-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  padding: 16px 16px 40px;
+  background: var(--chakra-colors-bg);
+}
+
+.au-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 1000px;
+  min-height: 44px;
+}
+
+.au-main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+  width: 100%;
+  max-width: 400px;
+  padding-top: 24px;
+}
+
+.au-head {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.au-title {
+  margin: 0;
+  color: var(--chakra-colors-fg);
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.au-lede {
+  margin: 8px 0 0;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.au-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 22px 20px;
+  border: 1px solid var(--chakra-colors-app-card-border);
+  border-radius: 14px;
+  background: var(--chakra-colors-app-card-background);
+}
+
+.au-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.au-field__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.au-label {
+  color: var(--chakra-colors-fg-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.au-input-wrap {
+  position: relative;
+}
+
+.au-input {
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--chakra-colors-app-card-border);
+  border-radius: 10px;
+  background: var(--chakra-colors-bg);
+  color: var(--chakra-colors-fg);
+  font: inherit;
+  font-size: 14px;
+  transition: border-color 120ms ease;
+}
+
+.au-input--with-toggle {
+  padding-right: 44px;
+}
+
+.au-input::placeholder {
+  color: var(--chakra-colors-fg-muted);
+  opacity: 0.8;
+}
+
+.au-input:focus {
+  border-color: var(--chakra-colors-app-tint);
+  outline: none;
+}
+
+.au-input[aria-invalid="true"] {
+  border-color: var(--chakra-colors-app-red\.secondary);
+}
+
+.au-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--chakra-colors-fg-muted);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.au-toggle:hover {
+  background: var(--chakra-colors-bg-subtle);
+  color: var(--chakra-colors-fg);
+}
+
+.au-error {
+  margin: 0;
+  color: var(--chakra-colors-app-red\.secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.au-error--form {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--chakra-colors-app-red\.primary);
+  font-size: 13px;
+}
+
+.au-link {
+  color: var(--chakra-colors-app-tint);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.au-link:hover {
+  text-decoration: underline;
+}
+
+.au-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--chakra-colors-app-card-border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--chakra-colors-fg);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition: filter 120ms ease, background-color 120ms ease;
+}
+
+.au-button:hover:not(:disabled) {
+  background: var(--chakra-colors-bg-muted);
+}
+
+.au-button--primary {
+  border-color: var(--chakra-colors-app-tint);
+  background: var(--chakra-colors-app-tint);
+  color: var(--chakra-colors-app-pill-active-text);
+}
+
+.au-button--primary:hover:not(:disabled) {
+  background: var(--chakra-colors-app-tint);
+  filter: brightness(1.08);
+}
+
+.au-button:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.au-button:focus-visible,
+.au-toggle:focus-visible {
+  outline: 2px solid var(--chakra-colors-app-tint);
+  outline-offset: 2px;
+}
+
+/* The way to the other form: its own card, with a real button in it. */
+.au-switch {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 18px 20px;
+  border: 1px solid var(--chakra-colors-app-card-border);
+  border-radius: 14px;
+  background: var(--chakra-colors-app-card-background);
+  text-align: center;
+}
+
+.au-switch__text {
+  margin: 0;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 13px;
+}
+
+.au-guest {
+  margin-top: 18px;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.au-guest a {
+  color: var(--chakra-colors-fg);
+  font-weight: 600;
+}
+
+/* "Continue with Apple / Google", above the email fields. */
+.au-social {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* The two provider buttons: the card's own outlined button, one per row. */
+.au-provider {
+  position: relative;
+  gap: 10px;
+  font-weight: 600;
+}
+
+.au-provider__label {
+  position: relative;
+  top: 1px;
+}
+
+.au-provider__apple {
+  position: relative;
+  top: -1px;
+}
+
+.au-google {
+  position: relative;
+}
+
+/* Our button can't see the pointer through Google's iframe, so the wrapper
+   carries the hover. */
+.au-google:hover .au-provider {
+  background: var(--chakra-colors-bg-muted);
+}
+
+/* Google's rendered button, stretched over ours and invisible. Opacity rather
+   than visibility, which would stop it taking the click — and fully 0: it is a
+   personalised button (the signed-in Google account's avatar and name), which
+   showed through at 0.01. */
+.au-google__sdk {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  opacity: 0;
+}
+
+/* Scaled from the top-left corner to cover the slot; the factor is set by
+   SocialSignIn when Google's button is narrower than the card. */
+.au-google__sdk > div {
+  transform: scale(var(--au-google-scale, 1));
+  transform-origin: 0 0;
+}
+
+.au-google--blocked {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.au-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 12px;
+}
+
+.au-divider::before,
+.au-divider::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--chakra-colors-app-card-border);
+}
+
+/* An outcome page's mark above its title (`/verify-email`). The tones are the
+   app's state colours: tint while working, green done, red failed. */
+.au-status-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 16px;
+  border-radius: 16px;
+  background: var(--chakra-colors-bg-subtle);
+  color: var(--chakra-colors-app-tint);
+}
+
+.au-status-icon--success {
+  background: var(--chakra-colors-app-green\.primary);
+  color: var(--chakra-colors-app-green\.secondary);
+}
+
+.au-status-icon--error {
+  background: var(--chakra-colors-app-red\.primary);
+  color: var(--chakra-colors-app-red\.secondary);
+}
+
+.au-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2.5px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: au-spin 700ms linear infinite;
+}
+
+@keyframes au-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.au-card__address {
+  margin: 0;
+  color: var(--chakra-colors-fg);
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.au-card__note {
+  margin: 0;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}

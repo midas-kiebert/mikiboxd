@@ -73,16 +73,28 @@ type ShowtimeStatusControlProps = {
    * selected — the same call the app's sheet makes.
    */
   hasOpenInvite?: boolean
+  /**
+   * A guest's buttons: all three drawn off and greyed, none selected. They
+   * still take a press — that is what sends a guest to sign in.
+   */
+  locked?: boolean
 }
 
 const ShowtimeStatusControl = ({
   status,
   onChange,
   hasOpenInvite = false,
+  locked = false,
 }: ShowtimeStatusControlProps) => (
-  <Flex gap="6px" role="group" aria-label="Your status">
+  <Flex
+    gap="6px"
+    role="group"
+    aria-label="Your status"
+    opacity={locked ? 0.45 : 1}
+  >
     {OPTIONS.map((option) => {
       const isOn =
+        !locked &&
         option.status === status &&
         !(hasOpenInvite && option.status === "NOT_GOING")
 
@@ -108,7 +120,7 @@ const ShowtimeStatusControl = ({
           color={isOn ? option.fg : "fg.muted"}
           cursor="pointer"
           transition="background-color 120ms ease, border-color 120ms ease, color 120ms ease, transform 90ms ease"
-          _hover={isOn ? undefined : { bg: "bg.subtle", color: "fg" }}
+          _hover={isOn || locked ? undefined : { bg: "bg.subtle", color: "fg" }}
           _active={{ transform: "scale(0.97)" }}
           _focusVisible={{
             outline: "2px solid",
@@ -117,7 +129,12 @@ const ShowtimeStatusControl = ({
           }}
         >
           <Box as={option.icon} boxSize="20px" aria-hidden />
-          <Text fontSize="12px" fontWeight={isOn ? "700" : "600"} lineHeight="1.2" truncate>
+          <Text
+            fontSize="12px"
+            fontWeight={isOn ? "700" : "600"}
+            lineHeight="1.2"
+            truncate
+          >
             {option.label}
           </Text>
         </PanelPressable>

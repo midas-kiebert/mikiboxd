@@ -34,6 +34,11 @@ const TIP_PRESENTATION: Record<FeatureTipId, Presentation> = {
     title: "Connect your Letterboxd watchlist",
     subtitle: "Filter showtimes by your watchlist",
   },
+  "letterboxd-avatar": {
+    icon: "account-circle",
+    title: "Use your Letterboxd picture",
+    subtitle: "Let friends recognise you at a glance",
+  },
   "add-friends": {
     icon: "person-add",
     title: "Add some friends",

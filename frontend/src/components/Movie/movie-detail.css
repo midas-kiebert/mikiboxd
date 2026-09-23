@@ -1,0 +1,305 @@
+/*
+ * The film page (`MovieDetail.tsx`): the film at the top, its run below.
+ *
+ * Its own layout rather than the feed row's — see the component for why — but
+ * the same materials: the plate is the feed's (`Movies/cards/film-cards.css`),
+ * untouched and the same size, the buttons are the row's `.fr-act`, and the
+ * type follows the row's weights and opacities a step up.
+ *
+ * The page's own width is what decides the arrangement, not the window's: the
+ * detail panel docks beside it and takes a fifth of the screen when it opens,
+ * so `.mp` is a size container and the header reflows on *its* width.
+ */
+
+.mp {
+  container: mp / inline-size;
+  /* What the row's pieces read. `--mk-face` is the moat in each friend's
+     avatar ring on a plate — the card's face in the feed, the page here. */
+  --mk-ink: var(--chakra-colors-fg);
+  --mk-tear: var(--chakra-colors-border);
+  --mk-face: var(--chakra-colors-bg);
+  color: var(--mk-ink);
+}
+
+/* ---- The header: poster, the film, your friends ------------------------ */
+
+.mp-head {
+  /* A quarter of the page for the poster, capped: large enough to look at,
+     not so large that the run starts below the fold. */
+  --mp-poster: clamp(150px, 24cqi, 280px);
+  display: grid;
+  grid-template-areas: "poster about";
+  grid-template-columns: var(--mp-poster) minmax(0, 1fr);
+  align-items: start;
+  gap: 32px;
+}
+
+/*
+ * With friends, a third column — the room to the right of a synopsis held to
+ * a reading measure was empty in every layout this page has had.
+ */
+.mp--friends .mp-head {
+  grid-template-areas: "poster about friends";
+  grid-template-columns: var(--mp-poster) minmax(0, 1fr) minmax(220px, 280px);
+}
+
+.mp-poster {
+  display: block;
+  grid-area: poster;
+  border-radius: 8px;
+}
+
+.mp-poster:focus-visible {
+  outline: 2px solid var(--chakra-colors-app-tint);
+  outline-offset: 2px;
+}
+
+.mp .mk-poster--ratio {
+  aspect-ratio: 2 / 3;
+}
+
+.mp-about {
+  grid-area: about;
+  min-width: 0;
+}
+
+.mp-title {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.mp-original {
+  margin-top: 4px;
+  font-size: 15px;
+  font-style: italic;
+  opacity: 0.7;
+}
+
+.mp-meta {
+  margin-top: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+.mp-cast {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.45;
+  opacity: 0.6;
+}
+
+/* Measured rather than full width: prose set across 800px is prose nobody
+   finishes. */
+.mp-synopsis {
+  max-width: 72ch;
+  margin: 14px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+  opacity: 0.85;
+}
+
+/* Up here, under what they act on, rather than after the run: on a film with a
+   long run nobody scrolls to the end of the page to find them. */
+.mp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 16px;
+  /* The buttons are quiet in the feed, where every row has them; here there
+     is one set, so each carries a resting outline. */
+  margin-left: -1px;
+}
+
+.mp-actions .fr-act {
+  padding: 6px 12px;
+  border-color: var(--chakra-colors-border);
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.mp-actions .fr-act__icon {
+  width: 15px;
+  height: 15px;
+}
+
+/* ---- Friends ------------------------------------------------------------ */
+
+.mp-friends {
+  display: flex;
+  grid-area: friends;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+  padding-left: 24px;
+  border-left: 1px dashed var(--mk-tear);
+}
+
+.mp-friends__heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 6px;
+  color: var(--p-secondary);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  line-height: 1.3;
+}
+
+.mp-friends__icon {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+/* Nudged: a no-descender heading leaves its own line-box empty below the
+   letters, which flex-centering still splits evenly against the icon beside
+   it, landing the ink high. */
+.mp-friends__heading-label {
+  position: relative;
+  top: 1px;
+}
+
+.mp-friends__list {
+  display: flex;
+  flex-direction: column;
+}
+
+.mp-friends__more {
+  margin-top: 4px;
+  margin-left: -7px;
+}
+
+/* ---- The run ------------------------------------------------------------ */
+
+.mp-run {
+  margin-top: 40px;
+}
+
+/* The run's summary is its heading: how many, where, and until when — read
+   before the scroll starts rather than at the bottom of it. */
+.mp-run__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--mk-tear);
+}
+
+.mp-run__title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.mp-run__summary {
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.mp-run__none {
+  font-size: 13px;
+  font-style: italic;
+  opacity: 0.7;
+}
+
+/*
+ * The days as blocks in a grid, left to right and then down, like a week on a
+ * calendar. One day to a full-width line left most of every line empty — the
+ * usual day has one to three screenings — and made a three-week run a very
+ * long scroll. Three to a line on a full page, two with the panel open, one on
+ * a phone.
+ */
+.mp-days {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr));
+  align-items: start;
+  gap: 26px 36px;
+}
+
+/* The day, with a dashed rule running out to the right of it. */
+.mp-day__label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 9px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  line-height: 1.3;
+  opacity: 0.75;
+  text-transform: uppercase;
+}
+
+.mp-day__label::after {
+  content: "";
+  flex: 1 1 auto;
+  border-top: 1px dashed var(--mk-tear);
+}
+
+/* The feed row's own plate track. The row gap is the wider of the two because
+   friends stand ten pixels below their plate's bottom edge. */
+.mp-day__plates {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 12px 5px;
+}
+
+/* A plate drawn without its day line (`showDate={false}`) has nothing between
+   the venue band and the clock, so the clock takes the margin the day used to
+   carry and the plate keeps the proportions it has in the feed. */
+.mp-day__plates .fc-plate__time {
+  margin-top: 4px;
+}
+
+/* ---- Narrower pages ----------------------------------------------------- */
+
+/* Friends under the film rather than beside it: a third column this narrow
+   would leave the synopsis a ribbon. */
+@container mp (max-width: 860px) {
+  .mp--friends .mp-head {
+    grid-template-areas:
+      "poster about"
+      "poster friends";
+    grid-template-columns: var(--mp-poster) minmax(0, 1fr);
+    row-gap: 24px;
+  }
+
+  .mp-friends {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 18px 24px;
+    padding: 18px 0 0;
+    border-top: 1px dashed var(--mk-tear);
+    border-left: 0;
+  }
+}
+
+/* A phone: one column, the poster centred over the film. */
+@container mp (max-width: 560px) {
+  .mp-head,
+  .mp--friends .mp-head {
+    grid-template-areas:
+      "poster"
+      "about"
+      "friends";
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 18px;
+  }
+
+  .mp-poster {
+    width: min(200px, 55%);
+    justify-self: center;
+  }
+
+  .mp-title {
+    font-size: 25px;
+  }
+}

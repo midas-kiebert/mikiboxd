@@ -16,8 +16,8 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import type { UserPublic } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
+import PersonAvatar from "@/components/ui/PersonAvatar";
 import { useThemeColors } from "@/hooks/use-theme-color";
-import { getAvatarColors, getAvatarInitial } from "@/utils/avatar-color";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
@@ -132,7 +132,6 @@ export default function InviteBeforePrivateDialog({
           <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
             {friends.map((friend) => {
               const isSelected = selectedIds.has(friend.id);
-              const avatarColors = getAvatarColors(friend.id, colors);
               const name = friend.display_name ?? "Friend";
               return (
                 <TouchableOpacity
@@ -141,11 +140,14 @@ export default function InviteBeforePrivateDialog({
                   onPress={() => toggleFriend(friend.id)}
                   activeOpacity={0.7}
                 >
-                  <View style={[styles.avatar, { backgroundColor: avatarColors.primary }]}>
-                    <ThemedText style={[styles.avatarText, { color: avatarColors.secondary }]}>
-                      {getAvatarInitial(name)}
-                    </ThemedText>
-                  </View>
+                  <PersonAvatar
+                    userId={friend.id}
+                    name={name}
+                    avatarUrl={friend.avatar_url}
+                    size={26}
+                    fontSize={12}
+                    style={styles.avatar}
+                  />
                   <ThemedText style={styles.friendName} numberOfLines={1} ellipsizeMode="tail">
                     {name}
                   </ThemedText>

@@ -45,14 +45,15 @@ import {
   getSeatAvailabilityCopy,
   getSeatAvailabilityPresentation,
 } from "shared/showtimes/seat-availability-level"
-import { formatSeatLabel } from "shared/showtimes/seat-label"
 import {
   getSeatFieldMaxLength,
   getSeatInputConfig,
   validateSeatFieldValue,
 } from "shared/showtimes/seat-input"
+import { formatSeatLabel } from "shared/showtimes/seat-label"
 
 import { useIsSignedIn, useRequireAccount } from "@/auth/useSession"
+import SeatFloorPlan from "@/components/Showtimes/SeatFloorPlan"
 import {
   PANEL_ROW_LABEL_SIZE,
   PANEL_ROW_VALUE_SIZE,
@@ -64,7 +65,7 @@ import {
   PanelIcon,
   SEAT_LEVEL_ICON,
 } from "@/components/Showtimes/detail/panel-icons"
-import SeatFloorPlan from "@/components/Showtimes/SeatFloorPlan"
+import { copyCinevilleCardForTicketLink } from "@/features/cineville/cineville-card"
 import { putShowtimeInFeeds } from "@/features/showtimes/showtime-cache"
 import { useShowtimeSelection } from "@/features/showtimes/useShowtimeSelection"
 import useCustomToast from "@/hooks/useCustomToast"
@@ -155,7 +156,13 @@ const CardRow = ({
 
   if (rest.href) {
     return (
-      <PanelAnchor href={rest.href} target="_blank" rel="noopener noreferrer" {...style}>
+      <PanelAnchor
+        href={rest.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={rest.onClick}
+        {...style}
+      >
         {children}
       </PanelAnchor>
     )
@@ -222,13 +229,20 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
   useEffect(() => {
     if (availability === undefined) return
     if (showtime.seat_availability === availability) return
-    putShowtimeInFeeds(queryClient, { ...showtime, seat_availability: availability })
+    putShowtimeInFeeds(queryClient, {
+      ...showtime,
+      seat_availability: availability,
+    })
   }, [availability, queryClient, showtime])
 
   const { mutate: check } = useMutation({
-    mutationFn: () => ShowtimesService.requestSeatAvailabilityCheck({ showtimeId }),
+    mutationFn: () =>
+      ShowtimesService.requestSeatAvailabilityCheck({ showtimeId }),
     onSuccess: (fresh) => {
-      queryClient.setQueryData(showtimeSeatAvailabilityQueryKey(showtimeId), fresh)
+      queryClient.setQueryData(
+        showtimeSeatAvailabilityQueryKey(showtimeId),
+        fresh,
+      )
     },
     onError: () => {
       // Nothing to roll back by hand: the optimistic "checking" is only ever a
@@ -242,7 +256,7 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
   })
 
   const { mutate: setWatch } = useMutation({
-    mutationFn: (wanted: boolean) =>
+    mutationFn: (wanted: boolean): Promise<unknown> =>
       wanted
         ? ShowtimesService.startSoldOutWatch({ showtimeId })
         : ShowtimesService.stopSoldOutWatch(),
@@ -262,7 +276,9 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
   // loading too, in which case a ticket link alone can still justify the card
   // but not a premature claim above it.
   const showBusyness =
-    isChecking || Boolean(copy) || (availability?.trackable !== false && Boolean(availability))
+    isChecking ||
+    Boolean(copy) ||
+    (availability?.trackable !== false && Boolean(availability))
 
   const seating = showtime.cinema?.seating?.trim().toLowerCase() ?? ""
   const seatConfig = getSeatInputConfig(seating)
@@ -291,7 +307,9 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
     queryClient.setQueryData<ShowtimeSeatAvailabilityPublic | null>(
       showtimeSeatAvailabilityQueryKey(showtimeId),
       (previous) =>
-        previous ? { ...previous, checking: true, can_request_check: false } : previous,
+        previous
+          ? { ...previous, checking: true, can_request_check: false }
+          : previous,
     )
     check()
   }
@@ -303,7 +321,11 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
     setIsEditingSeat(true)
   }
 
-  const rowError = validateSeatFieldValue(rowDraft || null, seatConfig.rowKind, "Row")
+  const rowError = validateSeatFieldValue(
+    rowDraft || null,
+    seatConfig.rowKind,
+    "Row",
+  )
   const numberError = validateSeatFieldValue(
     numberDraft || null,
     seatConfig.seatKind,
@@ -322,11 +344,20 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
   // Render/output using the state and derived values prepared above.
   return (
     <Box px={3} pb={3}>
-      <Box borderWidth="1px" borderColor="border" borderRadius="10px" overflow="hidden">
+      <Box
+        borderWidth="1px"
+        borderColor="border"
+        borderRadius="10px"
+        overflow="hidden"
+      >
         {showBusyness ? (
           <Flex align="center" gap="8px" px="10px" py="8px">
             <Box flex="1" minW={0}>
-              <Text fontSize={PANEL_ROW_LABEL_SIZE} fontWeight="700" lineHeight="1.3">
+              <Text
+                fontSize={PANEL_ROW_LABEL_SIZE}
+                fontWeight="700"
+                lineHeight="1.3"
+              >
                 Available seats
               </Text>
               {/* A re-read in flight keeps the number that is already there —
@@ -359,7 +390,11 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
                   boxSize="15px"
                   aria-label={copy.label}
                 />
-                {seatCount ?? null}
+                {seatCount != null ? (
+                  <Box as="span" position="relative" top="1px">
+                    {seatCount}
+                  </Box>
+                ) : null}
               </ValuePill>
             ) : isChecking ? (
               // Same footprint as the Check button, so the row does not reflow
@@ -372,7 +407,11 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
               <PanelPressable
                 type="button"
                 onClick={handleCheck}
-                aria-label="Check how many seats are left"
+                aria-label={
+                  isSignedIn
+                    ? "Check how many seats are left"
+                    : "Log in to check how many seats are left"
+                }
                 display="flex"
                 alignItems="center"
                 justifyContent="center"
@@ -396,15 +435,21 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
                 }}
               >
                 <Box as={PanelIcon.search} boxSize="15px" aria-hidden />
-                Check
+                <Box as="span" position="relative" top="1px">
+                  {isSignedIn ? "Check" : "Log in to check"}
+                </Box>
               </PanelPressable>
-            ) : (
+            ) : checkedAt ? (
               // Read once, and the ticket shop had nothing usable to say.
               // Nothing to offer here — asking again is what the poller is for.
               <ValuePill bg="app.surfaceMuted" color="fg.muted">
-                <Box as={PanelIcon.helpOutline} boxSize="15px" aria-label="No count available" />
+                <Box
+                  as={PanelIcon.helpOutline}
+                  boxSize="15px"
+                  aria-label="No count available"
+                />
               </ValuePill>
-            )}
+            ) : null}
 
             {/* Offered only where a returned ticket is the thing you are waiting
                 for; on a screening with seats left it would mean nothing. */}
@@ -458,8 +503,9 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
 
         {/* Passed the same reading the count above came from, so the map and the
             number cannot disagree. Most rooms have no plan at all, in which case
-            it draws nothing. */}
-        {showBusyness ? (
+            it draws nothing. Held back until a reading actually exists — before
+            that there is nothing for the map to agree with, only a guess. */}
+        {showBusyness && checkedAt ? (
           <Box px="10px" pb="2px">
             <SeatFloorPlan
               showtimeId={showtimeId}
@@ -468,7 +514,10 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
               // `null` is the plan saying the viewer clicked their own seat,
               // which gives it back rather than saving it again.
               onPickSeat={(seat) =>
-                setSeat({ row: seat?.row ?? null, number: seat?.number ?? null })
+                setSeat({
+                  row: seat?.row ?? null,
+                  number: seat?.number ?? null,
+                })
               }
             />
           </Box>
@@ -482,7 +531,17 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
             wrong for a field you fill in without going anywhere — so it is
             quieter and ends in an edit affordance instead of a chevron. */}
         {hasTicketLink ? (
-          <CardRow divided={showBusyness} href={showtime.ticket_link ?? undefined}>
+          <CardRow
+            divided={showBusyness}
+            href={showtime.ticket_link ?? undefined}
+            // The app's auto-copy: the saved Cineville card goes on the
+            // clipboard on the way out, ready to paste at the ticket shop.
+            onClick={() =>
+              copyCinevilleCardForTicketLink(
+                Boolean(showtime.cinema?.cineville),
+              )
+            }
+          >
             {/* The brand mark is a ticket, which is what the app puts on this
                 row too — a picture of the thing, where an outbound-link glyph
                 would only repeat the chevron at the other end. Decorative: the
@@ -504,15 +563,31 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
               flexShrink={0}
               alignSelf="center"
             />
-            <Text fontSize={PANEL_ROW_LABEL_SIZE} fontWeight="700" color="app.tint" flex="1" minW={0}>
+            <Text
+              fontSize={PANEL_ROW_LABEL_SIZE}
+              fontWeight="700"
+              color="app.tint"
+              flex="1"
+              minW={0}
+              position="relative"
+              top="1px"
+            >
               Get ticket
             </Text>
-            <Box as={PanelIcon.chevronRight} boxSize="18px" color="app.tint" aria-hidden />
+            <Box
+              as={PanelIcon.chevronRight}
+              boxSize="18px"
+              color="app.tint"
+              aria-hidden
+            />
           </CardRow>
         ) : null}
 
         {showSeatRow && !isEditingSeat ? (
-          <CardRow divided={showBusyness || hasTicketLink} onClick={openSeatEditor}>
+          <CardRow
+            divided={showBusyness || hasTicketLink}
+            onClick={openSeatEditor}
+          >
             <Box
               as={PanelIcon.eventSeat}
               boxSize="15px"
@@ -527,6 +602,8 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
               flex="1"
               minW={0}
               truncate
+              position="relative"
+              top="1px"
             >
               {seatLabel ? `Seat ${seatLabel}` : "Set your seat"}
             </Text>
@@ -571,7 +648,12 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
               />
             </Flex>
             {rowError || numberError ? (
-              <Text fontSize="11px" color="app.red.secondary" mt="4px" lineHeight="1.4">
+              <Text
+                fontSize="11px"
+                color="app.red.secondary"
+                mt="4px"
+                lineHeight="1.4"
+              >
                 {rowError ?? numberError}
               </Text>
             ) : null}
@@ -579,7 +661,9 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
               <PanelActionButton
                 primary
                 fullWidth
-                disabled={Boolean(rowError || numberError || isSeatPairIncomplete)}
+                disabled={Boolean(
+                  rowError || numberError || isSeatPairIncomplete,
+                )}
                 onClick={saveSeat}
               >
                 Save

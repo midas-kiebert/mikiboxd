@@ -11,7 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SupportRouteImport } from './routes/support'
 import { Route as SignupRouteImport } from './routes/signup'
+import { Route as PickUsernameRouteImport } from './routes/pick-username'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
+import { Route as VerifyEmailRouteImport } from './routes/verify-email'
 import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as LoginRouteImport } from './routes/login'
@@ -19,7 +21,6 @@ import { Route as FriendShowtimesRouteImport } from './routes/friend-showtimes'
 import { Route as FriendGroupsRouteImport } from './routes/friend-groups'
 import { Route as ForbiddenRouteImport } from './routes/forbidden'
 import { Route as CinemaShowtimesRouteImport } from './routes/cinema-showtimes'
-import { Route as BetaRouteImport } from './routes/beta'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
 import { Route as MovieMovieIdRouteImport } from './routes/movie.$movieId'
@@ -28,6 +29,7 @@ import { Route as CinemaShowtimesCinemaIdRouteImport } from './routes/cinema-sho
 import { Route as AddFriendReceiverIdRouteImport } from './routes/add-friend.$receiverId'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
 import { Route as LayoutPingsRouteImport } from './routes/_layout/pings'
+import { Route as LayoutActivityRouteImport } from './routes/_layout/activity'
 import { Route as LayoutMoviesRouteImport } from './routes/_layout/movies'
 import { Route as LayoutFriendsRouteImport } from './routes/_layout/friends'
 import { Route as LayoutAdminIndexRouteImport } from './routes/_layout/admin/index'
@@ -44,6 +46,11 @@ const SupportRoute = SupportRouteImport.update({
   path: '/support',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PickUsernameRoute = PickUsernameRouteImport.update({
+  id: '/pick-username',
+  path: '/pick-username',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
@@ -52,6 +59,11 @@ const SignupRoute = SignupRouteImport.update({
 const ResetPasswordRoute = ResetPasswordRouteImport.update({
   id: '/reset-password',
   path: '/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VerifyEmailRoute = VerifyEmailRouteImport.update({
+  id: '/verify-email',
+  path: '/verify-email',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RecoverPasswordRoute = RecoverPasswordRouteImport.update({
@@ -87,11 +99,6 @@ const ForbiddenRoute = ForbiddenRouteImport.update({
 const CinemaShowtimesRoute = CinemaShowtimesRouteImport.update({
   id: '/cinema-showtimes',
   path: '/cinema-showtimes',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const BetaRoute = BetaRouteImport.update({
-  id: '/beta',
-  path: '/beta',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LayoutRoute = LayoutRouteImport.update({
@@ -131,6 +138,11 @@ const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
 const LayoutPingsRoute = LayoutPingsRouteImport.update({
   id: '/pings',
   path: '/pings',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutActivityRoute = LayoutActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
   getParentRoute: () => LayoutRoute,
 } as any)
 const LayoutMoviesRoute = LayoutMoviesRouteImport.update({
@@ -186,7 +198,6 @@ const LayoutUserIdShowtimesRoute = LayoutUserIdShowtimesRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof LayoutIndexRoute
-  '/beta': typeof BetaRoute
   '/cinema-showtimes': typeof CinemaShowtimesRouteWithChildren
   '/forbidden': typeof ForbiddenRoute
   '/friend-groups': typeof FriendGroupsRoute
@@ -194,12 +205,15 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/recover-password': typeof RecoverPasswordRoute
+  '/verify-email': typeof VerifyEmailRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/pick-username': typeof PickUsernameRoute
   '/support': typeof SupportRoute
   '/friends': typeof LayoutFriendsRoute
   '/movies': typeof LayoutMoviesRoute
   '/pings': typeof LayoutPingsRoute
+  '/activity': typeof LayoutActivityRoute
   '/settings': typeof LayoutSettingsRoute
   '/add-friend/$receiverId': typeof AddFriendReceiverIdRoute
   '/cinema-showtimes/$cinemaId': typeof CinemaShowtimesCinemaIdRoute
@@ -215,7 +229,6 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof LayoutAdminIndexRoute
 }
 export interface FileRoutesByTo {
-  '/beta': typeof BetaRoute
   '/cinema-showtimes': typeof CinemaShowtimesRouteWithChildren
   '/forbidden': typeof ForbiddenRoute
   '/friend-groups': typeof FriendGroupsRoute
@@ -223,12 +236,15 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/recover-password': typeof RecoverPasswordRoute
+  '/verify-email': typeof VerifyEmailRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/pick-username': typeof PickUsernameRoute
   '/support': typeof SupportRoute
   '/friends': typeof LayoutFriendsRoute
   '/movies': typeof LayoutMoviesRoute
   '/pings': typeof LayoutPingsRoute
+  '/activity': typeof LayoutActivityRoute
   '/settings': typeof LayoutSettingsRoute
   '/add-friend/$receiverId': typeof AddFriendReceiverIdRoute
   '/cinema-showtimes/$cinemaId': typeof CinemaShowtimesCinemaIdRoute
@@ -247,7 +263,6 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_layout': typeof LayoutRouteWithChildren
-  '/beta': typeof BetaRoute
   '/cinema-showtimes': typeof CinemaShowtimesRouteWithChildren
   '/forbidden': typeof ForbiddenRoute
   '/friend-groups': typeof FriendGroupsRoute
@@ -255,12 +270,15 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/privacy': typeof PrivacyRoute
   '/recover-password': typeof RecoverPasswordRoute
+  '/verify-email': typeof VerifyEmailRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/pick-username': typeof PickUsernameRoute
   '/support': typeof SupportRoute
   '/_layout/friends': typeof LayoutFriendsRoute
   '/_layout/movies': typeof LayoutMoviesRoute
   '/_layout/pings': typeof LayoutPingsRoute
+  '/_layout/activity': typeof LayoutActivityRoute
   '/_layout/settings': typeof LayoutSettingsRoute
   '/add-friend/$receiverId': typeof AddFriendReceiverIdRoute
   '/cinema-showtimes/$cinemaId': typeof CinemaShowtimesCinemaIdRoute
@@ -280,7 +298,6 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/beta'
     | '/cinema-showtimes'
     | '/forbidden'
     | '/friend-groups'
@@ -288,12 +305,15 @@ export interface FileRouteTypes {
     | '/login'
     | '/privacy'
     | '/recover-password'
+    | '/verify-email'
     | '/reset-password'
     | '/signup'
+    | '/pick-username'
     | '/support'
     | '/friends'
     | '/movies'
     | '/pings'
+    | '/activity'
     | '/settings'
     | '/add-friend/$receiverId'
     | '/cinema-showtimes/$cinemaId'
@@ -309,7 +329,6 @@ export interface FileRouteTypes {
     | '/admin/'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/beta'
     | '/cinema-showtimes'
     | '/forbidden'
     | '/friend-groups'
@@ -317,12 +336,15 @@ export interface FileRouteTypes {
     | '/login'
     | '/privacy'
     | '/recover-password'
+    | '/verify-email'
     | '/reset-password'
     | '/signup'
+    | '/pick-username'
     | '/support'
     | '/friends'
     | '/movies'
     | '/pings'
+    | '/activity'
     | '/settings'
     | '/add-friend/$receiverId'
     | '/cinema-showtimes/$cinemaId'
@@ -340,7 +362,6 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_layout'
-    | '/beta'
     | '/cinema-showtimes'
     | '/forbidden'
     | '/friend-groups'
@@ -348,12 +369,15 @@ export interface FileRouteTypes {
     | '/login'
     | '/privacy'
     | '/recover-password'
+    | '/verify-email'
     | '/reset-password'
     | '/signup'
+    | '/pick-username'
     | '/support'
     | '/_layout/friends'
     | '/_layout/movies'
     | '/_layout/pings'
+    | '/_layout/activity'
     | '/_layout/settings'
     | '/add-friend/$receiverId'
     | '/cinema-showtimes/$cinemaId'
@@ -372,7 +396,6 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   LayoutRoute: typeof LayoutRouteWithChildren
-  BetaRoute: typeof BetaRoute
   CinemaShowtimesRoute: typeof CinemaShowtimesRouteWithChildren
   ForbiddenRoute: typeof ForbiddenRoute
   FriendGroupsRoute: typeof FriendGroupsRoute
@@ -380,8 +403,10 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   PrivacyRoute: typeof PrivacyRoute
   RecoverPasswordRoute: typeof RecoverPasswordRoute
+  VerifyEmailRoute: typeof VerifyEmailRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
+  PickUsernameRoute: typeof PickUsernameRoute
   SupportRoute: typeof SupportRoute
   AddFriendReceiverIdRoute: typeof AddFriendReceiverIdRoute
   MovieMovieIdRoute: typeof MovieMovieIdRoute
@@ -395,6 +420,13 @@ declare module '@tanstack/react-router' {
       path: '/support'
       fullPath: '/support'
       preLoaderRoute: typeof SupportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pick-username': {
+      id: '/pick-username'
+      path: '/pick-username'
+      fullPath: '/pick-username'
+      preLoaderRoute: typeof PickUsernameRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/signup': {
@@ -416,6 +448,13 @@ declare module '@tanstack/react-router' {
       path: '/recover-password'
       fullPath: '/recover-password'
       preLoaderRoute: typeof RecoverPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/verify-email': {
+      id: '/verify-email'
+      path: '/verify-email'
+      fullPath: '/verify-email'
+      preLoaderRoute: typeof VerifyEmailRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/privacy': {
@@ -458,13 +497,6 @@ declare module '@tanstack/react-router' {
       path: '/cinema-showtimes'
       fullPath: '/cinema-showtimes'
       preLoaderRoute: typeof CinemaShowtimesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/beta': {
-      id: '/beta'
-      path: '/beta'
-      fullPath: '/beta'
-      preLoaderRoute: typeof BetaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_layout': {
@@ -521,6 +553,13 @@ declare module '@tanstack/react-router' {
       path: '/pings'
       fullPath: '/pings'
       preLoaderRoute: typeof LayoutPingsRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/activity': {
+      id: '/_layout/activity'
+      path: '/activity'
+      fullPath: '/activity'
+      preLoaderRoute: typeof LayoutActivityRouteImport
       parentRoute: typeof LayoutRoute
     }
     '/_layout/movies': {
@@ -600,6 +639,7 @@ interface LayoutRouteChildren {
   LayoutFriendsRoute: typeof LayoutFriendsRoute
   LayoutMoviesRoute: typeof LayoutMoviesRoute
   LayoutPingsRoute: typeof LayoutPingsRoute
+  LayoutActivityRoute: typeof LayoutActivityRoute
   LayoutSettingsRoute: typeof LayoutSettingsRoute
   LayoutIndexRoute: typeof LayoutIndexRoute
   LayoutUserIdShowtimesRoute: typeof LayoutUserIdShowtimesRoute
@@ -615,6 +655,7 @@ const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutFriendsRoute: LayoutFriendsRoute,
   LayoutMoviesRoute: LayoutMoviesRoute,
   LayoutPingsRoute: LayoutPingsRoute,
+  LayoutActivityRoute: LayoutActivityRoute,
   LayoutSettingsRoute: LayoutSettingsRoute,
   LayoutIndexRoute: LayoutIndexRoute,
   LayoutUserIdShowtimesRoute: LayoutUserIdShowtimesRoute,
@@ -655,7 +696,6 @@ const FriendShowtimesRouteWithChildren = FriendShowtimesRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   LayoutRoute: LayoutRouteWithChildren,
-  BetaRoute: BetaRoute,
   CinemaShowtimesRoute: CinemaShowtimesRouteWithChildren,
   ForbiddenRoute: ForbiddenRoute,
   FriendGroupsRoute: FriendGroupsRoute,
@@ -663,8 +703,10 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   PrivacyRoute: PrivacyRoute,
   RecoverPasswordRoute: RecoverPasswordRoute,
+  VerifyEmailRoute: VerifyEmailRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
+  PickUsernameRoute: PickUsernameRoute,
   SupportRoute: SupportRoute,
   AddFriendReceiverIdRoute: AddFriendReceiverIdRoute,
   MovieMovieIdRoute: MovieMovieIdRoute,

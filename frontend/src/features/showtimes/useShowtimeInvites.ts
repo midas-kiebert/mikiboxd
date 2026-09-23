@@ -1,9 +1,9 @@
 /**
  * Everything the panel can do with an invite to one screening, in one hook.
  *
- * Two sections need it now — the invite panel at the foot, and the "Watchlisted
- * by N friends" list in the audience box, which carries a per-friend Invite
- * button exactly as the app's watch popup does. They have to agree about who is
+ * Two sections need it now — the invite panel in the audience box, and the
+ * header's "N watchlisted" popup, which carries a per-friend Invite button
+ * exactly as the app's watch popup does. They have to agree about who is
  * already invited or the same friend reads as invited in one and not the other,
  * so the sent-pings query, its key and every mutation that touches it live here
  * rather than in whichever component happened to need them first.
@@ -25,6 +25,14 @@ import useCustomToast from "@/hooks/useCustomToast"
 export const sentPingsQueryKey = (showtimeId: number) =>
   ["showtime", showtimeId, "sent-pings"] as const
 
+/** Going/interested friends a switch to "Invited only" would hide you from. */
+export const uninvitedSelectedFriendsQueryKey = (showtimeId: number) =>
+  ["showtimes", "uninvitedSelectedFriends", showtimeId] as const
+
+/** Going/interested friends who won't see you mark this, as things stand. */
+export const hiddenAttendingFriendsQueryKey = (showtimeId: number) =>
+  ["showtimes", "hiddenAttendingFriends", showtimeId] as const
+
 type InviteTarget = { friendId: string; name: string }
 
 export const useShowtimeInvites = (showtimeId: number) => {
@@ -41,8 +49,17 @@ export const useShowtimeInvites = (showtimeId: number) => {
     staleTime: 30_000,
   })
 
-  const refreshPings = () =>
+  // Being invited lets a friend see your status whatever your mode, so both
+  // "who would lose sight of you" lists change with every invite or uninvite.
+  const refreshPings = () => {
     queryClient.invalidateQueries({ queryKey: sentPingsQueryKey(showtimeId) })
+    queryClient.invalidateQueries({
+      queryKey: uninvitedSelectedFriendsQueryKey(showtimeId),
+    })
+    queryClient.invalidateQueries({
+      queryKey: hiddenAttendingFriendsQueryKey(showtimeId),
+    })
+  }
 
   const writePings = (
     update: (previous: SentShowtimePingPublic[]) => SentShowtimePingPublic[],
@@ -52,17 +69,26 @@ export const useShowtimeInvites = (showtimeId: number) => {
       (previous) => update(previous ?? []),
     )
 
-  const { mutate: sendInvites, isPending: isSending } = useMutation({
+  const {
+    mutate: sendInvites,
+    mutateAsync: sendInvitesAndWait,
+    isPending: isSending,
+  } = useMutation({
     mutationFn: async (targets: InviteTarget[]) => {
-      // One request per friend is what the API offers, so the batching is
-      // here: they go out together and the panel settles once, rather than
-      // flickering per invite.
-      const results = await Promise.allSettled(
-        targets.map(({ friendId }) =>
-          ShowtimesService.pingFriendForShowtime({ showtimeId, friendId }),
-        ),
-      )
-      return results.filter((result) => result.status === "rejected").length
+      // One request per friend is what the API offers, and one at a time:
+      // every invite rebuilds this showtime's effective-visibility rows, and
+      // two of those rebuilds for the same showtime at once deadlock Postgres
+      // (seen on staging: invites silently lost, a visibility PUT 500ing).
+      // The panel still settles once, since the cache was written up front.
+      let failed = 0
+      for (const { friendId } of targets) {
+        try {
+          await ShowtimesService.pingFriendForShowtime({ showtimeId, friendId })
+        } catch {
+          failed += 1
+        }
+      }
+      return failed
     },
     onMutate: (targets) => {
       const previous =
@@ -74,16 +100,18 @@ export const useShowtimeInvites = (showtimeId: number) => {
         ...current,
         ...targets
           .filter(({ friendId }) => !known.has(friendId))
-          .map(({ friendId, name }, index): SentShowtimePingPublic => ({
-            // Negative so it cannot collide with a server id, and so anything
-            // keying off it can tell a provisional row from a real one.
-            id: -(Date.now() + index),
-            receiver_id: friendId,
-            receiver_name: name,
-            created_at: new Date().toISOString(),
-            seen_at: null,
-            dismissed_at: null,
-          })),
+          .map(
+            ({ friendId, name }, index): SentShowtimePingPublic => ({
+              // Negative so it cannot collide with a server id, and so anything
+              // keying off it can tell a provisional row from a real one.
+              id: -(Date.now() + index),
+              receiver_id: friendId,
+              receiver_name: name,
+              created_at: new Date().toISOString(),
+              seen_at: null,
+              dismissed_at: null,
+            }),
+          ),
       ])
       return { previous }
     },
@@ -97,7 +125,9 @@ export const useShowtimeInvites = (showtimeId: number) => {
         )
       } else {
         showSuccessToast(
-          targets.length === 1 ? "Invite sent." : `${targets.length} invites sent.`,
+          targets.length === 1
+            ? "Invite sent."
+            : `${targets.length} invites sent.`,
         )
       }
     },
@@ -164,6 +194,8 @@ export const useShowtimeInvites = (showtimeId: number) => {
     sentPings,
     pingByFriendId,
     sendInvites,
+    /** For a write that has to wait until the invites have landed. */
+    sendInvitesAndWait,
     isSending,
     uninvite,
     nudge,

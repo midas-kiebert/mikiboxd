@@ -209,16 +209,14 @@ def generate_reset_password_email(email_to: str, email: str, token: str) -> Emai
 def generate_verify_email_email(email_to: str, token: str) -> EmailData:
     """Generate the "confirm your email" email sent when an account is created.
 
-    The link points straight at the API rather than the frontend, like the
-    digest's unsubscribe link: confirming is one click with nothing to fill in,
-    and routing it through a single-page app would only add a way for it to
-    fail in someone's mail client.
+    The link goes to the website's /verify-email page rather than the API: that
+    path is claimed by the app's universal/app links, so on a phone with the app
+    installed it opens there, and everywhere else it lands on a page that looks
+    like the rest of the site instead of a bare API response.
     """
     project_name = settings.PROJECT_NAME
     subject = f"{project_name} - Confirm your email address"
-    link = (
-        f"{settings.API_HOST}{settings.API_V1_STR}" f"/users/verify-email?token={token}"
-    )
+    link = f"{settings.FRONTEND_HOST}/verify-email?token={token}"
     html_content = _render_email_template(
         template_name="verify_email.html",
         context={

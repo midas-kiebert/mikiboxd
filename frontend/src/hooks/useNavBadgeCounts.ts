@@ -28,7 +28,7 @@ export const useNavBadgeCounts = (): NavBadgeCounts => {
   })
 
   return {
-    activity: unseenCount,
+    notifications: unseenCount,
     friendRequests: receivedRequests?.length ?? 0,
   }
 }

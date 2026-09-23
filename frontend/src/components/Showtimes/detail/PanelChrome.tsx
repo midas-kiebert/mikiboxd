@@ -129,8 +129,18 @@ export const PanelActionButton = ({
 
   const body = (
     <>
-      {icon ? <Box as={icon} boxSize="14px" flexShrink={0} aria-hidden /> : null}
-      <Box as="span" truncate>
+      {icon ? (
+        <Box as={icon} boxSize="14px" flexShrink={0} aria-hidden />
+      ) : null}
+      {/* Nudged when there's an icon leading it: no-descender labels leave
+          their own line-box empty below the letters, which flex-centering
+          still splits evenly against the icon, landing the ink high. */}
+      <Box
+        as="span"
+        truncate
+        position="relative"
+        top={icon ? "1px" : undefined}
+      >
         {children}
       </Box>
     </>
@@ -161,7 +171,13 @@ export const PanelActionButton = ({
   }
 
   return (
-    <PanelPressable type="button" onClick={onClick} disabled={disabled} title={title} {...style}>
+    <PanelPressable
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      {...style}
+    >
       {body}
     </PanelPressable>
   )
@@ -208,7 +224,14 @@ export const PanelIconButton = ({
       cursor={disabled ? "not-allowed" : "pointer"}
       opacity={disabled ? 0.4 : 1}
       transition="background-color 120ms ease, color 120ms ease"
-      _hover={disabled ? undefined : { bg: isOn ? "app.green.primary" : "bg.subtle", color: isOn ? "app.tint" : "fg" }}
+      _hover={
+        disabled
+          ? undefined
+          : {
+              bg: isOn ? "app.green.primary" : "bg.subtle",
+              color: isOn ? "app.tint" : "fg",
+            }
+      }
       _focusVisible={FOCUS_RING}
     >
       {children}

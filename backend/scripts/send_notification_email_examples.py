@@ -92,7 +92,9 @@ def _example(
 
 def _build_examples(now: datetime) -> list[dict]:
     _, movie_id, movie_title, poster_link, cinema_name, dt = TONIGHT
-    match_title = f"{ACTOR_NAME} is {_status_verb_phrase(GoingStatus.GOING)} {movie_title}"
+    match_title = (
+        f"{ACTOR_NAME} is {_status_verb_phrase(GoingStatus.GOING)} {movie_title}"
+    )
     day_word = _relative_day_word(dt, now)
     if day_word:
         match_title = f"{match_title} {day_word}"
@@ -100,7 +102,9 @@ def _build_examples(now: datetime) -> list[dict]:
 
     showtime_id, ping_movie_id, ping_title, ping_poster, ping_cinema, ping_dt = TONIGHT
     ping_when = _format_showtime_when(ping_dt, now)
-    ping_title_full = f"{ACTOR_NAME} invited you to {ping_title} {ping_when} in {ping_cinema}"
+    ping_title_full = (
+        f"{ACTOR_NAME} invited you to {ping_title} {ping_when} in {ping_cinema}"
+    )
 
     (
         removed_showtime_id,
@@ -296,7 +300,9 @@ def main() -> None:
             subject=example["email_data"].subject,
             html_content=example["email_data"].html_content,
         )
-        print(f"sent: {example['type']} — {example['email_subject']!r}", file=sys.stderr)
+        print(
+            f"sent: {example['type']} — {example['email_subject']!r}", file=sys.stderr
+        )
 
     print(
         json.dumps(

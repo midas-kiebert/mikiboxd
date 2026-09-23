@@ -15,7 +15,8 @@
  * Fills whatever it is given. The toolbar decides how wide the field is and
  * where it sits, because that is a question about the row, not about the field.
  */
-import { Box, Flex, Icon, Input, Text } from "@chakra-ui/react"
+import { Box, Flex, Icon, Input, Text, chakra } from "@chakra-ui/react"
+import { startTransition, useRef, useState } from "react"
 import type { IconType } from "react-icons"
 import {
   FiChevronDown,
@@ -80,6 +81,9 @@ const FIELD_FONT_SIZE = "16px"
 /** Reserved so the box never resizes as the clear button comes and goes. */
 const CLEAR_SLOT_WIDTH = "32px"
 
+/** A real `<button>`, so `type` is typed; `Box as="button"` keeps a div's props. */
+const ClearButton = chakra("button")
+
 type FeedSearchBarProps = {
   query: string
   onQueryChange: (query: string) => void
@@ -102,6 +106,34 @@ const FeedSearchBar = ({
     (option) => isSignedIn || !option.accountOnly,
   )
   const active = SEARCH_FIELDS.find((option) => option.value === field)
+
+  // The field paints from its own copy of the text. `query` comes back from the
+  // page that owns the filters, and it re-renders the whole feed to hand it
+  // back, so a field that waited on it typed only as fast as the feed rendered.
+  // The page hears each letter as a transition, which a next letter interrupts.
+  // A `query` this field did not send (a reset, a preset, a back button) still
+  // wins.
+  //
+  // `query` trails the typing, so a value that is only one of this field's own
+  // letters coming back is an echo, never a reason to rewind the text.
+  const [draft, setDraft] = useState(query)
+  const lastQueryRef = useRef(query)
+  const unechoedRef = useRef<string[]>([])
+  if (query !== lastQueryRef.current) {
+    lastQueryRef.current = query
+    const echoAt = unechoedRef.current.indexOf(query)
+    if (echoAt >= 0) {
+      unechoedRef.current = unechoedRef.current.slice(echoAt + 1)
+    } else {
+      unechoedRef.current = []
+      if (query !== draft) setDraft(query)
+    }
+  }
+  const changeQuery = (next: string) => {
+    setDraft(next)
+    unechoedRef.current.push(next)
+    startTransition(() => onQueryChange(next))
+  }
 
   // Render/output using the state and derived values prepared above.
   return (
@@ -128,23 +160,25 @@ const FeedSearchBar = ({
         border="none"
         px={0}
         h="100%"
+        // Text beside an icon reads high at the same box; nudge it down.
+        position="relative"
+        top="1px"
         flex="1"
         minW={0}
         fontSize={FIELD_FONT_SIZE}
         _focusVisible={{ boxShadow: "none", outline: "none" }}
-        value={query}
+        value={draft}
         placeholder={placeholder ?? active?.placeholder ?? "Search"}
         aria-label={placeholder ?? active?.placeholder ?? "Search"}
-        onChange={(event) => onQueryChange(event.target.value)}
+        onChange={(event) => changeQuery(event.target.value)}
       />
 
       <Box w={CLEAR_SLOT_WIDTH} flexShrink={0}>
-        {query ? (
-          <Box
-            as="button"
+        {draft ? (
+          <ClearButton
             type="button"
             aria-label="Clear search"
-            onClick={() => onQueryChange("")}
+            onClick={() => changeQuery("")}
             display="flex"
             alignItems="center"
             justifyContent="center"
@@ -155,7 +189,7 @@ const FeedSearchBar = ({
             _hover={{ bg: "bg.subtle", color: "fg" }}
           >
             <FiX />
-          </Box>
+          </ClearButton>
         ) : null}
       </Box>
 
@@ -177,7 +211,13 @@ const FeedSearchBar = ({
             transition="background 120ms ease, color 120ms ease"
             _hover={{ bg: "bg.subtle", color: "fg" }}
           >
-            <Text fontSize="sm" fontWeight="semibold" whiteSpace="nowrap">
+            <Text
+              fontSize="sm"
+              fontWeight="semibold"
+              whiteSpace="nowrap"
+              position="relative"
+              top="1px"
+            >
               {active?.label ?? "Title"}
             </Text>
             <Icon as={FiChevronDown} boxSize="16px" />
@@ -196,7 +236,9 @@ const FeedSearchBar = ({
               style={{ cursor: "pointer" }}
             >
               <Icon as={option.icon} boxSize="16px" />
-              <Box flex="1">{option.label}</Box>
+              <Box flex="1" position="relative" top="1px">
+                {option.label}
+              </Box>
             </MenuItem>
           ))}
         </MenuContent>

@@ -37,7 +37,7 @@ jobs:
           TELEGRAM_USER_ID=${{ secrets.TELEGRAM_USER_ID }}
           TMDB_KEY=${{ secrets.TMDB_KEY }}
           SCRAPE_MONITOR_API_KEY=${{ secrets.SCRAPE_MONITOR_API_KEY }}
-          FRONTEND_HOST=https://dashboard.staging.mikino.nl
+          FRONTEND_HOST=https://staging.mikino.nl
           PUBLIC_HOST=https://staging.mikino.nl
           API_HOST=https://api.staging.mikino.nl
           POSTGRES_TESTING_SERVER=db

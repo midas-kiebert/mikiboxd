@@ -1,0 +1,524 @@
+/*
+ * Styles for the showtime card and the pieces it is built from.
+ *
+ * Plain classes rather than Chakra style props, because a feed renders these
+ * hundreds of times and the style engine was most of that cost — see the note
+ * at the top of `card-parts.tsx`. Every colour is one of Chakra's own theme
+ * variables, so light and dark mode need nothing here.
+ *
+ * Chakra's variable names, for writing more: camelCase keys are kebab-cased,
+ * and the dot inside a palette trio's key is escaped —
+ * `app.redHot.primary` is `--chakra-colors-app-red-hot\.primary`.
+ */
+
+/* Each palette class points --p-primary / --p-secondary / --p-border at one
+   accent trio, so a component styles against --p-* and takes any palette. */
+.mk-pal-pink {
+  --p-primary: var(--chakra-colors-app-pink\.primary);
+  --p-secondary: var(--chakra-colors-app-pink\.secondary);
+  --p-border: var(--chakra-colors-app-pink\.border);
+}
+.mk-pal-purple {
+  --p-primary: var(--chakra-colors-app-purple\.primary);
+  --p-secondary: var(--chakra-colors-app-purple\.secondary);
+  --p-border: var(--chakra-colors-app-purple\.border);
+}
+.mk-pal-green {
+  --p-primary: var(--chakra-colors-app-green\.primary);
+  --p-secondary: var(--chakra-colors-app-green\.secondary);
+  --p-border: var(--chakra-colors-app-green\.border);
+}
+.mk-pal-orange {
+  --p-primary: var(--chakra-colors-app-orange\.primary);
+  --p-secondary: var(--chakra-colors-app-orange\.secondary);
+  --p-border: var(--chakra-colors-app-orange\.border);
+}
+.mk-pal-yellow {
+  --p-primary: var(--chakra-colors-app-yellow\.primary);
+  --p-secondary: var(--chakra-colors-app-yellow\.secondary);
+  --p-border: var(--chakra-colors-app-yellow\.border);
+}
+.mk-pal-blue {
+  --p-primary: var(--chakra-colors-app-blue\.primary);
+  --p-secondary: var(--chakra-colors-app-blue\.secondary);
+  --p-border: var(--chakra-colors-app-blue\.border);
+}
+.mk-pal-teal {
+  --p-primary: var(--chakra-colors-app-teal\.primary);
+  --p-secondary: var(--chakra-colors-app-teal\.secondary);
+  --p-border: var(--chakra-colors-app-teal\.border);
+}
+.mk-pal-red {
+  --p-primary: var(--chakra-colors-app-red\.primary);
+  --p-secondary: var(--chakra-colors-app-red\.secondary);
+  --p-border: var(--chakra-colors-app-red\.border);
+}
+.mk-pal-red-hot {
+  --p-primary: var(--chakra-colors-app-red-hot\.primary);
+  --p-secondary: var(--chakra-colors-app-red-hot\.secondary);
+  --p-border: var(--chakra-colors-app-red-hot\.border);
+}
+.mk-pal-red-deep {
+  --p-primary: var(--chakra-colors-app-red-deep\.primary);
+  --p-secondary: var(--chakra-colors-app-red-deep\.secondary);
+  --p-border: var(--chakra-colors-app-red-deep\.border);
+}
+.mk-pal-gray {
+  --p-primary: var(--chakra-colors-app-gray\.primary);
+  --p-secondary: var(--chakra-colors-app-gray\.secondary);
+  --p-border: var(--chakra-colors-app-gray\.border);
+}
+.mk-pal-cyan {
+  --p-primary: var(--chakra-colors-app-cyan\.primary);
+  --p-secondary: var(--chakra-colors-app-cyan\.secondary);
+  --p-border: var(--chakra-colors-app-cyan\.border);
+}
+.mk-pal-friend-going {
+  --p-primary: var(--chakra-colors-app-friend-going\.primary);
+  --p-secondary: var(--chakra-colors-app-friend-going\.secondary);
+  --p-border: var(--chakra-colors-app-friend-going\.border);
+}
+.mk-pal-friend-interested {
+  --p-primary: var(--chakra-colors-app-friend-interested\.primary);
+  --p-secondary: var(--chakra-colors-app-friend-interested\.secondary);
+  --p-border: var(--chakra-colors-app-friend-interested\.border);
+}
+
+.mk-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Ticket root (TicketRoot.tsx) ------------------------------------ */
+
+.mk-ticket {
+  --mk-radius: 12px;
+  --mk-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+  --mk-lift: 0 4px 14px rgb(0 0 0 / 0.22);
+  position: relative;
+  display: block;
+  /* Its cell in the feed ignores the pointer (see ShowtimeFeedPage). */
+  pointer-events: auto;
+  cursor: pointer;
+  outline: none;
+}
+
+.mk-ticket:focus-visible {
+  outline: 2px solid var(--chakra-colors-app-tint);
+  outline-offset: 3px;
+}
+
+.mk-ticket__shadow,
+.mk-ticket__lift {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.mk-ticket__shadow,
+.mk-ticket__lift {
+  border-radius: var(--mk-radius);
+}
+
+.mk-ticket__shadow {
+  box-shadow: var(--mk-shadow);
+}
+
+/* The hover shadow is its own layer, faded in: an opacity change composites,
+   where changing the box-shadow itself would repaint it. */
+.mk-ticket__lift {
+  box-shadow: var(--mk-lift);
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.mk-ticket:hover .mk-ticket__lift,
+.mk-ticket:focus-visible .mk-ticket__lift {
+  opacity: 1;
+}
+
+/* A dark shadow under a card that's already sitting on a dark page never
+   reads, however strong — so dark mode gets a light ring instead, one the
+   panel behind it can't already be the colour of. */
+.dark .mk-ticket__lift {
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.16), 0 4px 14px rgb(0 0 0 / 0.4);
+}
+
+.mk-ticket__content {
+  position: relative;
+}
+
+/* ---- Pieces (card-parts.tsx) ----------------------------------------- */
+
+.mk-tag {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  max-width: 100%;
+  min-width: 0;
+  padding: 1px 6px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: var(--chakra-colors-app-surface-muted);
+  color: var(--chakra-colors-fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.45;
+  white-space: nowrap;
+}
+
+.mk-tag--xs {
+  padding: 1px 5px;
+  font-size: 10px;
+}
+
+/* A cinema tag that goes to the cinema's programme (`CinemaTagLink`). */
+.mk-tag-link {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  border-radius: 3px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.mk-tag-link:hover .mk-tag {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.mk-tag-link:focus-visible {
+  outline: 2px solid var(--chakra-colors-app-tint);
+  outline-offset: 1px;
+}
+
+.mk-tag--palette {
+  border-color: var(--p-border);
+  background: var(--p-primary);
+  color: var(--p-secondary);
+}
+
+.mk-seat {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  max-width: 100%;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  background: var(--p-primary);
+  color: var(--p-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.mk-seat--icon {
+  padding: 2px 3px;
+}
+
+.mk-seat--poster {
+  border: 1px solid var(--p-border);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.25);
+}
+
+.mk-seat__icon {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+/* Nudged: the label beside the icon is usually descender-free ("busy",
+   "sold out", a seat count), so its line-box's empty descender space still
+   gets split evenly by flex-centering, landing the ink high. */
+.mk-seat > .mk-ellipsis {
+  position: relative;
+  top: 1px;
+}
+
+.mk-avatars {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+}
+
+.mk-avatars:focus-visible {
+  outline: 2px solid var(--chakra-colors-app-tint);
+  outline-offset: 2px;
+}
+
+.mk-avatar {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: var(--p-primary);
+  color: var(--p-secondary);
+  font-weight: 700;
+  line-height: 1;
+  /* The 1.5px ring is a moat in the surface behind the avatar, not part of
+     the status colour — it is what keeps two overlapping rings (going next
+     to interested) from bleeding into each other. The status band itself is
+     the 2px between that and it: wide enough to read as a colour rather than
+     a hairline, thin enough not to swallow the circle it is marking. */
+  box-shadow: 0 0 0 1.5px var(--mk-ring), 0 0 0 3.5px var(--mk-status);
+}
+
+/* Sits over the initial underneath; `onError` (card-parts.tsx) hides it in
+   place rather than removing it, so a broken image falls back to the initial
+   without a re-render. */
+.mk-avatar__photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
+/* The status axis has its own palette (`friendGoing`/`friendInterested`) —
+   deliberately not `green`/`orange`, which are for anything else that
+   happens to be that colour, and its `secondary` step, the trio's most
+   saturated one, rather than `border`: going and interested have to read
+   apart at a glance, and this is a 2px ring on a ~24px circle. */
+/* Centred at line-height 1, a capital sits high (the box keeps descender
+   space below it); `em` so the nudge scales with the avatar. Same as
+   `PersonAvatar`. */
+.mk-avatar__initial {
+  position: relative;
+  top: 0.07em;
+}
+
+.mk-avatar--going {
+  --mk-status: var(--chakra-colors-app-friend-going\.secondary);
+}
+
+.mk-avatar--interested {
+  --mk-status: var(--chakra-colors-app-friend-interested\.secondary);
+}
+
+/*
+ * Dark mode's `secondary` is the same value as `border` in this pair — a pale
+ * mint and a pale peach, close enough in lightness that the ring reads as
+ * "light" before it reads as "green" or "orange". Light mode's `secondary` is
+ * already a deep, properly saturated green/brown and is left alone; this is a
+ * ring-only override; the shared palette (`shared/theme/colors.ts`, also
+ * mobile's) and every other going/interested marker on this page — a
+ * `FriendBadges` pill's dot, say — still read the paler token, so this ring
+ * will look a shade more vivid than those until the palette itself changes.
+ */
+.dark .mk-avatar--going {
+  --mk-status: #34d399;
+}
+
+.dark .mk-avatar--interested {
+  --mk-status: #fb923c;
+}
+
+.mk-avatars__more {
+  margin-left: 6px;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/*
+ * The hover/focus list of everyone in the stack (`HoverCard.Content`,
+ * card-parts.tsx). Positioned by the library — below the stack, lined up on
+ * its left edge — so nothing here sets `position`, `top` or `left`; this is
+ * only the popover's own look and its open/close animation, which run off
+ * the `data-state` the library sets rather than a `:hover` selector, since
+ * the trigger and this content are no longer in the same subtree once
+ * portalled.
+ */
+.mk-avatars-pop {
+  /* Its own rows sit on the popover's surface, not the card's fill, so their
+     rings are cut from that regardless of what `ringColor` the stack outside
+     was given. */
+  --mk-ring: var(--chakra-colors-bg-panel);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: max-content;
+  min-width: 160px;
+  max-width: 220px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 5px;
+  border-radius: 10px;
+  background: var(--chakra-colors-bg-panel);
+  /* A quiet card, not a dialog: one soft shadow plus the hairline it already
+     needs against a same-toned page, not the three-layer stack a dropdown
+     menu earns by opening on click. */
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.1), 0 0 0 1px var(--chakra-colors-border);
+  transform-origin: var(--transform-origin, top);
+}
+
+.mk-avatars-pop[data-state="open"] {
+  animation: mk-avatars-pop-in 120ms ease;
+}
+
+.mk-avatars-pop[data-state="closed"] {
+  animation: mk-avatars-pop-out 100ms ease forwards;
+}
+
+@keyframes mk-avatars-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.99) translateY(-2px);
+  }
+}
+
+@keyframes mk-avatars-pop-out {
+  to {
+    opacity: 0;
+    transform: scale(0.99) translateY(-2px);
+  }
+}
+
+/* Not a link like the rows below it — the viewer's own seat, not a friend to
+   visit — and set off with a rule under it once there's a list to separate
+   it from. */
+.mk-avatars-pop__seat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--chakra-colors-border);
+  color: var(--chakra-colors-app-green\.secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mk-avatars-pop__seat-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.mk-avatars-pop__seat-label {
+  position: relative;
+  top: 1px;
+}
+
+.mk-avatars-pop__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  color: var(--chakra-colors-fg);
+  text-decoration: none;
+  transition: background-color 120ms ease;
+}
+
+.mk-avatars-pop__row:hover {
+  background: var(--chakra-colors-bg-subtle);
+}
+
+.mk-avatars-pop__row:focus-visible {
+  outline: 2px solid var(--chakra-colors-app-tint);
+  outline-offset: -2px;
+}
+
+.mk-avatars-pop__info {
+  display: flex;
+  overflow: hidden;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.mk-avatars-pop__name {
+  overflow: hidden;
+  max-width: 100%;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mk-avatars-pop__row-seat {
+  overflow: hidden;
+  max-width: 100%;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mk-invited {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--chakra-colors-app-blue\.secondary);
+}
+
+.mk-invited__icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.mk-invited__text {
+  position: relative;
+  top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.mk-poster {
+  position: relative;
+  display: block;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: var(--chakra-colors-app-poster-placeholder);
+}
+
+.mk-poster--ratio {
+  aspect-ratio: 2 / 3;
+}
+
+.mk-poster > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* A sneak preview's "?" — see `UnknownPoster`. The glyph is ~40% of the box's
+   width, the app's ratio, so it reads on a 36px thumbnail and a detail poster. */
+.mk-poster__unknown {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  container-type: inline-size;
+  background: linear-gradient(
+    135deg,
+    var(--chakra-colors-app-poster-placeholder),
+    var(--chakra-colors-bg-subtle)
+  );
+}
+
+.mk-poster__unknown-glyph {
+  font-size: 42cqw;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--chakra-colors-fg-muted);
+  user-select: none;
+}

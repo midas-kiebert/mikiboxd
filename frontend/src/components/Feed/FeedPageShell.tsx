@@ -1,4 +1,4 @@
-import { Button, Center, Flex, Spinner, Text } from "@chakra-ui/react"
+import { Box, Button, Center, Flex, Spinner, Text } from "@chakra-ui/react"
 /**
  * The chrome every feed page shares: layout, toolbar, rail, presets, and the
  * loading / empty / paging states.
@@ -23,6 +23,13 @@ import { Button, Center, Flex, Spinner, Text } from "@chakra-ui/react"
  * On the home feed and the films feed both of those land elsewhere, so nothing
  * is rendered above the list at all — the two pages that most want the height
  * get a full band of it back.
+ *
+ * The paging spinner sits in a footer that always keeps its height, the way
+ * the app's `LoadMoreFooter` does: only the spinner fades. Rendered only while
+ * a page loaded, it grew the page by its own height and then took it back as
+ * the rows arrived, and the rows themselves arrive a render after the query
+ * does (`ShowtimeFeedPage` draws them from a deferred copy) — so the page
+ * shrank under the reader in between and jumped.
  */
 import { type ReactNode, useMemo } from "react"
 
@@ -39,13 +46,23 @@ export type FeedChrome = {
   params: FeedParams
   setParams: (patch: Partial<FeedParams>) => void
   resetParams: () => void
+  /** Replace every filter the page does not pin — see `useFeedParams`. */
+  applyParams: (params: FeedParams) => void
   activeFilterCount: number
   isLoading: boolean
   isFetchingNextPage: boolean
   hasNextPage: boolean
   isEmpty: boolean
   isFilteredEmpty: boolean
+  /** The rows on screen belong to filters no longer in force; see `useFeedParams`. */
+  isReplacingRows: boolean
 }
+
+/** The footer's reserved height: a small spinner plus its padding. */
+const FOOTER_HEIGHT = "56px"
+/** Appearing keeps up with reaching the end; fading reads as the page settling. */
+const SPINNER_SHOW_MS = 160
+const SPINNER_HIDE_MS = 260
 
 type FeedPageShellProps = {
   feed: FeedChrome
@@ -56,6 +73,8 @@ type FeedPageShellProps = {
   detail?: ReactNode
   emptyText?: string
   filteredEmptyText?: string
+  /** Replaces the empty message and its "Clear filters" outright. */
+  emptyState?: ReactNode
   hasNav?: boolean
   showRail?: boolean
   showPresets?: boolean
@@ -63,6 +82,25 @@ type FeedPageShellProps = {
   searchPlaceholder?: string
   /** The sentinel the page's infinite scroll observes. */
   loadMoreRef?: React.RefObject<HTMLDivElement | null>
+  /** Passed to `FeedLayout`: the rows are a grid of cards. */
+  grid?: boolean
+  /** Passed to `FeedLayout`: below it, the rail folds to its strip. */
+  minListWidth?: number
+  /** Passed to `FeedLayout`: under the rail card, in the same column. */
+  railFooter?: (variant: "full" | "compact") => ReactNode
+  /** Passed to `FeedLayout`: a full-width feed with no detail column. */
+  fillWidth?: boolean
+  /**
+   * Whether the paging spinner shows, where that is more than the query's
+   * own `isFetchingNextPage` — rows still being drawn, say.
+   */
+  isLoadingMore?: boolean
+  /**
+   * Whether the loading screen stands in for the rows. The page decides:
+   * only it knows whether the rows it holds are still worth showing — a
+   * search narrowing keeps them, a filter change does not.
+   */
+  isLoadingRows?: boolean
 }
 
 const FeedPageShell = ({
@@ -72,12 +110,19 @@ const FeedPageShell = ({
   detail,
   emptyText = "Nothing showing.",
   filteredEmptyText = "Nothing matches these filters.",
+  emptyState,
   hasNav = true,
   showRail = true,
   showPresets = true,
   showGroupToggle = false,
   searchPlaceholder,
   loadMoreRef,
+  grid = false,
+  minListWidth,
+  railFooter,
+  fillWidth = false,
+  isLoadingMore = feed.isFetchingNextPage,
+  isLoadingRows = feed.isLoading || feed.isReplacingRows,
 }: FeedPageShellProps) => {
   const isMobile = useIsMobile()
 
@@ -102,7 +147,13 @@ const FeedPageShell = ({
             placeholder: searchPlaceholder,
           }
         : null,
-    [searchInNav, feed.params.q, feed.params.field, feed.setParams, searchPlaceholder],
+    [
+      searchInNav,
+      feed.params.q,
+      feed.params.field,
+      feed.setParams,
+      searchPlaceholder,
+    ],
   )
   usePublishFeedSearch(navSearch)
 
@@ -143,14 +194,21 @@ const FeedPageShell = ({
         ) : undefined
       }
       detail={detail}
+      grid={grid}
+      fillWidth={fillWidth}
+      minListWidth={minListWidth}
+      activeFilterCount={feed.activeFilterCount}
+      railFooter={showRail ? railFooter : undefined}
     >
-      {feed.isLoading ? (
+      {isLoadingRows ? (
         <Center py={20}>
           <Spinner size="xl" />
         </Center>
       ) : null}
 
-      {feed.isEmpty ? (
+      {feed.isEmpty && !isLoadingRows && emptyState ? emptyState : null}
+
+      {feed.isEmpty && !isLoadingRows && !emptyState ? (
         <Center py={20}>
           <Flex direction="column" align="center" gap={3}>
             <Text color="fg.muted">
@@ -170,11 +228,21 @@ const FeedPageShell = ({
       {feed.hasNextPage && loadMoreRef ? (
         <div ref={loadMoreRef} style={{ height: "1px" }} />
       ) : null}
-      {feed.isFetchingNextPage ? (
-        <Center py={6}>
-          <Spinner size="sm" />
+      {isLoadingRows || feed.isEmpty ? null : (
+        <Center
+          h={FOOTER_HEIGHT}
+          pointerEvents="none"
+          aria-hidden={!isLoadingMore}
+        >
+          <Box
+            display="flex"
+            opacity={isLoadingMore ? 1 : 0}
+            transition={`opacity ${isLoadingMore ? SPINNER_SHOW_MS : SPINNER_HIDE_MS}ms cubic-bezier(0.33, 1, 0.68, 1)`}
+          >
+            <Spinner size="sm" />
+          </Box>
         </Center>
-      ) : null}
+      )}
     </FeedLayout>
   )
 }

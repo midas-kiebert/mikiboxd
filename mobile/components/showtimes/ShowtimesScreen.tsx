@@ -309,6 +309,8 @@ type ShowtimesScreenProps<TFilterId extends string = string> = {
   topBarOnTitleSuffixPress?: () => void;
   topBarLinkUrl?: string;
   topBarAvatarInitial?: string;
+  /** The same person's actual picture, shown over the initial when it loads. */
+  topBarAvatarUrl?: string | null;
   showtimes: ShowtimePublic[];
   isLoading: boolean;
   isFetching: boolean;
@@ -360,6 +362,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
   topBarOnTitleSuffixPress,
   topBarLinkUrl,
   topBarAvatarInitial,
+  topBarAvatarUrl,
   showtimes,
   isLoading,
   isFetching,
@@ -399,6 +402,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
         onTitleSuffixPress={topBarOnTitleSuffixPress}
         linkUrl={topBarLinkUrl}
         avatarInitial={topBarAvatarInitial}
+        avatarUrl={topBarAvatarUrl}
       />
       <SearchBar
         value={searchQuery}

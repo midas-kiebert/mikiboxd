@@ -6,9 +6,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
 from app.converters import showtime as showtime_converters
+from app.converters import showtime_page as showtime_page_converters
 from app.converters import user as user_converters
 from app.core.config import settings
-from app.core.security import generate_email_verification_token
+from app.core.security import (
+    generate_email_verification_token,
+    verify_email_verification_token,
+)
 from app.core.username_filter import assert_display_name_allowed
 from app.crud import cinema as cinemas_crud
 from app.crud import friendship as friendship_crud
@@ -179,12 +183,23 @@ def get_selected_showtimes(
     visibility_modes = showtime_converters.viewer_visibility_modes(
         session=session, showtimes=showtimes, user_id=current_user_id
     )
+    viewer_states = (
+        showtime_page_converters.viewer_states_for_showtimes(
+            session=session,
+            showtimes=showtimes,
+            user_id=current_user_id,
+            visibility_modes=visibility_modes,
+        )
+        if current_user_id is not None
+        else {}
+    )
     return [
         showtime_converters.to_public(
             showtime=showtime,
             session=session,
             user_id=current_user_id,
             visibility_modes=visibility_modes,
+            viewer_states=viewer_states,
         )
         for showtime in showtimes
     ]
@@ -485,4 +500,28 @@ def send_email_verification(*, user: User) -> bool:
     except Exception:
         logger.exception("Verification email delivery failed for %s", user.email)
         return False
+    return True
+
+
+def confirm_email(*, session: Session, token: str) -> bool:
+    """Confirm the address a mailed verification link was minted for.
+
+    Returns False for a token that is garbage, expired, meant for another job,
+    or names an address no account has any more. An account that is already
+    verified is a success, not an error: opening the same link twice is a
+    normal thing to do, and it has the outcome the user wanted either way.
+    """
+    email = verify_email_verification_token(token)
+    if email is None:
+        return False
+    user = users_crud.get_user_by_email(session=session, email=email)
+    if user is None:
+        return False
+    if not user.email_verified:
+        user.email_verified = True
+        # Restore whatever email-routed preferences were switched to push (and
+        # the digest, if it was on) when this address became unverified.
+        users_crud.restore_unverified_email_preferences(user)
+        session.add(user)
+        session.commit()
     return True

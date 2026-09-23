@@ -23,6 +23,7 @@ from uuid import UUID
 from sqlalchemy.exc import NoResultFound
 from sqlmodel import Session
 
+from app.converters import user as user_converters
 from app.core.config import settings
 from app.core.enums import UserReportReason
 from app.crud import friendship as friendship_crud
@@ -212,6 +213,7 @@ def list_blocked_users(
         BlockedUserPublic(
             id=user.id,
             display_name=user.display_name,
+            avatar_url=user_converters.avatar_url(user),
             blocked_at=blocked_at,
         )
         for user, blocked_at in user_block_crud.list_blocked_users(

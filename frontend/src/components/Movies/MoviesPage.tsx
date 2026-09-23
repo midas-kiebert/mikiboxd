@@ -14,13 +14,21 @@ import { useEffect, useRef } from "react"
 import { MeService } from "shared"
 
 import { useIsSignedIn } from "@/auth/useSession"
+import FeedSubjectHeader, {
+  useFeedSubject,
+  useNonFriendEmptyState,
+} from "@/components/Feed/FeedSubjectHeader"
 import MovieFeedPage from "@/components/Feed/MovieFeedPage"
 import { useMoviesFeed } from "@/features/showtimes/useMoviesFeed"
 
 const MoviesPage = () => {
   // Read flow: route state and data hooks first, then handlers, then page JSX.
-  const feed = useMoviesFeed()
+  // Ten is the API's ceiling (`showtime_limit`, `le=10`); the row has six
+  // plate slots and a "+N more" tile past that, so it asks for all it can get.
+  const feed = useMoviesFeed({ showtimeLimit: 10 })
   const isSignedIn = useIsSignedIn()
+  const subject = useFeedSubject(feed.params)
+  const nonFriendEmptyState = useNonFriendEmptyState(subject)
   const queryClient = useQueryClient()
   const hasSynced = useRef(false)
 
@@ -43,7 +51,17 @@ const MoviesPage = () => {
   }, [isSignedIn, syncWatchlist, syncWatched])
 
   // Render/output using the state and derived values prepared above.
-  return <MovieFeedPage feed={feed} />
+  return (
+    <MovieFeedPage
+      feed={feed}
+      emptyState={nonFriendEmptyState}
+      header={
+        subject ? (
+          <FeedSubjectHeader subject={subject} onChange={feed.setParams} />
+        ) : undefined
+      }
+    />
+  )
 }
 
 export default MoviesPage

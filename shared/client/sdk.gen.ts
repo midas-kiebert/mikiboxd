@@ -102,6 +102,10 @@ import type {
   MeGetMyShowtimesResponse,
   MeGetMyAgendaData,
   MeGetMyAgendaResponse,
+  MeGetFeedOverviewData,
+  MeGetFeedOverviewResponse,
+  MeGetActivitySummaryData,
+  MeGetActivitySummaryResponse,
   MeGetMyShowtimePingsData,
   MeGetMyShowtimePingsResponse,
   MeGetMyUnseenShowtimePingCountResponse,
@@ -1367,6 +1371,8 @@ export class MeService {
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.friendIds Only showtimes these friends are going to or interested in (as far as they let the viewer see)
+   * @param data.onlyYou With selected_statuses, match only the viewer's own selections — their agenda
    * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
@@ -1396,6 +1402,8 @@ export class MeService {
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         friends_only: data.friendsOnly,
+        friend_ids: data.friendIds,
+        only_you: data.onlyYou,
         all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
@@ -1427,6 +1435,8 @@ export class MeService {
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.friendIds Only showtimes these friends are going to or interested in (as far as they let the viewer see)
+   * @param data.onlyYou With selected_statuses, match only the viewer's own selections — their agenda
    * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
@@ -1458,6 +1468,8 @@ export class MeService {
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         friends_only: data.friendsOnly,
+        friend_ids: data.friendIds,
+        only_you: data.onlyYou,
         all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
@@ -1494,6 +1506,110 @@ export class MeService {
         snapshot_time: data.snapshotTime,
         limit: data.limit,
         offset: data.offset,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Feed Overview
+   * The short lists beside the website's feed while nothing is selected.
+   *
+   * The usual filter parameters describe the viewer's custom list, and are
+   * ignored unless `include_custom` is set. See `services.feed_overview`.
+   * @param data The data for the request.
+   * @param data.overviewLanguages The feed's language choice; the friends and watchlist lists follow it
+   * @param data.overviewCinemaIds The feed's cinema selection, for the watchlist list; none means the account's usual cinemas
+   * @param data.overviewAllCinemas The feed ignores the usual cinemas; so does the watchlist list
+   * @param data.includePlans False where the page is the viewer's agenda already
+   * @param data.includeCustom Whether the filter parameters describe the viewer's own list
+   * @param data.query
+   * @param data.searchField Which attribute `query` is matched against
+   * @param data.snapshotTime Only show showtimes after this moment
+   * @param data.watchlistOnly
+   * @param data.watchlistExclude
+   * @param data.hideWatched
+   * @param data.watchedOnly
+   * @param data.selectedCinemaIds Filter showtimes to only these cinema IDs
+   * @param data.days
+   * @param data.timeRanges
+   * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
+   * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
+   * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.friendIds Only showtimes these friends are going to or interested in (as far as they let the viewer see)
+   * @param data.onlyYou With selected_statuses, match only the viewer's own selections — their agenda
+   * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
+   * @param data.selectedListIds Only show movies on any of these Letterboxd lists
+   * @param data.excludeListIds Hide movies on any of these Letterboxd lists
+   * @param data.runtimeMin Minimum movie runtime in minutes
+   * @param data.runtimeMax Maximum movie runtime in minutes
+   * @param data.selectedLanguages Keep movies whose main spoken language is one of these, and only showtimes with matching subtitles
+   * @returns FeedOverviewPublic Successful Response
+   * @throws ApiError
+   */
+  public static getFeedOverview(
+    data: MeGetFeedOverviewData = {},
+  ): CancelablePromise<MeGetFeedOverviewResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/feed-overview",
+      query: {
+        overview_languages: data.overviewLanguages,
+        overview_cinema_ids: data.overviewCinemaIds,
+        overview_all_cinemas: data.overviewAllCinemas,
+        include_plans: data.includePlans,
+        include_custom: data.includeCustom,
+        query: data.query,
+        search_field: data.searchField,
+        snapshot_time: data.snapshotTime,
+        watchlist_only: data.watchlistOnly,
+        watchlist_exclude: data.watchlistExclude,
+        hide_watched: data.hideWatched,
+        watched_only: data.watchedOnly,
+        selected_cinema_ids: data.selectedCinemaIds,
+        days: data.days,
+        time_ranges: data.timeRanges,
+        times_of_day: data.timesOfDay,
+        selected_statuses: data.selectedStatuses,
+        friends_only: data.friendsOnly,
+        friend_ids: data.friendIds,
+        only_you: data.onlyYou,
+        all_cinemas: data.allCinemas,
+        selected_list_ids: data.selectedListIds,
+        exclude_list_ids: data.excludeListIds,
+        runtime_min: data.runtimeMin,
+        runtime_max: data.runtimeMax,
+        selected_languages: data.selectedLanguages,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Activity Summary
+   * The numbers beside the Activity list, counted over the whole list.
+   *
+   * Per-day counts, your next plan, unanswered invites and the friends behind
+   * the most of it. See `services.activity`.
+   * @param data The data for the request.
+   * @param data.mode
+   * @param data.snapshotTime The list's own snapshot, so the counts match its rows
+   * @returns ActivitySummaryPublic Successful Response
+   * @throws ApiError
+   */
+  public static getActivitySummary(
+    data: MeGetActivitySummaryData = {},
+  ): CancelablePromise<MeGetActivitySummaryResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/activity/summary",
+      query: {
+        mode: data.mode,
+        snapshot_time: data.snapshotTime,
       },
       errors: {
         422: "Validation Error",
@@ -1934,6 +2050,8 @@ export class MoviesService {
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.friendIds Only showtimes these friends are going to or interested in (as far as they let the viewer see)
+   * @param data.onlyYou With selected_statuses, match only the viewer's own selections — their agenda
    * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
@@ -1963,6 +2081,8 @@ export class MoviesService {
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         friends_only: data.friendsOnly,
+        friend_ids: data.friendIds,
+        only_you: data.onlyYou,
         all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
@@ -1995,6 +2115,8 @@ export class MoviesService {
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.friendIds Only showtimes these friends are going to or interested in (as far as they let the viewer see)
+   * @param data.onlyYou With selected_statuses, match only the viewer's own selections — their agenda
    * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
@@ -2027,6 +2149,8 @@ export class MoviesService {
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         friends_only: data.friendsOnly,
+        friend_ids: data.friendIds,
+        only_you: data.onlyYou,
         all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
@@ -2059,6 +2183,8 @@ export class MoviesService {
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.friendIds Only showtimes these friends are going to or interested in (as far as they let the viewer see)
+   * @param data.onlyYou With selected_statuses, match only the viewer's own selections — their agenda
    * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
@@ -2093,6 +2219,8 @@ export class MoviesService {
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         friends_only: data.friendsOnly,
+        friend_ids: data.friendIds,
+        only_you: data.onlyYou,
         all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
@@ -2124,6 +2252,8 @@ export class MoviesService {
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.friendIds Only showtimes these friends are going to or interested in (as far as they let the viewer see)
+   * @param data.onlyYou With selected_statuses, match only the viewer's own selections — their agenda
    * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
@@ -2157,6 +2287,8 @@ export class MoviesService {
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         friends_only: data.friendsOnly,
+        friend_ids: data.friendIds,
+        only_you: data.onlyYou,
         all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
@@ -2786,6 +2918,8 @@ export class ShowtimesService {
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.friendIds Only showtimes these friends are going to or interested in (as far as they let the viewer see)
+   * @param data.onlyYou With selected_statuses, match only the viewer's own selections — their agenda
    * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
@@ -2815,6 +2949,8 @@ export class ShowtimesService {
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         friends_only: data.friendsOnly,
+        friend_ids: data.friendIds,
+        only_you: data.onlyYou,
         all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
@@ -2846,6 +2982,8 @@ export class ShowtimesService {
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.friendIds Only showtimes these friends are going to or interested in (as far as they let the viewer see)
+   * @param data.onlyYou With selected_statuses, match only the viewer's own selections — their agenda
    * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
@@ -2877,6 +3015,8 @@ export class ShowtimesService {
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         friends_only: data.friendsOnly,
+        friend_ids: data.friendIds,
+        only_you: data.onlyYou,
         all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,
@@ -2944,25 +3084,24 @@ export class UsersService {
    * Verify Email
    * Confirm an email address from the link mailed at registration.
    *
-   * No authentication — the signed token in the link is what proves the request
-   * came from someone reading that mailbox, which is the whole point of it.
-   * Already-verified accounts are answered the same way as a fresh confirmation:
-   * a second click on the same link is a normal thing to do, and it has the
-   * outcome the user wanted either way.
+   * Called by the website's and the app's /verify-email pages, which is where
+   * the mailed link opens. No authentication — the signed token is what proves
+   * the request came from someone reading that mailbox, which is the whole
+   * point of it, and the link is as likely to be opened on a device that is
+   * not signed in as on one that is.
    * @param data The data for the request.
-   * @param data.token
-   * @returns string Successful Response
+   * @param data.requestBody
+   * @returns Message Successful Response
    * @throws ApiError
    */
   public static verifyEmail(
     data: UsersVerifyEmailData,
   ): CancelablePromise<UsersVerifyEmailResponse> {
     return __request(OpenAPI, {
-      method: "GET",
+      method: "POST",
       url: "/api/v1/users/verify-email",
-      query: {
-        token: data.token,
-      },
+      body: data.requestBody,
+      mediaType: "application/json",
       errors: {
         422: "Validation Error",
       },
@@ -3164,6 +3303,8 @@ export class UsersService {
    * @param data.timesOfDay Preset time windows (MORNING/AFTERNOON/EVENING/NIGHT)
    * @param data.selectedStatuses Filter by selection statuses (GOING/INTERESTED)
    * @param data.friendsOnly With selected_statuses, match only friends' selections, not the viewer's own
+   * @param data.friendIds Only showtimes these friends are going to or interested in (as far as they let the viewer see)
+   * @param data.onlyYou With selected_statuses, match only the viewer's own selections — their agenda
    * @param data.allCinemas Skip the viewer's usual-cinemas default; this feed is already scoped to everyone (or everyone but the viewer)
    * @param data.selectedListIds Only show movies on any of these Letterboxd lists
    * @param data.excludeListIds Hide movies on any of these Letterboxd lists
@@ -3198,6 +3339,8 @@ export class UsersService {
         times_of_day: data.timesOfDay,
         selected_statuses: data.selectedStatuses,
         friends_only: data.friendsOnly,
+        friend_ids: data.friendIds,
+        only_you: data.onlyYou,
         all_cinemas: data.allCinemas,
         selected_list_ids: data.selectedListIds,
         exclude_list_ids: data.excludeListIds,

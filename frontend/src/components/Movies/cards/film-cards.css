@@ -1,0 +1,739 @@
+/*
+ * The film row (`FilmRow.tsx`) and its plate (`FilmPlate.tsx`).
+ *
+ * The row's *shape* is not here: it is the showtime wall's own ticket — frame,
+ * notches, dashed tear — from `Showtimes/cards/PortraitTicketCard.css`, which
+ * this file only fills in and turns on its side.
+ *
+ * Plain classes rather than Chakra style props, for the reason measured on
+ * that wall: a feed renders these hundreds of times and the style engine was
+ * more than half of that render.
+ *
+ * `--p-primary` / `--p-secondary` / `--p-border` come from `card-parts.css`'s
+ * palette classes: on a plate they are the cinema's colour, on a mark the
+ * watched/watchlisted one, on the seat glyph the busyness level's.
+ */
+
+/* ---- The plate: one screening, pressable ------------------------------ *
+ *
+ * A venue band across the top, the day, the times, and two corners: the
+ * friends who picked this screening on the left, how full it is on the right.
+ * Everything on it decides which screening you press; nothing else earns the
+ * width.
+ */
+.fc-plate {
+  position: relative;
+  display: flex;
+  overflow: visible;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  /* No padding at the top: the venue band runs to the plate's own edges. The
+     bottom is where the friends stand. */
+  padding: 0 0 9px;
+  border-radius: 6px;
+  background: var(--chakra-colors-app-surface-muted);
+  color: var(--chakra-colors-fg);
+  cursor: pointer;
+  /* Cheap states only — a feed can hold a hundred of these. */
+  transition: background-color 120ms ease, box-shadow 140ms ease, transform
+    140ms ease;
+}
+
+/*
+ * Hover reads as an inset ring rather than a `border`, on request — a real
+ * border needs its own 1px that a filled (going/interested) plate's
+ * background does not paint under, which left a hairline of the page's own
+ * colour around every toned plate whether it was hovered or not. A box-shadow
+ * draws on top of the fill instead, so it is invisible until hovered and
+ * costs the toned plates nothing.
+ */
+.fc-plate:hover {
+  box-shadow: inset 0 0 0 1px var(--p-border);
+  /* Over its neighbours, so the faces and the hover list are not clipped by
+     the plate in the next column. */
+  z-index: 3;
+}
+
+.fc-plate:focus-visible {
+  outline: 2px solid var(--chakra-colors-app-tint);
+  outline-offset: 2px;
+  z-index: 3;
+}
+
+/*
+ * The one the panel is open on.
+ *
+ * The glow this had — a halo of the app's tint plus a lift — is gone on
+ * request ("remove the green glow... make it look like it does when you
+ * hover"): selected now draws the exact same inset ring hovering does, so the
+ * clock being tinted is the only thing that still says which plate the panel
+ * is open on.
+ */
+.fc-plate--on {
+  box-shadow: inset 0 0 0 1px var(--p-border);
+}
+
+.fc-plate--on .fc-plate__time {
+  color: var(--chakra-colors-app-tint);
+}
+
+/*
+ * Your own going/interested, on the plate rather than on the card.
+ *
+ * A row is six screenings wide; a green *row* would say you are going to this
+ * film and leave you to find out which night somewhere else, where a green
+ * plate is the night. The fill and the ink and nothing else — outlined as
+ * well, a toned plate was two marks for one fact.
+ */
+.fc-plate--going {
+  background: var(--chakra-colors-app-green\.primary);
+  color: var(--chakra-colors-app-green\.secondary);
+}
+
+.fc-plate--interested {
+  background: var(--chakra-colors-app-orange\.primary);
+  color: var(--chakra-colors-app-orange\.secondary);
+}
+
+/*
+ * The venue, in its own colour, across the top.
+ *
+ * One line, always: three real cinemas ("Cinema Oostereiland", "Filmtheater
+ * Hilversum", "Filmtheater Voorschoten") used to run onto a second line at a
+ * plate's width, so the band grew to two lines' worth of height to fit them —
+ * which pushed every plate's clock out of line with its shorter neighbours,
+ * on a row where the whole point of a plate is that they line up. Shortened
+ * on request instead (`backend/data/cinemas.yaml` — their old names stay as
+ * `aliases`, so search and Cineville ingestion still find them), which fits
+ * every real name on one line and lets the band go back to that height.
+ * `.fc-plate__label-name` still ellipsizes rather than wraps, so a name this
+ * short list doesn't cover is cut, not a plate suddenly taller than the rest
+ * of its row.
+ */
+.fc-plate__label {
+  display: flex;
+  overflow: hidden;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  height: 19px;
+  padding: 1px 4px;
+  /* All four sides, not just the bottom: the band reads as its own chip this
+     way rather than a colour with a line drawn under it. Its top/left/right
+     land flush on the plate's own edges (the plate carries no border of its
+     own any more), so this is the only outline the venue part gets. */
+  border: 1px solid var(--p-border);
+  border-radius: 5px 5px 0 0;
+  background: var(--p-primary);
+  color: var(--p-secondary);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.1px;
+  text-align: center;
+}
+
+.fc-plate__label-name {
+  overflow: hidden;
+  min-width: 0;
+  /* A no-descender word (most cinema names) leaves its line-box's descender
+     space empty below the letters, which flex-centering still splits evenly —
+     so the *ink* ends up sitting above centre. Nudged down to compensate. */
+  transform: translateY(1px);
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fc-plate__date {
+  overflow: hidden;
+  max-width: 100%;
+  margin-top: 3px;
+  padding: 0 3px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  line-height: 1.25;
+  opacity: 0.7;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.fc-plate__time {
+  padding: 0 3px;
+  font-size: 16px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+/*
+ * How full the screening is: the plate's own bottom-right corner, opposite
+ * the friends in the bottom-left. The friends grow rightwards from the left
+ * edge and run out of room well before this corner, which is what the cap of
+ * two faces and a tally is for.
+ */
+.fc-plate__busy {
+  position: absolute;
+  right: 4px;
+  bottom: 1px;
+  width: 11px;
+  height: 11px;
+  color: var(--p-secondary);
+}
+
+/*
+ * The friends on this screening, on the plate's bottom edge.
+ *
+ * Mostly on the plate rather than mostly off it: they belong to it. Anchored
+ * to the left, not centred — a centred group moves every time a friend is
+ * added, so no two plates in a row have their faces in the same place.
+ *
+ * The moat in each ring (`--mk-ring`) is the card's face, since the part of
+ * each circle that hangs below the plate is over the card.
+ */
+.fc-plate__faces {
+  position: absolute;
+  bottom: -6px;
+  left: 4px;
+  display: flex;
+  align-items: center;
+  --mk-ring: var(--mk-face);
+}
+
+/* The rest of them, drawn as one of them: a circle of the same size behind the
+   last face, rather than a "+2" set after the group in text. */
+.fc-face-more {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: var(--p-primary);
+  color: var(--p-secondary);
+  font-weight: 800;
+  line-height: 1;
+  /* The same two rings a face has, so the group stays one stack — the outer
+     one this palette's own border step. */
+  box-shadow: 0 0 0 1.5px var(--mk-ring), 0 0 0 3.5px var(--p-border);
+}
+
+/*
+ * The last slot in a full row, when there are more screenings than fit: a
+ * plate-shaped link to the film's page rather than a seventh plate, which
+ * would wrap the row onto a second line.
+ */
+/* An outline with nothing in it rather than a filled grey block with a dotted
+   edge: it is not a screening, so it should not weigh what one does, and a
+   quiet tile beside a row of coloured plates reads as "and the rest" at a
+   glance. The count in the ink, "more →" muted under it. */
+.fc-plate--more {
+  justify-content: center;
+  gap: 1px;
+  /* Centred on the whole tile, the count rode high beside its neighbours,
+     whose date and time sit between a 19px venue band and a 9px foot. A top
+     inset of the difference (19 - 9) moves the centre to theirs — without
+     the band's full height, which made the tile taller than the plates. */
+  padding: 10px 0 0;
+  border: 1px solid var(--chakra-colors-border);
+  background: transparent;
+  color: var(--chakra-colors-fg);
+  text-decoration: none;
+}
+
+/* A link to the film's page, so it answers like one: the tile fills and the
+   arrow steps towards where it goes. Its own ring rather than the plates'
+   palette one, which on a gray palette read as a second border. */
+.fc-plate--more:hover {
+  border-color: var(--chakra-colors-border-emphasized);
+  background: var(--chakra-colors-app-surface-muted);
+  box-shadow: none;
+}
+
+.fc-plate__more-num {
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.2px;
+  line-height: 1.1;
+}
+
+.fc-plate__more-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.fc-plate__more-arrow {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+  transition: transform 140ms ease;
+}
+
+.fc-plate--more:hover .fc-plate__more-label {
+  color: var(--chakra-colors-fg);
+}
+
+.fc-plate--more:hover .fc-plate__more-arrow {
+  transform: translateX(2px);
+}
+
+/* ---- The row ---------------------------------------------------------- *
+ *
+ * The wall's ticket on its side: poster, tear, film. The ticket's own
+ * variables (`--mk-notch`, `--mk-outline`, `--mk-tear`) come from `.mk-wall`,
+ * which this card carries too, so a row and a showtime ticket are the same
+ * object drawn in two orientations.
+ */
+.fr-film {
+  /* Measured by the narrow-row rules at the end of this file. */
+  container: fr-film / inline-size;
+  --fr-pad: 8px;
+  /*
+   * A fifth of the feed's width, capped — about a quarter shorter than the row
+   * ran at first, on request. The poster is the tallest thing in the row, so
+   * it is the poster that decides how many films fit a screen.
+   */
+  --fr-poster: clamp(96px, calc((100% - 8px) / 5), 168px);
+}
+
+/* The row used to carry its own tinted outline while one of its screenings
+   was selected, on top of the plate's own ring and tinted clock. Removed on
+   request ("remove the green border on the movie row if a showtime is
+   selected") — the plate itself already says which screening is open, so a
+   second green outline one level up was saying the same thing twice.
+ *
+ * `auto`, not `default`: the row does nothing on click, and `auto` is the
+ * browser's own rule for a page of text — the I-beam over the letters
+ * themselves and the arrow everywhere else, including the empty end of a short
+ * line. This was `default` with `cursor: text` put back on each line of prose,
+ * and a line is a block as wide as its column, so the I-beam showed over the
+ * empty space beside every short title too. */
+.fr-film.mk-ticket {
+  cursor: auto;
+}
+
+.fr-film .mk-ticket__content {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  padding: var(--fr-pad);
+  --mk-ink: var(--chakra-colors-fg);
+}
+
+.fr-film__poster {
+  flex: 0 0 auto;
+  width: var(--fr-poster);
+  border-radius: 6px;
+}
+
+.fr-film__poster:focus-visible {
+  outline: 2px solid var(--chakra-colors-app-tint);
+  outline-offset: 2px;
+}
+
+/* The poster's own proportions, not a crop: it is the one picture on the row,
+   and the thing anybody recognises a film by. */
+.fr-film .mk-poster--ratio {
+  aspect-ratio: 2 / 3;
+}
+
+/*
+ * The tear, running down between the poster and the film, with a notch at each
+ * end of it.
+ *
+ * It is the wall seam's five gradients turned ninety degrees: the fade outside
+ * the top edge, the top notch with its arc of outline, the bottom notch with
+ * its arc, the fade outside the bottom edge, and the dashes down the middle.
+ * Painted rather than cut, for the reason in `PortraitTicketCard.css` — masks
+ * were measured as most of the raster work of scrolling a wall.
+ *
+ * The element itself is a zero-width flex item between the two columns, so the
+ * tear lands wherever the poster ends and the gap on either side of it is the
+ * flex gap, twice.
+ */
+.fr-film__seam {
+  position: relative;
+  flex: 0 0 0;
+  width: 0;
+}
+
+.fr-film__seam::before {
+  --mk-reach: calc(var(--mk-notch) + var(--mk-notch-fade));
+  --mk-arc: calc(var(--mk-notch) + var(--mk-edge));
+  content: "";
+  position: absolute;
+  top: calc(-1 * (var(--fr-pad) + var(--mk-reach)));
+  bottom: calc(-1 * (var(--fr-pad) + var(--mk-reach)));
+  left: calc(-1 * var(--mk-reach));
+  width: calc(2 * var(--mk-reach));
+  background-image: radial-gradient(
+      circle at 50% 100%,
+      var(--mk-page) var(--mk-notch),
+      transparent var(--mk-reach)
+    ),
+    radial-gradient(
+      circle at 50% 0,
+      var(--mk-page) calc(var(--mk-notch) - 0.5px),
+      var(--mk-outline) calc(var(--mk-notch) + 0.5px),
+      var(--mk-outline) calc(var(--mk-arc) - 0.5px),
+      transparent calc(var(--mk-arc) + 0.5px)
+    ),
+    radial-gradient(
+      circle at 50% 100%,
+      var(--mk-page) calc(var(--mk-notch) - 0.5px),
+      var(--mk-outline) calc(var(--mk-notch) + 0.5px),
+      var(--mk-outline) calc(var(--mk-arc) - 0.5px),
+      transparent calc(var(--mk-arc) + 0.5px)
+    ),
+    radial-gradient(
+      circle at 50% 0,
+      var(--mk-page) var(--mk-notch),
+      transparent var(--mk-reach)
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      var(--mk-tear) 0 5px,
+      transparent 5px 10px
+    );
+  background-position: 0 0, 0 var(--mk-reach), 0 calc(100% - var(--mk-reach)), 0
+    100%, 50% 50%;
+  background-size: 100% var(--mk-reach), 100% var(--mk-arc), 100% var(--mk-arc),
+    100% var(--mk-reach), var(--mk-tear-weight)
+    calc(100% - 2 * var(--mk-reach) - 2 * var(--mk-notch) - 6px);
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+
+.fr-film__info {
+  display: flex;
+  /* Not `hidden`: a selected plate's halo is a box-shadow reaching outside its
+     own box, and the leftmost plate in the grid sits flush against this
+     column's left edge (no left padding, to keep the text flush with the
+     seam). A clipping ancestor here cut that plate's glow off on the side
+     nearest the poster. Every place text needs truncating clips itself
+     (`.fr-film__title`, `.mk-ellipsis`), so nothing here still needs this. */
+  overflow: visible;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  padding: 1px 2px 0 0;
+}
+
+.fr-film__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.fr-film__titles {
+  min-width: 0;
+}
+
+.fr-film__title {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--mk-ink);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.2;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.fr-film__original {
+  margin-top: 1px;
+  color: var(--mk-ink);
+  font-size: 11px;
+  font-style: italic;
+  opacity: 0.7;
+}
+
+.fr-film__meta {
+  margin-top: 4px;
+  color: var(--mk-ink);
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+.fr-film__cast {
+  margin-top: 1px;
+  color: var(--mk-ink);
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+/* As many lines as the column has room for — `FilmRow`'s `useSynopsisFit`
+   measures that and sets the clamp. It shrinks rather than pushing the plates
+   down, so an over-long clamp is squeezed back to the room it has and the
+   measurement sees that room. */
+.fr-film__synopsis {
+  display: -webkit-box;
+  flex: 0 1 auto;
+  overflow: hidden;
+  min-height: 0;
+  margin-top: 5px;
+  color: var(--mk-ink);
+  font-size: 11px;
+  line-height: 1.4;
+  opacity: 0.8;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/* ---- Watched / watchlisted -------------------------------------------- */
+
+/* Your own Letterboxd marks, in the corner the film's friends used to sit in.
+   Icon, palette and wording are `shared/friends/friend-watch-kind`'s, so the
+   relationship looks the same whoever holds it. */
+.fr-film__marks {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.fr-film__mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px 1px 4px;
+  border: 1px solid color-mix(in srgb, var(--p-border) 55%, transparent);
+  border-radius: 999px;
+  background: var(--p-primary);
+  color: var(--p-secondary);
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.fr-film__mark-icon {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+}
+
+/* Nudged: "Watched"/"Watchlisted" has no descenders, so its own line-box
+   leaves empty space below the letters that flex-centering still splits
+   evenly against the icon beside it, landing the ink high. */
+.fr-film__mark-label {
+  position: relative;
+  top: 1px;
+}
+
+/* ---- Plates, and the line under them ---------------------------------- */
+
+/*
+ * One row of them, pushed down to the poster's bottom edge with the slack
+ * above. The rule is what keeps that slack — a tall poster next to a short
+ * film — from reading as a hole; it is the ticket's own tear, dashed and in
+ * the same colour.
+ */
+.fr-film__plates {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 6px 5px;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px dashed var(--mk-tear);
+}
+
+.fr-film__none {
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px dashed var(--mk-tear);
+  color: var(--mk-ink);
+  font-size: 11px;
+  font-style: italic;
+  opacity: 0.7;
+}
+
+/* Clear of the plates *and* of the friends standing off their bottom edge. */
+.fr-film__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  min-width: 0;
+}
+
+.fr-film__counts {
+  min-width: 0;
+  color: var(--mk-ink);
+  font-size: 10.5px;
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.fr-film__actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 2px;
+}
+
+/*
+ * The three things a row can do that are not "open a screening": go to the
+ * film on Letterboxd, go to its page for the screenings that did not fit, and
+ * put its link on the clipboard.
+ *
+ * Quiet until pointed at — they sit under every row in the feed, and three
+ * filled buttons a row would outweigh the film above them.
+ */
+.fr-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--mk-ink);
+  cursor: pointer;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1.4;
+  opacity: 0.72;
+  transition: background-color 120ms ease, border-color 120ms ease, opacity
+    120ms ease;
+  white-space: nowrap;
+}
+
+.fr-act:hover {
+  border-color: var(--chakra-colors-border);
+  background: var(--chakra-colors-app-surface-muted);
+  opacity: 1;
+}
+
+.fr-act:focus-visible {
+  outline: 2px solid var(--chakra-colors-app-tint);
+  outline-offset: 1px;
+}
+
+/* Copied: the button says so where it stands, rather than in a toast the eye
+   has to go and find. */
+.fr-act--done {
+  color: var(--chakra-colors-app-green\.secondary);
+  opacity: 1;
+}
+
+.fr-act__icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+/* Same nudge as `.fc-plate__label-name`, for the same reason: the label has
+   no descenders, so its own empty descender space throws off flex-centering
+   against the icon beside it. */
+.fr-act__label {
+  transform: translateY(1.5px);
+}
+
+/* ---- A narrow row ------------------------------------------------------ *
+ * The row's own width, not the window's: the same window gives the list very
+ * different widths depending on whether the filter rail is docked or folded,
+ * and the detail column always takes its share.
+ *
+ * The plates shrink with the row: `--fr-u` is a "row pixel", 1px where the
+ * film's column is 500px or wider and down to 0.75px from 333px, and every
+ * size on a plate inside a row is a multiple of it — so a narrow row still
+ * holds a few plates abreast instead of one or two. `100cqw` is the film's
+ * column (`fr-info`, below), so it only resolves inside it. */
+
+.fr-film__plates {
+  grid-template-columns: repeat(auto-fill, minmax(calc(96 * var(--fr-u)), 1fr));
+  gap: calc(6 * var(--fr-u)) calc(5 * var(--fr-u));
+}
+
+.fr-film .fc-plate {
+  padding-bottom: calc(9 * var(--fr-u));
+}
+
+.fr-film .fc-plate__label {
+  height: calc(19 * var(--fr-u));
+  font-size: calc(9.5 * var(--fr-u));
+}
+
+.fr-film .fc-plate__date {
+  margin-top: calc(3 * var(--fr-u));
+  font-size: calc(9 * var(--fr-u));
+}
+
+.fr-film .fc-plate__time {
+  font-size: calc(16 * var(--fr-u));
+}
+
+.fr-film .fc-plate--more {
+  padding-top: calc(10 * var(--fr-u));
+}
+
+.fr-film .fc-plate__more-num {
+  font-size: calc(17 * var(--fr-u));
+}
+
+.fr-film .fc-plate__more-label {
+  font-size: calc(10.5 * var(--fr-u));
+}
+
+/* The three actions drop their words — the icons and their titles still say
+   what they do — so the foot never runs past the card's edge. */
+@container fr-film (max-width: 600px) {
+  .fr-act__label {
+    display: none;
+  }
+
+  .fr-act {
+    padding: 4px 6px;
+  }
+}
+
+/* ---- Never taller than the poster -------------------------------------- *
+ * The film's column is a size container: it adds nothing to the row's
+ * height, so the row is exactly as tall as its poster, and the column gets
+ * that height to fill. Plates are one line (`FilmRow` fits as many as the
+ * width holds). What does not fit goes, least useful first: the cast, then
+ * the synopsis line by line (measured, in `FilmRow`), then the original title and
+ * the credits line — the title, the plates and the actions always stay. */
+.fr-film__info {
+  container: fr-info / size;
+  --fr-u: clamp(0.75px, 0.25px + 100cqw * 0.0015, 1px);
+}
+
+/* Thresholds from what each line costs: title, credits, plates and actions
+   take ~135px; the original title ~15px; the cast ~15px. The synopsis is
+   not on a threshold — it takes whatever is left. */
+@container fr-info (max-height: 200px) {
+  .fr-film__cast {
+    display: none;
+  }
+}
+
+@container fr-info (max-height: 154px) {
+  .fr-film__original {
+    display: none;
+  }
+}
+
+@container fr-info (max-height: 136px) {
+  .fr-film__meta {
+    display: none;
+  }
+
+  .fr-film__foot {
+    margin-top: 8px;
+  }
+}

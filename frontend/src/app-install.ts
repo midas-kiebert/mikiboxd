@@ -55,12 +55,12 @@ export const STORE_BADGES: Record<
   ios: {
     src: "/assets/images/app-store-badge.svg",
     alt: "Download on the App Store",
-    height: "54px",
+    height: "68px",
   },
   android: {
     src: "/assets/images/google-play-badge.png",
     alt: "Get it on Google Play",
-    height: "80px",
+    height: "100px",
   },
 }
 

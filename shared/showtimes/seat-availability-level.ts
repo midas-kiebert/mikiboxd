@@ -155,3 +155,22 @@ export function isUrgentSeatAvailabilityLevel(
 ): boolean {
   return !CALM_LEVELS.includes(level);
 }
+
+/**
+ * The rungs worth a badge on a feed card: a room filling up (`groups`) and
+ * everything past it. A set, like `CALM_LEVELS`, so an unknown or retired
+ * level never draws by accident.
+ */
+const BUSY_LEVELS: SeatAvailabilityLevel[] = ["very_busy", "last_few", "sold_out"];
+
+/**
+ * Whether a level is busy enough to mark on a card in the feed. Stricter than
+ * `isUrgentSeatAvailabilityLevel`: in a wall of cards, "some seats taken" and
+ * "busy" are the normal state of a screening and a badge on most of them is
+ * noise; the showtime's own panel still states every level.
+ */
+export function isBusySeatAvailabilityLevel(
+  level: SeatAvailabilityLevel
+): boolean {
+  return BUSY_LEVELS.includes(level);
+}

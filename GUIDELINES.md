@@ -600,7 +600,7 @@ The `prestart` service depends on the `db` healthcheck passing.
 (`docker-compose.traefik.yml`). It handles TLS termination via Let's Encrypt.
 
 - API: `api.<DOMAIN>`
-- Frontend: `dashboard.<DOMAIN>` and `<DOMAIN>`
+- Frontend: `<DOMAIN>`; `www.<DOMAIN>` and `dashboard.<DOMAIN>` redirect to it
 - Adminer: `adminer.<DOMAIN>`
 
 ### Environment variables

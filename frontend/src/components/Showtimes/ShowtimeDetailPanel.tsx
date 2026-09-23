@@ -6,11 +6,12 @@
  * one screening never hides the alternatives you were comparing it against.
  *
  * Everything else follows the app's sheet, in its order and its words: the
- * header with "More info" under the poster, then who is already here, then the
- * status buttons, then one card holding the seat count, the ticket link and
- * your seat, then "Status visible to", then who you have invited, and Share and
- * "Invite friends" at the foot. The web had reached the same set of features by
- * a different arrangement, and the two clients disagreeing about where a thing
+ * header with "More info" under the poster and the watchlisted/watched pills,
+ * then who is already here and who you have invited (with Share and "Invite
+ * friends"), then the status buttons with "Status visible to" right under
+ * them, then one card holding the seat count, the ticket link and your seat.
+ * The web had reached the same set of features by a different arrangement,
+ * and the two clients disagreeing about where a thing
  * lives — and about whether a status is a star or a bookmark — costs more than
  * either layout was worth. The one deliberate difference is Share, which copies
  * a link here instead of opening a share sheet.
@@ -41,32 +42,33 @@ import { useEffect, useRef } from "react"
 import type { ShowtimePublic } from "shared"
 
 import { useIsSignedIn, useRequireAccount } from "@/auth/useSession"
-import SeatAvailabilityPanel from "@/components/Showtimes/detail/SeatAvailabilityPanel"
+import { SIDE_PANEL_SCROLLER_ATTRIBUTE } from "@/components/Feed/FeedLayout"
+import ReportShowtimeButton from "@/components/Movie/ReportShowtimeButton"
 import {
   PanelIconButton,
   PanelPressable,
 } from "@/components/Showtimes/detail/PanelChrome"
-import { PanelIcon } from "@/components/Showtimes/detail/panel-icons"
+import SeatAvailabilityPanel from "@/components/Showtimes/detail/SeatAvailabilityPanel"
 import ShowtimeAttendance from "@/components/Showtimes/detail/ShowtimeAttendance"
 import ShowtimeDetailHeader from "@/components/Showtimes/detail/ShowtimeDetailHeader"
-import ShowtimeStatusControl from "@/components/Showtimes/detail/ShowtimeStatusControl"
+import ShowtimeStatusSection from "@/components/Showtimes/detail/ShowtimeStatusSection"
 import ShowtimeVisibilityPanel from "@/components/Showtimes/detail/ShowtimeVisibilityPanel"
-import { SIDE_PANEL_SCROLLER_ATTRIBUTE } from "@/components/Feed/FeedLayout"
-import { useShowtimeSelection } from "@/features/showtimes/useShowtimeSelection"
+import { PanelIcon } from "@/components/Showtimes/detail/panel-icons"
 
 type ShowtimeDetailPanelProps = {
   showtime: ShowtimePublic
   onClose: () => void
 }
 
-const ShowtimeDetailPanel = ({ showtime, onClose }: ShowtimeDetailPanelProps) => {
+const ShowtimeDetailPanel = ({
+  showtime,
+  onClose,
+}: ShowtimeDetailPanelProps) => {
   // Read flow: prepare derived values/handlers first, then return component JSX.
   const showtimeId = showtime.id
   const isSignedIn = useIsSignedIn()
   const requireAccount = useRequireAccount()
   const rootRef = useRef<HTMLDivElement>(null)
-
-  const { status, setStatus } = useShowtimeSelection(showtime)
 
   // Back to the top on each new screening. The panel is docked and the rows it
   // serves look alike, so a card that swapped its contents while staying
@@ -110,13 +112,12 @@ const ShowtimeDetailPanel = ({ showtime, onClose }: ShowtimeDetailPanelProps) =>
       <Box key={showtimeId} animation="panel-enter 180ms ease-out">
         <ShowtimeAttendance showtime={showtime} />
 
-        <Box px={3} pb={3}>
-          <ShowtimeStatusControl
-            status={status}
-            onChange={setStatus}
-            hasOpenInvite={Boolean(showtime.viewer?.invited_by?.length)}
-          />
-        </Box>
+        <ShowtimeStatusSection showtime={showtime} />
+
+        {/* Always there, whatever the status: the point is to choose who sees
+            it *before* marking going or interested, not to find out after
+            your friends already have. Right under the buttons it governs. */}
+        <ShowtimeVisibilityPanel showtime={showtime} />
 
         <SeatAvailabilityPanel showtime={showtime} />
 
@@ -143,21 +144,39 @@ const ShowtimeDetailPanel = ({ showtime, onClose }: ShowtimeDetailPanelProps) =>
                 outlineOffset: "1px",
               }}
             >
-              <Box as={PanelIcon.mailOutline} boxSize="16px" flexShrink={0} aria-hidden />
-              <Text fontSize="13px" fontWeight="600" flex="1" textAlign="left">
+              <Box
+                as={PanelIcon.mailOutline}
+                boxSize="16px"
+                flexShrink={0}
+                aria-hidden
+              />
+              <Text
+                fontSize="13px"
+                fontWeight="600"
+                flex="1"
+                textAlign="left"
+                position="relative"
+                top="1px"
+              >
                 Log in to invite friends
               </Text>
-              <Box as={PanelIcon.arrowForward} boxSize="14px" flexShrink={0} aria-hidden />
+              <Box
+                as={PanelIcon.arrowForward}
+                boxSize="14px"
+                flexShrink={0}
+                aria-hidden
+              />
             </PanelPressable>
           </Box>
         )}
 
-        {/* A visibility mode on a screening you are not going to governs
-            nothing, so it only appears once there is a status to hide. */}
-        {status === "GOING" || status === "INTERESTED" ? (
-          <ShowtimeVisibilityPanel showtime={showtime} />
+        {/* Last and quiet: a correction to the listing, not something to do
+            with the screening. Reporting needs an account, so guests skip it. */}
+        {isSignedIn ? (
+          <Box display="flex" justifyContent="center" px={3} pb={3}>
+            <ReportShowtimeButton showtimeId={showtimeId} />
+          </Box>
         ) : null}
-
       </Box>
     </Box>
   )

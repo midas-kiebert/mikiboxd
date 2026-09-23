@@ -1,11 +1,13 @@
 /**
- * A person, drawn as a coloured initial.
+ * A person: their Letterboxd profile picture when they have one linked and
+ * synced, a coloured initial otherwise — and always the initial underneath,
+ * so a picture that fails to load (a stale URL, a network hiccup) falls back
+ * to it rather than leaving a blank circle.
  *
- * Which colour is `shared/users/avatar-color`, the rule the app uses too, so
- * somebody who is teal in the app is teal here. The point of the colour is
- * that it is *theirs*: it has to survive re-ordering, filtering and moving
- * between screens, which is why it comes from the id rather than from a
- * position in a list.
+ * The initial's colour is `shared/users/avatar-color`, the rule the app uses
+ * too, so somebody who is teal in the app is teal here. It has to survive
+ * re-ordering, filtering and moving between screens, which is why it comes
+ * from the id rather than from a position in a list.
  *
  * Two shapes, one identity:
  *
@@ -21,20 +23,21 @@
  * question "who else is going?" is almost always followed by "what else are
  * they going to?".
  */
-import { Box, Flex, Text } from "@chakra-ui/react"
+import { Box, Flex, Image, Text } from "@chakra-ui/react"
 import { Link } from "@tanstack/react-router"
+import { useState } from "react"
 import type { ReactNode } from "react"
 import type { UserPublic } from "shared"
 import {
   getAvatarInitial,
   getAvatarPaletteKey,
 } from "shared/users/avatar-color"
+import { getAvatarSources } from "shared/users/avatar-sources"
 
 import { PanelIcon } from "@/components/Showtimes/detail/panel-icons"
-import { Tooltip } from "@/components/ui/tooltip"
-import { defaultFeedParams } from "@/features/showtimes/feed-params"
+import { friendFeedSearch } from "@/features/showtimes/feed-params"
 
-type PersonLike = Pick<UserPublic, "id" | "display_name">
+type PersonLike = Pick<UserPublic, "id" | "display_name" | "avatar_url">
 
 export const personName = (user: PersonLike): string =>
   user.display_name?.trim() || "Friend"
@@ -55,10 +58,17 @@ export const PersonAvatar = ({
   ring?: boolean
 }) => {
   const { bg, fg } = avatarTokens(user)
+  // A bigger render first when drawn large, then the stored one; a source
+  // that fails is skipped for good, and none left means the initial.
+  const [failed, setFailed] = useState<ReadonlySet<string>>(new Set())
+  const photo = getAvatarSources(user.avatar_url, size).find(
+    (src) => !failed.has(src),
+  )
 
   return (
     <Flex
       as="span"
+      position="relative"
       align="center"
       justify="center"
       boxSize={`${size}px`}
@@ -69,11 +79,30 @@ export const PersonAvatar = ({
       fontWeight="700"
       lineHeight="1"
       flexShrink={0}
+      overflow="hidden"
       borderWidth={ring ? "2px" : undefined}
       borderColor={ring ? "bg.panel" : undefined}
       aria-hidden
     >
-      {getAvatarInitial(user.display_name)}
+      {/* A line-height-1 box keeps the descender space below a capital, so a
+          centred box leaves the letter sitting high; nudge it down in `em`
+          so the correction scales with every avatar size. */}
+      <Box as="span" position="relative" top="0.07em">
+        {getAvatarInitial(user.display_name)}
+      </Box>
+      {photo ? (
+        <Image
+          key={photo}
+          src={photo}
+          alt=""
+          position="absolute"
+          inset={0}
+          boxSize="100%"
+          objectFit="cover"
+          loading="lazy"
+          onError={() => setFailed((current) => new Set(current).add(photo))}
+        />
+      ) : null}
     </Flex>
   )
 }
@@ -110,18 +139,17 @@ export const PersonChip = ({
       py="2px"
       borderRadius="6px"
       transition="background-color 120ms ease"
-      _hover={{ bg: "bg.muted", "& [data-person-name]": { textDecoration: "underline" } }}
+      _hover={{
+        bg: "bg.muted",
+        "& [data-person-name]": { textDecoration: "underline" },
+      }}
       _focusVisible={{
         outline: "2px solid",
         outlineColor: "app.tint",
         outlineOffset: "1px",
       }}
     >
-      <Link
-        to="/$userId/showtimes"
-        params={{ userId: user.id }}
-        search={defaultFeedParams}
-      >
+      <Link to="/" search={friendFeedSearch(user.id)}>
         <PersonAvatar user={user} />
         <Box minW={0}>
           <Text
@@ -131,6 +159,10 @@ export const PersonChip = ({
             lineHeight="1.3"
             textUnderlineOffset="2px"
             truncate
+            // Only when this is the row's one line: with a caption below it,
+            // the chevron centers against the whole two-line block instead.
+            position={caption ? undefined : "relative"}
+            top={caption ? undefined : "1px"}
           >
             {personName(user)}
           </Text>

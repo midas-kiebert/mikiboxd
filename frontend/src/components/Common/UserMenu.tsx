@@ -17,7 +17,7 @@ const UserMenu = () => {
   // Data hooks keep this module synced with backend data and shared cache state.
   const { user, logout } = useAuth(
     () => navigate({ to: "/", search: defaultFeedParams }), // onLoginSuccess
-    () => navigate({ to: "/login" }), // onLogout
+    // No onLogout: signing out leaves you on the page you were on, as a guest.
   )
 
   const handleLogout = async () => {

@@ -29,12 +29,13 @@
  * sent it and the link cannot be forged by swapping an id in the URL.
  *
  * Rendered as the last section of the audience box (`ShowtimeAttendance`),
- * under the watch lists, rather than at the foot of the panel, where the
- * picker opened below the fold and pressing the button looked like nothing.
+ * under the going/interested pills, rather than at the foot of the panel,
+ * where the picker opened below the fold and pressing the button looked like
+ * nothing.
  *
  * The sent-pings query and every mutation over it are
- * `features/showtimes/useShowtimeInvites`, not this file's: the watch lists in
- * the audience box invite people too, and two copies of "who is already
+ * `features/showtimes/useShowtimeInvites`, not this file's: the header's
+ * watchlisted popup invites people too, and two copies of "who is already
  * invited" would disagree.
  */
 import { Box, Flex, Input, Text } from "@chakra-ui/react"
@@ -49,12 +50,12 @@ import {
   PanelIconButton,
   PanelPressable,
 } from "@/components/Showtimes/detail/PanelChrome"
-import { PanelIcon } from "@/components/Showtimes/detail/panel-icons"
 import {
   PersonAvatar,
   PersonChip,
   personName,
 } from "@/components/Showtimes/detail/PersonAvatar"
+import { PanelIcon } from "@/components/Showtimes/detail/panel-icons"
 import { Tooltip } from "@/components/ui/tooltip"
 import { useShowtimeInvites } from "@/features/showtimes/useShowtimeInvites"
 
@@ -126,7 +127,8 @@ const ShowtimeInvitePanel = ({ showtime }: ShowtimeInvitePanelProps) => {
         term ? personName(friend).toLowerCase().includes(term) : true,
       )
       .sort((left, right) => {
-        const keenDifference = Number(keenIds.has(right.id)) - Number(keenIds.has(left.id))
+        const keenDifference =
+          Number(keenIds.has(right.id)) - Number(keenIds.has(left.id))
         if (keenDifference !== 0) return keenDifference
         return personName(left).localeCompare(personName(right))
       })
@@ -136,16 +138,23 @@ const ShowtimeInvitePanel = ({ showtime }: ShowtimeInvitePanelProps) => {
    * Read off the invites themselves rather than off the friends list: a ping
    * carries the name it was sent to, so somebody you invited still shows here
    * while the friends list is loading, and after they have stopped being a
-   * friend.
+   * friend. The photo is the one thing a ping does not carry, so that comes
+   * from the friends list when it has them — initials until then, or for
+   * someone who is no longer a friend.
    */
-  const invited = useMemo(
-    () =>
-      (sentPings ?? []).map((ping) => ({
-        ping,
-        user: { id: ping.receiver_id, display_name: ping.receiver_name },
-      })),
-    [sentPings],
-  )
+  const invited = useMemo(() => {
+    const avatarById = new Map(
+      (friends ?? []).map((friend) => [friend.id, friend.avatar_url]),
+    )
+    return (sentPings ?? []).map((ping) => ({
+      ping,
+      user: {
+        id: ping.receiver_id,
+        display_name: ping.receiver_name,
+        avatar_url: avatarById.get(ping.receiver_id) ?? null,
+      },
+    }))
+  }, [sentPings, friends])
 
   // A section that could only ever be empty is hidden rather than gated.
   if (!isSignedIn) return null
@@ -166,7 +175,8 @@ const ShowtimeInvitePanel = ({ showtime }: ShowtimeInvitePanelProps) => {
   const inviteStatus = (
     ping: SentShowtimePingPublic,
   ): { label: string; color: string } => {
-    if (ping.dismissed_at) return { label: "Dismissed", color: "app.red.secondary" }
+    if (ping.dismissed_at)
+      return { label: "Dismissed", color: "app.red.secondary" }
     if (ping.seen_at) return { label: "Seen", color: "app.green.secondary" }
     return { label: "Pending", color: "fg.subtle" }
   }
@@ -174,20 +184,35 @@ const ShowtimeInvitePanel = ({ showtime }: ShowtimeInvitePanelProps) => {
   // Render/output using the state and derived values prepared above.
   return (
     <>
-      <Box px="12px" pt="10px" pb="8px" borderTopWidth="1px" borderColor="border.muted">
-        <Text
-          fontSize="11px"
-          fontWeight="700"
-          textTransform="uppercase"
-          letterSpacing="0.4px"
-          color="fg.muted"
-          mb="6px"
-        >
-          Invited
-        </Text>
+      {/* Kept short: nobody invited yet is one line, the heading and the answer
+          side by side, and each invite is a single line too — everyone in this
+          list is invited by you, so a caption saying so was a second line of
+          nothing per row. */}
+      <Box
+        px="10px"
+        pt="8px"
+        pb="6px"
+        borderTopWidth="1px"
+        borderColor="border.muted"
+      >
+        <Flex align="baseline" gap="8px" mb={invited.length ? "2px" : 0}>
+          <Text
+            fontSize="11px"
+            fontWeight="700"
+            textTransform="uppercase"
+            letterSpacing="0.4px"
+            color="fg.muted"
+            flexShrink={0}
+          >
+            Invited
+          </Text>
+          {invited.length ? null : (
+            <PanelEmpty>You haven&apos;t invited anyone yet.</PanelEmpty>
+          )}
+        </Flex>
 
         {invited.length ? (
-          <Flex direction="column" gap="2px">
+          <Flex direction="column">
             {invited.map(({ ping, user }) => {
               const status = inviteStatus(ping)
 
@@ -195,7 +220,6 @@ const ShowtimeInvitePanel = ({ showtime }: ShowtimeInvitePanelProps) => {
                 <PersonChip
                   key={ping.id}
                   user={user}
-                  caption="Invited by you"
                   trailing={
                     <>
                       <Text
@@ -212,7 +236,10 @@ const ShowtimeInvitePanel = ({ showtime }: ShowtimeInvitePanelProps) => {
                           label={`Nudge ${personName(user)}`}
                           onClick={() => nudge(user.id)}
                         >
-                          <Box as={PanelIcon.notificationsNone} boxSize="15px" />
+                          <Box
+                            as={PanelIcon.notificationsNone}
+                            boxSize="15px"
+                          />
                         </PanelIconButton>
                       )}
                       <PanelIconButton
@@ -228,9 +255,7 @@ const ShowtimeInvitePanel = ({ showtime }: ShowtimeInvitePanelProps) => {
               )
             })}
           </Flex>
-        ) : (
-          <PanelEmpty>You haven&apos;t invited anyone yet.</PanelEmpty>
-        )}
+        ) : null}
       </Box>
 
       {/* Share is one press and never expands. Invite friends opens *into* its
@@ -238,7 +263,7 @@ const ShowtimeInvitePanel = ({ showtime }: ShowtimeInvitePanelProps) => {
           thing you pressed and the thing you type in are one control rather
           than a button with a second search box appearing under it. Both are
           tinted blue, the app's coding for an invite. */}
-      <Box px="12px" pb="12px">
+      <Box px="10px" pb="10px">
         {isPicking ? (
           <Box
             ref={pickerRef}
@@ -257,7 +282,12 @@ const ShowtimeInvitePanel = ({ showtime }: ShowtimeInvitePanelProps) => {
               bg="app.blue.primary"
               color="app.blue.secondary"
             >
-              <Box as={PanelIcon.search} boxSize="18px" flexShrink={0} aria-hidden />
+              <Box
+                as={PanelIcon.search}
+                boxSize="18px"
+                flexShrink={0}
+                aria-hidden
+              />
               <Input
                 autoFocus
                 variant="flushed"
@@ -280,7 +310,10 @@ const ShowtimeInvitePanel = ({ showtime }: ShowtimeInvitePanelProps) => {
                   if (event.key === "Escape") closePicker()
                 }}
                 aria-label="Search friends to invite"
-                _focusVisible={{ borderColor: "transparent", boxShadow: "none" }}
+                _focusVisible={{
+                  borderColor: "transparent",
+                  boxShadow: "none",
+                }}
               />
               <PanelPressable
                 type="button"
@@ -314,8 +347,15 @@ const ShowtimeInvitePanel = ({ showtime }: ShowtimeInvitePanelProps) => {
             </Flex>
 
             {friends?.length === 0 ? (
-              <Box px="10px" py="10px" borderTopWidth="1px" borderColor="app.blue.border">
-                <PanelEmpty>Add friends to invite them to a screening.</PanelEmpty>
+              <Box
+                px="10px"
+                py="10px"
+                borderTopWidth="1px"
+                borderColor="app.blue.border"
+              >
+                <PanelEmpty>
+                  Add friends to invite them to a screening.
+                </PanelEmpty>
               </Box>
             ) : (
               <>
@@ -348,7 +388,9 @@ const ShowtimeInvitePanel = ({ showtime }: ShowtimeInvitePanelProps) => {
                         textAlign="left"
                         transition="background-color 120ms ease"
                         bg={isChosen ? "app.blue.primary" : "transparent"}
-                        _hover={{ bg: isChosen ? "app.blue.primary" : "bg.subtle" }}
+                        _hover={{
+                          bg: isChosen ? "app.blue.primary" : "bg.subtle",
+                        }}
                         _focusVisible={{
                           outline: "2px solid",
                           outlineColor: "app.tint",
@@ -367,7 +409,14 @@ const ShowtimeInvitePanel = ({ showtime }: ShowtimeInvitePanelProps) => {
                           aria-hidden
                         />
                         <PersonAvatar user={friend} size={20} />
-                        <Text fontSize="13px" truncate flex="1" minW={0}>
+                        <Text
+                          fontSize="13px"
+                          truncate
+                          flex="1"
+                          minW={0}
+                          position="relative"
+                          top="1px"
+                        >
                           {personName(friend)}
                         </Text>
                         {alreadyInvited ? (
@@ -391,7 +440,12 @@ const ShowtimeInvitePanel = ({ showtime }: ShowtimeInvitePanelProps) => {
                   ) : null}
                 </Box>
 
-                <Flex gap="6px" p="6px" borderTopWidth="1px" borderColor="border.muted">
+                <Flex
+                  gap="6px"
+                  p="6px"
+                  borderTopWidth="1px"
+                  borderColor="border.muted"
+                >
                   <PanelActionButton
                     primary
                     fullWidth
@@ -404,7 +458,9 @@ const ShowtimeInvitePanel = ({ showtime }: ShowtimeInvitePanelProps) => {
                           name: personName(
                             // All friends, not `candidates`: someone chosen
                             // before the search changed is filtered out of it.
-                            friends?.find((friend) => friend.id === friendId) ?? {
+                            friends?.find(
+                              (friend) => friend.id === friendId,
+                            ) ?? {
                               id: friendId,
                               display_name: null,
                             },
@@ -415,12 +471,16 @@ const ShowtimeInvitePanel = ({ showtime }: ShowtimeInvitePanelProps) => {
                       closePicker()
                     }}
                   >
-                    {chosenIds.length > 1 ? `Invite ${chosenIds.length}` : "Invite"}
+                    {chosenIds.length > 1
+                      ? `Invite ${chosenIds.length}`
+                      : "Invite"}
                   </PanelActionButton>
                   {/* Its own width, not a share of the row: the full-width Invite
                       beside it otherwise squeezes "Cancel" into an ellipsis. */}
                   <Box display="grid" flexShrink={0} minW="88px">
-                    <PanelActionButton onClick={closePicker}>Cancel</PanelActionButton>
+                    <PanelActionButton onClick={closePicker}>
+                      Cancel
+                    </PanelActionButton>
                   </Box>
                 </Flex>
               </>
@@ -457,7 +517,9 @@ const ShowtimeInvitePanel = ({ showtime }: ShowtimeInvitePanelProps) => {
               {/* A link, not the app's share glyph: this copies a URL rather than
                   handing it to a share sheet, and the icon should say so. */}
               <Box as={PanelIcon.shareLink} boxSize="16px" aria-hidden />
-              Share
+              <Box as="span" position="relative" top="1px">
+                Share
+              </Box>
             </PanelPressable>
 
             <PanelPressable
@@ -488,8 +550,20 @@ const ShowtimeInvitePanel = ({ showtime }: ShowtimeInvitePanelProps) => {
                 outlineOffset: "1px",
               }}
             >
-              <Box as={PanelIcon.mailOutline} boxSize="18px" flexShrink={0} aria-hidden />
-              <Box as="span" flex="1" minW={0} truncate>
+              <Box
+                as={PanelIcon.mailOutline}
+                boxSize="18px"
+                flexShrink={0}
+                aria-hidden
+              />
+              <Box
+                as="span"
+                flex="1"
+                minW={0}
+                truncate
+                position="relative"
+                top="1px"
+              >
                 Invite friends
               </Box>
               {/* The search glyph previews what pressing does: this opens

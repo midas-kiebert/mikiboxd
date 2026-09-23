@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session
 
 from app.converters import showtime as showtime_converters
+from app.converters import showtime_page as showtime_page_converters
 from app.converters import user as user_converters
 from app.core import apple_auth
 from app.core.enums import (
@@ -52,6 +53,7 @@ from app.models.cinema_preset import (
     FAVORITE_CINEMA_PRESET_NAME,
     CinemaPreset,
 )
+from app.models.letterboxd import Letterboxd
 from app.models.push_token import PushToken
 from app.models.saved_preset import SavedPreset
 from app.models.showtime import Showtime
@@ -62,6 +64,7 @@ from app.schemas.saved_preset import SavedPresetCreate, SavedPresetPublic
 from app.schemas.showtime import ShowtimePublic
 from app.schemas.showtime_ping import ShowtimePingPublic
 from app.schemas.user import UserMe
+from app.scraping.letterboxd import watchlist as letterboxd_watchlist_scraper
 from app.services import users as users_service
 from app.utils import now_amsterdam_naive
 from app.validators.username import is_valid_username
@@ -228,6 +231,21 @@ def update_me(
     if not current_user.email_verified and _wants_email_delivery(user_data):
         raise EmailNotVerified()
 
+    # Switching the Letterboxd picture on fetches it now: it is otherwise only
+    # read by a watchlist sync, and a new link has usually not had one yet, so
+    # saying yes would show nothing until some later sync. Also when the
+    # username changes with the switch already on — the old picture is someone
+    # else's now.
+    avatar_just_enabled = (
+        user_data.get("use_letterboxd_avatar") is True
+        and not current_user.use_letterboxd_avatar
+    ) or (
+        current_user.use_letterboxd_avatar
+        and user_data.get("use_letterboxd_avatar") is not False
+        and bool(user_data.get("letterboxd_username"))
+        and user_data["letterboxd_username"] != current_user.letterboxd_username
+    )
+
     # Sticky, so the tip that points this feature out never nags someone who has
     # already found it — including someone who tried it and switched it back off.
     if user_data.get("notify_watchlist_digest_enabled") is True:
@@ -371,6 +389,9 @@ def update_me(
     except Exception as e:
         raise AppError() from e
 
+    if avatar_just_enabled:
+        _refresh_letterboxd_avatar(session=session, user=current_user)
+
     if incognito_mode_changed or default_visibility_mode_changed:
         showtime_visibility_crud.rebuild_effective_visibility_for_owner(
             session=session,
@@ -382,6 +403,23 @@ def update_me(
     if email_changed:
         users_service.send_email_verification(user=current_user)
     return user_public
+
+
+def _refresh_letterboxd_avatar(*, session: Session, user: User) -> None:
+    """Read the linked account's picture off Letterboxd now. Left alone when
+    nothing comes back, like a sync does: a failed fetch is not a removed
+    picture."""
+    if not user.letterboxd_username:
+        return
+    # By key, not `user.letterboxd`: the relationship can still point at the
+    # previous account when the username changed in this same request.
+    letterboxd = session.get(Letterboxd, user.letterboxd_username)
+    if letterboxd is None:
+        return
+    avatar_url = letterboxd_watchlist_scraper.get_avatar_url(user.letterboxd_username)
+    if avatar_url is not None:
+        letterboxd.avatar_url = avatar_url
+        session.add(letterboxd)
 
 
 def delete_me(
@@ -677,33 +715,6 @@ def _get_all_cinema_ids(*, session: Session) -> list[int]:
     return sorted(cinema.id for cinema in cinemas_crud.get_cinemas(session=session))
 
 
-def _free_cinema_preset_name(
-    *,
-    session: Session,
-    user_id: UUID,
-    base_name: str,
-) -> str:
-    """`base_name`, or the first numbered variant the user does not already use.
-
-    Names are unique per user, so a user who happens to have a preset called
-    "My Cinemas" would otherwise either hit the constraint or have that preset
-    overwritten when their favorite row is first created for them.
-    """
-    candidate = base_name
-    suffix = 1
-    while (
-        cinema_presets_crud.get_user_preset_by_name(
-            session=session,
-            user_id=user_id,
-            name=candidate,
-        )
-        is not None
-    ):
-        suffix += 1
-        candidate = f"{base_name} {suffix}"
-    return candidate
-
-
 def _build_default_cinema_preset(*, session: Session) -> CinemaPresetPublic:
     now = now_amsterdam_naive()
     return CinemaPresetPublic.model_validate(
@@ -970,22 +981,42 @@ def set_favorite_cinema_ids(
     user_id: UUID,
     cinema_ids: list[int],
 ) -> None:
+    """Save `cinema_ids` as the preferred cinemas, under the reserved name.
+
+    "My Cinemas" is where a preferred selection that has no name of its own
+    lives. The write goes into the row with that name — created the first
+    time — and never into whichever row holds the flag: that may be a preset
+    the user named and promoted, and overwriting it would silently destroy it.
+    It keeps its cinemas and becomes an ordinary preset again.
+
+    Clients ask before replacing an existing "My Cinemas" (and offer to rename
+    it first); this endpoint is also what the intro and older builds call, so
+    it replaces without asking.
+
+    Every cinema ticked is not a set worth naming: it is the built-in "All
+    cinemas" preset, which is preferred by having no favorite row at all.
+    """
     now = now_amsterdam_naive()
     normalized_ids = _normalize_cinema_ids(cinema_ids)
-    cinema_scope = _scope_for_selection(session=session, cinema_ids=normalized_ids)
-    favorite = cinema_presets_crud.get_user_favorite_preset(
+    cinema_presets_crud.clear_user_favorite_preset(
         session=session,
         user_id=user_id,
     )
-    if favorite is None:
+    all_cinema_ids = set(_get_all_cinema_ids(session=session))
+    if all_cinema_ids and set(normalized_ids) >= all_cinema_ids:
+        session.commit()
+        return
+    cinema_scope = _scope_for_selection(session=session, cinema_ids=normalized_ids)
+    reserved = cinema_presets_crud.get_user_preset_by_name(
+        session=session,
+        user_id=user_id,
+        name=FAVORITE_CINEMA_PRESET_NAME,
+    )
+    if reserved is None:
         cinema_presets_crud.create_preset(
             session=session,
             user_id=user_id,
-            name=_free_cinema_preset_name(
-                session=session,
-                user_id=user_id,
-                base_name=FAVORITE_CINEMA_PRESET_NAME,
-            ),
+            name=FAVORITE_CINEMA_PRESET_NAME,
             cinema_ids=normalized_ids,
             cinema_scope=cinema_scope,
             is_favorite=True,
@@ -994,7 +1025,7 @@ def set_favorite_cinema_ids(
     else:
         cinema_presets_crud.update_preset(
             session=session,
-            preset=favorite,
+            preset=reserved,
             cinema_ids=normalized_ids,
             cinema_scope=cinema_scope,
             is_favorite=True,
@@ -1097,12 +1128,23 @@ def get_agenda_showtimes(
     visibility_modes = showtime_converters.viewer_visibility_modes(
         session=session, showtimes=showtimes, user_id=user_id
     )
+    viewer_states = (
+        showtime_page_converters.viewer_states_for_showtimes(
+            session=session,
+            showtimes=showtimes,
+            user_id=user_id,
+            visibility_modes=visibility_modes,
+        )
+        if user_id is not None
+        else {}
+    )
     return [
         showtime_converters.to_public(
             showtime=showtime,
             session=session,
             user_id=user_id,
             visibility_modes=visibility_modes,
+            viewer_states=viewer_states,
         )
         for showtime in showtimes
     ]

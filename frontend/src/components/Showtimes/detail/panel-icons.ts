@@ -21,7 +21,9 @@ import {
   MdBlock,
   MdBookmarkBorder,
   MdCancel,
+  MdCheck,
   MdCheckCircle,
+  MdChevronLeft,
   MdChevronRight,
   MdClose,
   MdEdit,
@@ -42,6 +44,7 @@ import {
   MdSearch,
   MdTune,
   MdVisibility,
+  MdVisibilityOff,
   MdWhatshot,
 } from "react-icons/md"
 
@@ -51,12 +54,18 @@ import {
 // `link` does not.
 import { FiLink } from "react-icons/fi"
 
+// Nor is this one: a film's Letterboxd page is a link off this site, and the
+// brand's own mark is what makes that obvious at a glance.
+import { SiLetterboxd } from "react-icons/si"
+
 export const PanelIcon = {
   addCircleOutline: MdAddCircleOutline,
   arrowForward: MdArrowForward,
   bookmarkBorder: MdBookmarkBorder,
   cancel: MdCancel,
+  check: MdCheck,
   checkCircle: MdCheckCircle,
+  chevronLeft: MdChevronLeft,
   chevronRight: MdChevronRight,
   close: MdClose,
   edit: MdEdit,
@@ -72,9 +81,12 @@ export const PanelIcon = {
   radioButtonChecked: MdRadioButtonChecked,
   radioButtonUnchecked: MdRadioButtonUnchecked,
   search: MdSearch,
+  /** Not Material — see the import. Only Letterboxd links use it. */
+  letterboxd: SiLetterboxd,
   /** Not Material — see the import. Only the Share button uses it. */
   shareLink: FiLink,
   tune: MdTune,
+  visibilityOff: MdVisibilityOff,
 } as const
 
 /** The glyph `shared/showtimes/seat-availability-level` names, for the web. */

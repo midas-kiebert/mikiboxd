@@ -79,6 +79,10 @@ const unavailable = {
     expires: "never",
   }),
   setNotificationHandler: () => {},
+  // No icon to badge when the module is absent, so both sides answer "zero"
+  // rather than throwing at a caller that only wanted to keep a number in sync.
+  getBadgeCountAsync: async () => 0,
+  setBadgeCountAsync: async () => false,
   setNotificationChannelAsync: async () => null,
   getNotificationChannelAsync: async () => null,
   deleteNotificationChannelAsync: async () => {},

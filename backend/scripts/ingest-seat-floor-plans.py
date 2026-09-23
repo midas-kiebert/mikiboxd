@@ -497,7 +497,9 @@ _ACTIVETICKETS_HOST_TO_CINEMA_KEY = {
 MAX_ACTIVETICKETS_CANDIDATES_PER_CINEMA = 30
 
 
-def _ingest_activetickets_floor_plans(*, skipped: list[str], force: bool = False) -> int:
+def _ingest_activetickets_floor_plans(
+    *, skipped: list[str], force: bool = False
+) -> int:
     """ActiveTickets rooms, whose geometry, name and screen side (via the
     override/default) all come off the same show page the poller already reads
     for the seat count.

@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError, NoResultFound
 from sqlmodel import Session
 
 from app.converters import showtime as showtime_converters
+from app.converters import showtime_page as showtime_page_converters
 from app.converters import user as user_converters
 from app.core.enums import GoingStatus, VisibilityMode
 from app.core.viewer import ViewerId
@@ -66,7 +67,7 @@ def _apply_upsert_update(
     # in for the rest — so a scrape that does not know it must leave what is
     # already there alone rather than blanking it on every run.
     if showtime_create.room is not None:
-        existing_showtime.room = showtime_create.room
+        seat_availability_service.move_to_room(existing_showtime, showtime_create.room)
 
 
 def _apply_end_datetime_fallback(
@@ -1124,12 +1125,23 @@ def get_main_page_showtimes(
     visibility_modes = showtime_converters.viewer_visibility_modes(
         session=session, showtimes=showtimes, user_id=current_user_id
     )
+    viewer_states = (
+        showtime_page_converters.viewer_states_for_showtimes(
+            session=session,
+            showtimes=showtimes,
+            user_id=current_user_id,
+            visibility_modes=visibility_modes,
+        )
+        if current_user_id is not None
+        else {}
+    )
     return [
         showtime_converters.to_public(
             showtime=showtime,
             session=session,
             user_id=current_user_id,
             visibility_modes=visibility_modes,
+            viewer_states=viewer_states,
         )
         for showtime in showtimes
     ]

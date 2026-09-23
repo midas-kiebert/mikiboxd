@@ -137,6 +137,22 @@ class Settings(BaseSettings):
     # with this as the `aud` claim (no separate OAuth client is needed).
     APPLE_CLIENT_ID: str = "com.midaskiebert.mikino"
 
+    # The website's Sign in with Apple client: a Services ID from the Apple
+    # Developer portal, grouped under the app's primary App ID so that a person
+    # gets the same `sub` on the web as in the app. Web identity tokens carry
+    # this as their `aud`, and a web authorization code can only be exchanged
+    # with it plus the exact redirect URI the website used. Unset = no Apple
+    # sign-in on the web (the website hides the button too).
+    APPLE_WEB_CLIENT_ID: str | None = None
+    APPLE_WEB_REDIRECT_URI: str | None = None
+
+    @property
+    def apple_client_ids(self) -> list[str]:
+        """Every client an Apple identity token may be issued to."""
+        return [self.APPLE_CLIENT_ID] + (
+            [self.APPLE_WEB_CLIENT_ID] if self.APPLE_WEB_CLIENT_ID else []
+        )
+
     # Credentials for Apple's token endpoints, needed only to *revoke* a user's
     # Sign in with Apple tokens when they delete their account — which Apple
     # requires of any app offering Sign in with Apple (guideline 5.1.1(v) and
@@ -162,7 +178,8 @@ class Settings(BaseSettings):
     # client IDs from Google Cloud Console. The mobile app requests an ID token
     # scoped to the Web client (`webClientId`), so that one is the one that
     # actually appears as `aud` — but all are accepted since GoogleSignin
-    # configuration variants can vary this.
+    # configuration variants can vary this. The website's Google button uses
+    # the same Web client, so its origins must be listed on it in the console.
     GOOGLE_CLIENT_IDS: Annotated[list[str] | str, BeforeValidator(_parse_cors)] = []
 
     # -------------------------------------------------------------------------

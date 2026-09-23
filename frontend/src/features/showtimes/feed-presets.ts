@@ -90,6 +90,12 @@ export const presetPatchForFeed = (
 
   applyDisplayPreset(preset, setters)
 
+  // The app's "only you" audience, which the shared setters have no slot for.
+  // It rides with the status filter it qualifies, as it does in the app.
+  if (!preset.untouchedFields.includes("selected_showtime_filter")) {
+    patch.mine = preset.filters.showtime_audience === "only-you"
+  }
+
   // "only" wins over "exclude" if a preset somehow asks for both: it is the
   // narrower answer, and showing too little is easier to notice than too much.
   const watchlist: WatchlistMode = watchlistOnly
@@ -114,6 +120,7 @@ export const feedParamsToPresetState = (
   params: FeedParams,
 ): PageFilterPresetState => ({
   selected_showtime_filter: params.status,
+  showtime_audience: params.mine ? "only-you" : "including-friends",
   watchlist_only: params.watchlist === "only",
   watchlist_exclude: params.watchlist === "exclude",
   hide_watched: params.watched === "hide",

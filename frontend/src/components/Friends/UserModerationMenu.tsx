@@ -14,6 +14,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
  */
 import { useState } from "react"
 import { FiMoreVertical } from "react-icons/fi"
+import { MdBlock, MdOutlinedFlag, MdPersonRemoveAlt1 } from "react-icons/md"
 import type { UserReportReason } from "shared"
 import { UsersService } from "shared/client"
 import { REPORT_REASON_OPTIONS } from "shared/moderation/report-reasons"
@@ -38,12 +39,19 @@ type UserModerationMenuProps = {
   /** Shown in the report dialog's title, so the target is never ambiguous. */
   userName: string
   isBlocked?: boolean
+  /**
+   * Puts "Remove friend" at the top of the menu, for a place about one friend
+   * (the feed's friend header) where it is too rare to earn a button. The
+   * caller owns the confirm step.
+   */
+  onRemoveFriend?: () => void
 }
 
 const UserModerationMenu = ({
   userId,
   userName,
   isBlocked = false,
+  onRemoveFriend,
 }: UserModerationMenuProps) => {
   // Read flow: prepare derived values/handlers first, then return component JSX.
   const queryClient = useQueryClient()
@@ -95,16 +103,25 @@ const UserModerationMenu = ({
           </IconButton>
         </MenuTrigger>
         <MenuContent>
+          {onRemoveFriend ? (
+            <MenuItem value="remove-friend" onClick={onRemoveFriend}>
+              <MdPersonRemoveAlt1 />
+              Remove friend
+            </MenuItem>
+          ) : null}
           {isBlocked ? (
             <MenuItem value="unblock" onClick={() => unblock()}>
+              <MdBlock />
               Unblock
             </MenuItem>
           ) : (
             <MenuItem value="block" onClick={() => block()}>
+              <MdBlock />
               Block
             </MenuItem>
           )}
           <MenuItem value="report" onClick={() => setIsReportOpen(true)}>
+            <MdOutlinedFlag />
             Report
           </MenuItem>
         </MenuContent>

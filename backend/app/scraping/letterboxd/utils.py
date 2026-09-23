@@ -24,6 +24,11 @@ class SlugScrapeResult:
 
     slugs: list[str]
     is_complete: bool
+    # The account's profile picture, when the scrape found one. Only the
+    # watchlist scrape looks for it (see `watchlist.extract_avatar_url_from_page`);
+    # the watched scrape leaves this `None` and its caller never touches
+    # `Letterboxd.avatar_url` for that reason.
+    avatar_url: str | None = None
 
 
 def get_page(

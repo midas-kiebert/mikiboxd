@@ -1,21 +1,20 @@
 """User Endpoints."""
 
+from urllib.parse import urlencode
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.api.deps import (
     CurrentUser,
     SessionDep,
 )
-from app.core.security import (
-    verify_email_verification_token,
-    verify_watchlist_digest_unsubscribe_token,
-)
+from app.core.config import settings
+from app.core.security import verify_watchlist_digest_unsubscribe_token
 from app.crud import user as users_crud
 from app.inputs.movie import Filters, get_filters
-from app.models.auth_schemas import Message
+from app.models.auth_schemas import EmailVerification, Message
 from app.models.user import UserRegister
 from app.schemas.showtime import ShowtimePublic
 from app.schemas.user import UserPublic, UserWithFriendStatus
@@ -44,36 +43,38 @@ def unsubscribe_watchlist_digest(session: SessionDep, token: str) -> HTMLRespons
     return HTMLResponse("<p>You will no longer receive watchlist digest emails.</p>")
 
 
-@router.get("/verify-email", response_class=HTMLResponse)
-def verify_email(session: SessionDep, token: str) -> HTMLResponse:
+@router.get("/verify-email", include_in_schema=False)
+def open_verify_email_link(token: str) -> RedirectResponse:
+    """Forward a confirmation link mailed before links went to the website.
+
+    Those links point at the API and are still sitting in inboxes; the website
+    page is where confirming happens now, so they are sent on to it rather than
+    confirmed here. A GET that changes nothing is also the right shape for a
+    link that mail scanners open on their own.
+    """
+    query = urlencode({"token": token})
+    return RedirectResponse(
+        f"{settings.FRONTEND_HOST}/verify-email?{query}",
+        status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+    )
+
+
+@router.post("/verify-email", response_model=Message)
+def verify_email(session: SessionDep, body: EmailVerification) -> Message:
     """Confirm an email address from the link mailed at registration.
 
-    No authentication — the signed token in the link is what proves the request
-    came from someone reading that mailbox, which is the whole point of it.
-    Already-verified accounts are answered the same way as a fresh confirmation:
-    a second click on the same link is a normal thing to do, and it has the
-    outcome the user wanted either way.
+    Called by the website's and the app's /verify-email pages, which is where
+    the mailed link opens. No authentication — the signed token is what proves
+    the request came from someone reading that mailbox, which is the whole
+    point of it, and the link is as likely to be opened on a device that is
+    not signed in as on one that is.
     """
-    email = verify_email_verification_token(token)
-    if email is None:
-        return HTMLResponse(
-            "<p>This confirmation link is invalid or has expired. "
-            "You can ask for a new one from the app.</p>",
-            status_code=400,
+    if not users_service.confirm_email(session=session, token=body.token):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This confirmation link is invalid or has expired.",
         )
-    user = users_crud.get_user_by_email(session=session, email=email)
-    if user is None:
-        return HTMLResponse(
-            "<p>This confirmation link is invalid.</p>", status_code=400
-        )
-    if not user.email_verified:
-        user.email_verified = True
-        # Restore whatever email-routed preferences were switched to push (and
-        # the digest, if it was on) when this address became unverified.
-        users_crud.restore_unverified_email_preferences(user)
-        session.add(user)
-        session.commit()
-    return HTMLResponse("<p>Thanks — your email address is confirmed.</p>")
+    return Message(message="Your email address is confirmed.")
 
 
 @router.get("/search", response_model=list[UserWithFriendStatus])

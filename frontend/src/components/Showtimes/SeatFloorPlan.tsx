@@ -68,7 +68,7 @@ type SeatFloorPlanProps = {
    */
   onPickSeat?: (
     seat: { row: string; number: string } | null,
-  ) => Promise<boolean> | void
+  ) => Promise<boolean> | undefined
 }
 
 /** How tall the plan is allowed to get inside the panel. */
@@ -132,7 +132,11 @@ type SeatTileProps = {
  * for the 52 seats the count beside it was talking about, with the phantom
  * edges of every row bracketing the real ones.
  */
-const SeatTile = memo(function SeatTile({ seat, isYou, clickable }: SeatTileProps) {
+const SeatTile = memo(function SeatTile({
+  seat,
+  isYou,
+  clickable,
+}: SeatTileProps) {
   const style: React.CSSProperties = {
     position: "absolute",
     left: seat.x,
@@ -375,15 +379,15 @@ const SeatFloorPlan = ({
         >
           {isRoomReady &&
             layout.seats.map((seat) => (
-            // Keyed on the room's own geometry, not on the label: row "4" seat
-            // "15" and row "41" seat "5" both spell "415", and React quietly
-            // dropped one of the two seats.
-            <SeatTile
-              key={`${seat.row_name}-${seat.seat_name}-${seat.position_left}-${seat.position_top}`}
-              seat={seat}
-              isYou={isViewerSeat(seat.row_name, seat.seat_name)}
-              clickable={canPickSeat && seat.selectable}
-            />
+              // Keyed on the room's own geometry, not on the label: row "4" seat
+              // "15" and row "41" seat "5" both spell "415", and React quietly
+              // dropped one of the two seats.
+              <SeatTile
+                key={`${seat.row_name}-${seat.seat_name}-${seat.position_left}-${seat.position_top}`}
+                seat={seat}
+                isYou={isViewerSeat(seat.row_name, seat.seat_name)}
+                clickable={canPickSeat && seat.selectable}
+              />
             ))}
         </Box>
       ) : null}

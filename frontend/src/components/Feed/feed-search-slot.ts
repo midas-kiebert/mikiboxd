@@ -17,7 +17,7 @@
  * slot while it is mounted and empties it on the way out, so adding a feed
  * screen needs no list kept in step anywhere.
  */
-import { useLayoutEffect, useSyncExternalStore } from "react"
+import { type RefObject, useLayoutEffect, useSyncExternalStore } from "react"
 import type { SearchField } from "shared/client"
 
 export type FeedSearchSlot = {
@@ -77,4 +77,62 @@ export const usePublishFeedSearch = (search: FeedSearchSlot): void => {
     },
     [],
   )
+}
+
+/**
+ * Where the feed's list — the ticket wall or the film rows — is centred, as a
+ * viewport x, so the nav can put the field over it rather than in the middle
+ * of the bar. The list moves as the rail folds and the showtime panel opens,
+ * and the bar knows nothing of either. `null` when no feed is mounted.
+ */
+let listCenter: number | null = null
+const centerListeners = new Set<Listener>()
+
+const subscribeCenter = (listener: Listener) => {
+  centerListeners.add(listener)
+  return () => {
+    centerListeners.delete(listener)
+  }
+}
+
+const setListCenter = (next: number | null) => {
+  if (next === listCenter) return
+  listCenter = next
+  for (const listener of centerListeners) listener()
+}
+
+export const useFeedListCenter = (): number | null =>
+  useSyncExternalStore(
+    subscribeCenter,
+    () => listCenter,
+    () => null,
+  )
+
+/**
+ * Publish the centre of `ref`'s box while it is mounted. Its width changes
+ * whenever it moves — the rail and panel beside it take their room from it —
+ * so observing its size, and the window's, is enough to follow it.
+ */
+export const usePublishFeedListCenter = (
+  ref: RefObject<HTMLElement | null>,
+): void => {
+  useLayoutEffect(() => {
+    const element = ref.current
+    if (!element) return
+
+    const publish = () => {
+      const rect = element.getBoundingClientRect()
+      setListCenter(Math.round(rect.left + rect.width / 2))
+    }
+
+    publish()
+    const observer = new ResizeObserver(publish)
+    observer.observe(element)
+    window.addEventListener("resize", publish)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener("resize", publish)
+      setListCenter(null)
+    }
+  }, [ref])
 }

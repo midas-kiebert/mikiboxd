@@ -9,29 +9,22 @@
  * which is why `TopNavBar` drops its own row of them below `md`.
  */
 import { Box, Flex, Grid, Icon, Text, useToken } from "@chakra-ui/react"
-import { useQueryClient } from "@tanstack/react-query"
 import { Link as RouterLink } from "@tanstack/react-router"
-
-import type { MeGetCurrentUserResponse } from "shared"
 
 import {
   NAV_ICON_SIZE,
+  NAV_ITEMS,
   formatBadgeCount,
-  getNavItems,
 } from "@/components/Common/nav-items"
 import { useNavBadgeCounts } from "@/hooks/useNavBadgeCounts"
 
 const BottomNavBar = () => {
   // Read flow: prepare derived values/handlers first, then return component JSX.
-  const queryClient = useQueryClient()
-  const currentUser = queryClient.getQueryData<MeGetCurrentUserResponse>([
-    "currentUser",
-  ])
   // Data hooks keep this module synced with backend data and shared cache state.
   const badgeCounts = useNavBadgeCounts()
   const [activeColor] = useToken("colors", "app.tabIconSelected")
 
-  const items = getNavItems(!!currentUser?.is_superuser)
+  const items = NAV_ITEMS
   const listItems = items.map(({ icon, title, path, badge }) => {
     const count = badge ? badgeCounts[badge] : 0
 
@@ -42,7 +35,7 @@ const BottomNavBar = () => {
         search={true}
         to={path}
         // Showtimes is "/", which prefix-matches every other route, so only it
-        // needs the exact test; Admin has children that must stay lit.
+        // needs the exact test.
         activeOptions={{ exact: path === "/" }}
         activeProps={{ style: { color: activeColor } }}
         style={{ width: "100%", height: "100%" }}

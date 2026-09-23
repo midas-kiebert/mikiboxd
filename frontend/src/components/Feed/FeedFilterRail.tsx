@@ -1,92 +1,127 @@
 /**
  * The filter rail beside the feed.
  *
- * The app hides all of this behind a button, opens a sheet, and asks you to
- * expand a section before you can toggle anything — six actions to narrow to
- * tonight. A desktop has a column going spare, so the dimensions people
- * actually reach for are open on arrival and one click away, which is the
- * single biggest click-count win the website has over the app.
+ * Top to bottom, in the order the product ranks them:
  *
- * The two long ones are the exception. Cinemas and Letterboxd lists are lists
- * without a ceiling — forty venues across a dozen cities — and leaving them
- * open pushes the card past the bottom of the screen, which costs the rail the
- * pinning that makes it worth having (see `FeedLayout`). They start closed
- * with a summary of what they are doing, exactly as the app's sections do, and
- * exactly as Cineville folds its cities and theatres away.
+ *     Cinemas         what you are looking at, your sets, "Select cinemas"
+ *     Quick filters   your saved filter presets
+ *     Feed style      ticket wall or movie rows, and making that the default
+ *     Letterboxd      watchlist · already seen, or — with no username linked
+ *                     yet — a field to link one, the two switches greyed out
+ *     Language        English subtitled (or spoken) only, and making that
+ *                     the default
+ *     When            days, and time of day on the app's slider
+ *     More filters    friends, lists, and film length on the app's slider
+ *     Clear filters   a full-width button pinned to the bottom of the rail
  *
- * Adding a dimension is a section in this file plus its control. The state,
- * the URL spelling and the API mapping are already in `feed-params.ts` — this
+ * When and More filters start folded, so a filter in either could be on with
+ * nothing on screen saying so. Folded, each lists what it holds as the app's
+ * active-filter chips, one per filter, each one click from off.
+ *
+ * "Select cinemas" opens the cinema sheet glued to this rail's right edge (see
+ * `CinemaSheet`). While it is out the rail stays live and the rest of the page
+ * does not: this component lifts itself above the sheet's scrim, and the
+ * cinema summary follows the sheet's draft so the two never disagree.
+ *
+ * Adding a dimension is a section in this file plus its control. The state, the
+ * URL spelling and the API mapping are already in `feed-params.ts` — this
  * component only ever reads `params` and calls `onChange`.
  *
- * "Clear filters" sits in the card's own heading rather than in a bar above the
- * list, because a reset belongs beside the things it resets. It is passed in
- * rather than assumed: on a phone there is no rail, and the reset goes back to
- * the toolbar with the search field.
+ * `params` and `onChange` are already the optimistic pair `useFeedParams`
+ * keeps (the URL write is deferred past the press's own frame), so every
+ * control here — switches, pills, cinema sets, chips, presets, Clear —
+ * answers in the frame it is clicked, and so does the feed beside it.
  */
-import { Box, Flex, Stack, Text } from "@chakra-ui/react"
-import { memo } from "react"
+import { Box, Flex, Stack, chakra } from "@chakra-ui/react"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { type FormEvent, memo, useEffect, useRef, useState } from "react"
+import { MdCheck, MdFilterAltOff } from "react-icons/md"
+import { type Language, MeService } from "shared/client"
+import { serializeCinemaIds } from "shared/filters/cinema-grouping"
+import {
+  commitCinemaSelection,
+  resolveCinemaSelection,
+} from "shared/filters/cinema-selection"
 import {
   RELATIVE_DAY_OPTIONS,
   WEEKDAY_DAY_OPTIONS,
+  getDaySelectionLabel,
+  isIsoDaySelection,
 } from "shared/filters/day-filter-utils"
-import { TIME_FILTER_PRESETS } from "shared/filters/time-filter-presets"
+import useAuth from "shared/hooks/useAuth"
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas"
+import { useFetchFriends } from "shared/hooks/useFetchFriends"
 import {
   useFetchCuratedLetterboxdLists,
   useFetchLetterboxdLists,
 } from "shared/hooks/useLetterboxdLists"
 
-import { useIsSignedIn } from "@/auth/useSession"
-import CinemaPresets from "@/components/Feed/CinemaPresets"
-import FeedPresets from "@/components/Feed/FeedPresets"
+import { useIsSignedIn, useRequireAccount } from "@/auth/useSession"
+import { CinemaSection } from "@/components/Feed/CinemaSection"
+import { CinemaSheet, SHEET_EXIT_MS } from "@/components/Feed/CinemaSheet"
 import {
-  RAIL_INK,
-  RailActionButton,
+  RAISED_PANEL_ATTRIBUTE,
+  RAISED_PANEL_Z_INDEX,
+} from "@/components/Feed/FeedLayout"
+import FeedPresets from "@/components/Feed/FeedPresets"
+import { useFriendStatus } from "@/components/Feed/FeedSubjectHeader"
+import {
+  type RailChipItem,
+  RailFacetHeading,
+  RailInput,
+  RailModeRow,
+  RailNote,
+  RailPart,
+  RailPartLabel,
   RailPill,
   RailPillRow,
   RailSection,
   RailSegmented,
   type RailSegmentedOption,
-  RailSubLabel,
+  RailSwitchRow,
+  RailTextButton,
+  summarizeChipValues,
 } from "@/components/Feed/FilterRailControls"
-import type {
-  FeedParams,
-  WatchedMode,
-  WatchlistMode,
+import { FriendFilter } from "@/components/Feed/FriendFilter"
+import { usePreferredCinemasSave } from "@/components/Feed/PreferredCinemasPrompt"
+import {
+  RUNTIME_SCALE,
+  RangeSlider,
+  TIME_SCALE,
+} from "@/components/Feed/RangeSlider"
+import { FriendButton } from "@/components/Friends/friend-controls"
+import { personName } from "@/components/Showtimes/detail/PersonAvatar"
+import {
+  type FeedParams,
+  defaultFeedParams,
 } from "@/features/showtimes/feed-params"
-import type { Language } from "shared/client"
+import { usePreferredCinemaIds } from "@/features/showtimes/guest-preferred-cinemas"
+import { useCinemaPresetState } from "@/features/showtimes/use-cinema-preset-state"
+import { useRememberedFeedStyle } from "@/features/showtimes/use-remembered-feed-style"
+import { useRememberedLanguage } from "@/features/showtimes/use-remembered-language"
+import useCustomToast from "@/hooks/useCustomToast"
 import type { SharedTabShowtimeFilter } from "shared/filters/shared-tab-filters"
 
-/**
- * Runtime is one range at a time, like time of day. The app offers a slider;
- * three buckets cover what anyone actually filters for and cost one click
- * instead of two drags.
- */
-const RUNTIME_PRESETS: { token: string; label: string }[] = [
-  { token: "5-90", label: "Under 1½h" },
-  { token: "90-120", label: "1½–2h" },
-  { token: "120-200", label: "Over 2h" },
-]
+import "./FeedFilterRail.css"
+// The Letterboxd field borrows the settings page's `.st-affix`/`.st-input`.
+import "@/components/Settings/settings.css"
 
-/** OR, not AND: picking both is "either language", which is what people mean. */
-const LANGUAGE_OPTIONS: { value: Language; label: string }[] = [
-  { value: "en", label: "English" },
-  { value: "nl", label: "Dutch" },
-]
-
-/** What a section's header says when nothing in it is set. */
-const NOTHING_SET = "Any"
+/** The one language the toggle is about — matches spoken *or* subtitled. */
+const ENGLISH: Language = "en"
 
 /**
- * One row per screening, or one per film. A segmented control rather than a
- * checkbox, because it is a choice between two ways of reading the same feed
- * and neither is the absence of the other — the app's own control, with the
- * app's own words for the two sides.
+ * Above the scrim the cinema sheet paints over the page, so the rail stays
+ * bright and clickable beside it. Only while the sheet is out — and above the
+ * root layout's own notice banner (`zIndex={2000}` in `routes/__root.tsx`), or
+ * that one strip of the page would stay lit through the dim.
+ *
+ * Must match `SHEET_Z_INDEX` in `CinemaSheet.tsx`, which portals the sheet
+ * itself to `document.body` — otherwise a card in a "Ticket wall" grid, whose
+ * cell always establishes its own stacking context (`content-visibility:
+ * auto`), paints over both the rail and the sheet regardless of how high this
+ * number is.
  */
-const GROUP_OPTIONS: readonly RailSegmentedOption<boolean>[] = [
-  { value: false, label: "Showtimes" },
-  { value: true, label: "Movies" },
-]
+const RAISED_Z_INDEX = RAISED_PANEL_Z_INDEX
 
 /**
  * Which of your friends' marks to narrow to. "Any" filters nothing, so its
@@ -111,6 +146,14 @@ type FeedFilterRailProps = {
    */
   showGroupToggle?: boolean
   /**
+   * Only the filters that narrow a film's screenings — cinemas, language,
+   * when, and whose plans — for a page that is about one film already. The
+   * ones that choose films (watchlist, seen, lists, length) are left out, and
+   * so are quick filters, which would put them back. The page pins those
+   * dimensions (`FILM_LEVEL_FEED_PARAMS`), so nothing can hold them on.
+   */
+  screeningsOnly?: boolean
+  /**
    * Clears every filter. Omitted where the rail is not on screen to hold it —
    * on a phone the toolbar takes the reset back, along with the search field.
    */
@@ -124,353 +167,858 @@ const toggleIn = <T,>(values: T[], value: T): T[] =>
     ? values.filter((entry) => entry !== value)
     : [...values, value]
 
-/** A collapsed section's header line: the picked labels, or `NOTHING_SET`. */
-const summarise = (labels: string[]): string =>
-  labels.length ? labels.join(", ") : NOTHING_SET
+const DefaultButton = chakra("button")
+
+/**
+ * "Make this the default", on the section heading's own line — or, greyed
+ * and inert, "This is the default" once it is.
+ *
+ * A button rather than a "remember my choice" checkbox: a remembered choice
+ * followed every flip of the control, so a one-off change or a preset quietly
+ * rewrote it. Here the control only ever changes this visit, and the default
+ * changes only when you say so. Quiet — muted words, no fill — and always
+ * there, so the heading row never changes height.
+ */
+const MakeDefault = ({
+  isDefault,
+  onMakeDefault,
+  title,
+}: {
+  isDefault: boolean
+  onMakeDefault: () => void
+  title: string
+}) => (
+  <DefaultButton
+    type="button"
+    disabled={isDefault}
+    onClick={onMakeDefault}
+    title={isDefault ? undefined : title}
+    display="inline-flex"
+    alignItems="center"
+    gap="4px"
+    px="4px"
+    py="1px"
+    borderRadius="4px"
+    bg="transparent"
+    color={isDefault ? "fg.subtle" : "app.tint"}
+    fontSize="11px"
+    fontWeight="600"
+    cursor={isDefault ? "default" : "pointer"}
+    _hover={isDefault ? undefined : { textDecoration: "underline" }}
+    _focusVisible={{ outline: "2px solid", outlineColor: "app.tint" }}
+  >
+    {isDefault ? <MdCheck size={11} /> : null}
+    {/* Nudged: a no-descender line's own line-box leaves empty space below
+        the letters, so centering it against the icon lands the ink high. */}
+    <Box as="span" position="relative" top="1px">
+      {isDefault ? "This is the default" : "Make this the default"}
+    </Box>
+  </DefaultButton>
+)
+
+const FEED_STYLE_OPTIONS: readonly RailSegmentedOption<boolean>[] = [
+  { value: false, label: "Ticket wall", tone: "neutral" },
+  { value: true, label: "Movie rows", tone: "neutral" },
+]
+
+/**
+ * Link a Letterboxd username from the rail itself, shown in place of nothing
+ * while the watchlist and already-seen switches below it cannot work yet. The
+ * same write as the settings page's field.
+ */
+const LetterboxdLink = () => {
+  const queryClient = useQueryClient()
+  const { showErrorToast } = useCustomToast()
+  const requireAccount = useRequireAccount()
+  const [username, setUsername] = useState("")
+  const trimmed = username.trim()
+
+  const save = useMutation({
+    mutationFn: (value: string) =>
+      MeService.updateUserMe({ requestBody: { letterboxd_username: value } }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["currentUser"], updated)
+      queryClient.invalidateQueries({ queryKey: ["showtimes"] })
+      queryClient.invalidateQueries({ queryKey: ["movies"] })
+    },
+    onError: () =>
+      showErrorToast("Your Letterboxd username was not saved. Try again."),
+  })
+
+  const submit = () => {
+    if (!trimmed || save.isPending || !requireAccount()) return
+    save.mutate(trimmed)
+  }
+
+  return (
+    <Stack gap="6px" mb="6px" px="2px">
+      <RailNote>
+        Link your Letterboxd username to filter by your watchlist and the films
+        you have seen.
+      </RailNote>
+      {/* The settings page's own field and button (`Settings/LetterboxdSection`),
+          so linking looks the same wherever it is done. */}
+      <form
+        onSubmit={(event: FormEvent) => {
+          event.preventDefault()
+          submit()
+        }}
+      >
+        <Flex gap="6px" align="center">
+          <div className="st-affix" style={{ flex: 1, minWidth: 0 }}>
+            <span className="st-affix__prefix">letterboxd.com/</span>
+            <input
+              className="st-input"
+              aria-label="Letterboxd username"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              placeholder="username"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              disabled={save.isPending}
+            />
+          </div>
+          <FriendButton
+            primary
+            busy={!trimmed || save.isPending}
+            onClick={submit}
+          >
+            {save.isPending ? "Saving…" : "Save"}
+          </FriendButton>
+        </Flex>
+      </form>
+    </Stack>
+  )
+}
+
+const ClearButton = chakra("button")
+
+/**
+ * Clear filters, pinned to the bottom of the rail so it is on screen however
+ * far down the filters you are, and a full-width button so it is easy to hit.
+ *
+ * Always there, never appearing: a button that turns up with the first filter
+ * would move everything under the pointer. With nothing on it says so and
+ * rests; with something on it takes the soft accent the app gives an action
+ * with something to do.
+ */
+const ClearFiltersButton = ({
+  count,
+  hasSearch,
+  onClear,
+}: {
+  count: number
+  hasSearch: boolean
+  onClear: () => void
+}) => {
+  const hasSomethingToClear = count > 0 || hasSearch
+  return (
+    <Box
+      position="sticky"
+      bottom={0}
+      zIndex={1}
+      bg="bg.panel"
+      borderTopWidth="1px"
+      borderColor="border"
+      px="12px"
+      py="10px"
+      mt="4px"
+    >
+      <ClearButton
+        type="button"
+        onClick={onClear}
+        disabled={!hasSomethingToClear}
+        w="100%"
+        h="38px"
+        display="flex"
+        alignItems="center"
+        justifyContent="center"
+        gap="8px"
+        borderRadius="10px"
+        borderWidth="1px"
+        borderColor="app.green.border"
+        bg="app.green.primary"
+        color="app.green.secondary"
+        fontSize="13px"
+        fontWeight="700"
+        cursor="pointer"
+        transition="background-color 120ms ease"
+        _hover={{ filter: "brightness(0.97)" }}
+        _disabled={{
+          borderColor: "app.pillBorder",
+          bg: "transparent",
+          color: "fg.subtle",
+          cursor: "default",
+          filter: "none",
+        }}
+      >
+        <MdFilterAltOff size={17} />
+        <Box as="span" position="relative" top="1px">
+          {count === 0
+            ? "No filters on"
+            : `Clear ${count} filter${count === 1 ? "" : "s"}`}
+        </Box>
+      </ClearButton>
+    </Box>
+  )
+}
 
 const FeedFilterRail = memo(function FeedFilterRail({
   params,
   onChange,
   showPresets = true,
   showGroupToggle = false,
+  screeningsOnly = false,
   onReset,
   activeFilterCount = 0,
 }: FeedFilterRailProps) {
   // Read flow: prepare derived values/handlers first, then return component JSX.
   const { data: cinemas } = useFetchCinemas()
 
-  // Signed in, the account endpoint already returns the curated lists alongside
-  // the user's own, so only one of these two ever runs.
   const isSignedIn = useIsSignedIn()
+  const { data: friends = [] } = useFetchFriends({ enabled: isSignedIn })
+  const { data: preferredCinemaIds } = usePreferredCinemaIds()
+
+  const presetState = useCinemaPresetState({ isSignedIn, preferredCinemaIds })
+  const preferredSave = usePreferredCinemasSave(presetState)
   const { data: ownLists } = useFetchLetterboxdLists(isSignedIn)
   const { data: curatedLists } = useFetchCuratedLetterboxdLists(!isSignedIn)
   const lists = (isSignedIn ? ownLists : curatedLists) ?? []
 
+  const [dateDraft, setDateDraft] = useState("")
+  const cardRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  /** The sheet's selection while it is out; null while it is closed. */
+  const [draftIds, setDraftIds] = useState<number[] | null>(null)
+  // The selection a just-closed sheet holds while it slides away. It is
+  // applied once the sheet is gone, not as it starts to go: a new selection
+  // re-renders the whole feed, and started first, that work held the slide
+  // back until the sheet was already due to unmount — so it snapped shut.
+  const [leavingIds, setLeavingIds] = useState<number[] | null>(null)
+  const commitAfterExitRef = useRef<(ids: number[]) => void>(() => {})
+  useEffect(() => {
+    if (leavingIds === null) return
+    const timer = setTimeout(() => {
+      commitAfterExitRef.current(leavingIds)
+      setLeavingIds(null)
+    }, SHEET_EXIT_MS)
+    return () => clearTimeout(timer)
+  }, [leavingIds])
+
   const toggleDay = (token: string) =>
     onChange({ days: toggleIn(params.days, token) })
 
-  // One range at a time, matching the app: `normalizeSingleTimeRangeSelection`
-  // keeps only the first, so offering multi-select here would silently drop the
-  // rest.
-  const toggleTime = (range: string) =>
-    onChange({ times: params.times.includes(range) ? [] : [range] })
+  const remembered = useRememberedLanguage({
+    current: params.languages,
+    apply: (languages) => onChange({ languages: languages as Language[] }),
+  })
+  const isEnglishOnly = params.languages.includes(ENGLISH)
 
-  const toggleCinema = (id: number) =>
-    onChange({ cinemas: toggleIn(params.cinemas, id) })
+  const rememberedStyle = useRememberedFeedStyle({
+    current: params.group,
+    apply: (group) => onChange({ group }),
+    enabled: showGroupToggle && !screeningsOnly,
+  })
+  const { user } = useAuth()
+  const hasLetterboxd = Boolean(user?.letterboxd_username?.trim())
 
-  // Single-select, matching normalizeSingleRuntimeRangeSelection.
-  const toggleRuntime = (token: string) =>
-    onChange({ runtime: params.runtime.includes(token) ? [] : [token] })
-
-  const toggleLanguage = (value: Language) =>
-    onChange({ languages: toggleIn(params.languages, value) })
+  const allCinemaIds = (cinemas ?? []).map((cinema) => cinema.id)
 
   /**
-   * A list is off, included, or excluded — never both at once, so picking one
-   * side clears the other.
+   * The cinemas the feed is actually showing, which is not the same as what the
+   * URL says. An empty `?cinemas=` means "whatever this account usually
+   * watches", so the summary resolves the same three layers the feed itself
+   * does — see `shared/filters/cinema-selection`.
    */
-  const setListMode = (id: string, mode: "off" | "only" | "hide") =>
-    onChange({
-      lists:
-        mode === "only"
-          ? [...new Set([...params.lists, id])]
-          : params.lists.filter((entry) => entry !== id),
-      excludeLists:
-        mode === "hide"
-          ? [...new Set([...params.excludeLists, id])]
-          : params.excludeLists.filter((entry) => entry !== id),
-    })
+  const committedCinemaIds = resolveCinemaSelection({
+    sessionCinemaIds: params.cinemas.length ? params.cinemas : undefined,
+    preferredCinemaIds,
+    allCinemaIds,
+  })
+  const isCinemaSheetOpen = draftIds !== null
+  const shownCinemaIds = draftIds ?? leavingIds ?? committedCinemaIds
 
-  // Cinemas are grouped by city, which is how anyone actually picks them.
-  const cinemasByCity = new Map<string, typeof cinemas>()
-  for (const cinema of cinemas ?? []) {
-    const city = cinema.city.name
-    if (!cinemasByCity.has(city)) cinemasByCity.set(city, [])
-    cinemasByCity.get(city)?.push(cinema)
+  const commitCinemas = (ids: number[]) => {
+    if (serializeCinemaIds(ids) !== serializeCinemaIds(committedCinemaIds)) {
+      onChange({ cinemas: commitCinemaSelection(ids, allCinemaIds) })
+    }
+  }
+  commitAfterExitRef.current = commitCinemas
+
+  /** From the sheet: slide it away, then commit. From the rail: commit now. */
+  const applyCinemas = (ids: number[]) => {
+    if (draftIds !== null) {
+      setLeavingIds(ids)
+    } else {
+      // A set picked while the last sheet is still leaving supersedes it.
+      setLeavingIds(null)
+      commitCinemas(ids)
+    }
+    setDraftIds(null)
+    triggerRef.current?.focus({ preventScroll: true })
   }
 
-  const dayOptions = [...RELATIVE_DAY_OPTIONS, ...WEEKDAY_DAY_OPTIONS]
-  const daySummary = summarise(
-    dayOptions
-      .filter((option) => params.days.includes(option.token))
-      .map((option) => ("shortLabel" in option ? option.shortLabel : option.label)),
+  /** Reopened mid-exit, the sheet picks up the selection it was leaving with. */
+  const openCinemaSheet = () => {
+    setDraftIds(leavingIds ?? committedCinemaIds)
+    setLeavingIds(null)
+  }
+
+  const isoDays = params.days.filter(isIsoDaySelection)
+
+  const runtimeOn = params.runtime.length > 0
+  const friendStatusOn = params.status !== "all" || params.mine
+  const listsOn = params.lists.length > 0 || params.excludeLists.length > 0
+
+  // The folded sections' chips — the app's labels, one chip per filter.
+  const dayLabels = params.days.map(getDaySelectionLabel)
+  const whenChips: RailChipItem[] = [
+    ...(dayLabels.length
+      ? [
+          {
+            key: "days",
+            label: summarizeChipValues(dayLabels),
+            title: `Days: ${dayLabels.join(", ")}`,
+            onRemove: () => onChange({ days: [] }),
+          },
+        ]
+      : []),
+    ...(params.times.length
+      ? [
+          {
+            key: "times",
+            label: TIME_SCALE.describe(params.times),
+            onRemove: () => onChange({ times: [] }),
+          },
+        ]
+      : []),
+  ]
+
+  const listTitle = (listId: string) => {
+    const list = lists.find((entry) => entry.id === listId)
+    return list ? (list.title ?? list.list_slug) : "List"
+  }
+  const shownListTitles = params.lists.map(listTitle)
+  const hiddenListTitles = params.excludeLists.map(listTitle)
+  const friendNames = params.friends
+    .map((id) => friends.find((friend) => friend.id === id))
+    .filter((friend) => friend !== undefined)
+    .map((friend) => personName(friend))
+  // One person who isn't in the friends list (a non-friend's page): name them
+  // from their own status lookup — the header's, so no extra request — rather
+  // than calling them "1 friend".
+  const loneId =
+    params.friends.length === 1 && !friendNames.length
+      ? params.friends[0]
+      : null
+  const { data: lonePerson } = useFriendStatus(loneId)
+  if (lonePerson) friendNames.push(personName(lonePerson))
+  const moreChips: RailChipItem[] = [
+    ...(friendStatusOn
+      ? [
+          {
+            key: "status",
+            // "Friends …" rather than the app's bare "Going": down here, away
+            // from the control it came from, a lone "Going" reads as your own.
+            // With "only mine" on it *is* your own, which is your agenda.
+            label: params.mine
+              ? params.status === "going"
+                ? "You're going"
+                : "Your plans"
+              : params.status === "going"
+                ? "Friends going"
+                : "Friends interested",
+            onRemove: () => onChange({ status: "all" as const, mine: false }),
+          },
+        ]
+      : []),
+    ...(params.friends.length
+      ? [
+          {
+            key: "friends",
+            label:
+              params.friends.length === 1
+                ? `Only ${friendNames[0] ?? "1 person"}`
+                : `Only ${params.friends.length} friends`,
+            title: friendNames.length
+              ? `Only: ${friendNames.join(", ")}`
+              : undefined,
+            onRemove: () => onChange({ friends: [] }),
+          },
+        ]
+      : []),
+    ...(shownListTitles.length
+      ? [
+          {
+            key: "lists-include",
+            label: summarizeChipValues(shownListTitles),
+            title: `Lists: ${shownListTitles.join(", ")}`,
+            onRemove: () => onChange({ lists: [] }),
+          },
+        ]
+      : []),
+    ...(hiddenListTitles.length
+      ? [
+          {
+            key: "lists-exclude",
+            label: summarizeChipValues(hiddenListTitles),
+            excludes: true,
+            title: `Hide lists: ${hiddenListTitles.join(", ")}`,
+            onRemove: () => onChange({ excludeLists: [] }),
+          },
+        ]
+      : []),
+    ...(runtimeOn
+      ? [
+          {
+            key: "runtime",
+            label: RUNTIME_SCALE.describe(params.runtime),
+            onRemove: () => onChange({ runtime: [] }),
+          },
+        ]
+      : []),
+  ]
+
+  /**
+   * A default language is not a filter — the same reason
+   * the account's own preferred cinemas don't count toward `activeFilterCount`
+   * (`countActiveFilters` in `feed-params.ts`, which has no way to know about
+   * this device-local preference). Subtracted here rather than there, since
+   * only this rail knows about it.
+   */
+  const isRememberedLanguageOn =
+    remembered.isDefault && remembered.defaultLanguages.length > 0
+  const displayedFilterCount = Math.max(
+    0,
+    activeFilterCount - (isRememberedLanguageOn ? 1 : 0),
   )
-  const timeSummary = summarise(
-    TIME_FILTER_PRESETS.filter((preset) =>
-      params.times.includes(preset.range),
-    ).map((preset) => preset.label),
-  )
-  const runtimeSummary = summarise(
-    RUNTIME_PRESETS.filter((preset) =>
-      params.runtime.includes(preset.token),
-    ).map((preset) => preset.label),
-  )
-  const languageSummary = summarise(
-    LANGUAGE_OPTIONS.filter((option) =>
-      params.languages.includes(option.value),
-    ).map((option) => option.label),
-  )
-  const myListsSummary = summarise(
-    [
-      params.watchlist === "only" ? "Watchlist" : null,
-      params.watched === "hide" ? "Unseen" : null,
-    ].filter((label): label is string => label !== null),
-  )
-  const groupSummary =
-    GROUP_OPTIONS.find((option) => option.value === params.group)?.label ??
-    NOTHING_SET
-  const friendStatusSummary =
-    FRIEND_STATUS_OPTIONS.find((option) => option.value === params.status)
-      ?.label ?? NOTHING_SET
-  const cinemaSummary = params.cinemas.length
-    ? `${params.cinemas.length} selected`
-    : "Your usual"
-  const listsSummary = summarise(
-    [
-      params.lists.length ? `${params.lists.length} only` : null,
-      params.excludeLists.length ? `${params.excludeLists.length} hidden` : null,
-    ].filter((label): label is string => label !== null),
-  )
+
+  /**
+   * Clears every dimension, language back to its default rather than to off —
+   * clearing to off would mean "clear filters" quietly overriding a standing
+   * preference, the same trap an empty
+   * `?cinemas=` would be without `resolveCinemaSelection`. One `onChange` with
+   * every `FeedParams` key set explicitly, rather than calling `onReset` and
+   * patching languages after: `onReset` navigates to `search: {}`, and a
+   * second call in the same tick would merge onto *this render's* `params`,
+   * not the reset ones — the navigation hasn't landed yet. Spelling out every
+   * key sidesteps that regardless of ordering.
+   */
+  const clearFilters = () => {
+    onChange({
+      ...defaultFeedParams,
+      languages: [...remembered.defaultLanguages],
+      // The feed style is a view, not a filter — clearing never changes it.
+      group: params.group,
+    })
+  }
+
+  const isRaised = isCinemaSheetOpen || leavingIds !== null
 
   // Render/output using the state and derived values prepared above.
   return (
-    // The rail paints its own card rather than taking `FeedLayout`'s: it is
-    // the one panel with a colour of its own — the brand tint, so the filters
-    // read as the app's control surface and not as one more sheet of paper —
-    // and its section dividers have to run the full width, which they cannot do
-    // inside someone else's padding. Squared corners and no outline, the way
-    // Cineville's filter card is cut; the fill is what defines it.
+    // Position: relative so the card can lift above the cinema sheet's scrim
+    // while the sheet is out, and drop back into normal stacking once it isn't.
     <Box
-      bg="app.green.primary"
-      borderRadius="md"
-      boxShadow="sm"
-      // The last section's header would otherwise sit flush against the corner.
-      pb="6px"
+      position="relative"
+      zIndex={isRaised ? RAISED_Z_INDEX : undefined}
+      // Tells a floating rail column to come up with it (`FeedLayout`).
+      {...(isRaised ? { [RAISED_PANEL_ATTRIBUTE]: "" } : {})}
     >
-      <Flex px={3} pt={3} pb="10px" align="center" justify="space-between" gap={2}>
-        <Text fontSize="md" fontWeight="bold" color={RAIL_INK}>
-          Filters
-        </Text>
-        {/* Only offered when there is something to undo — a permanently visible
-            "clear" implies there is always something set. It appears inside a
-            heading row that is always there, so nothing below it moves. */}
-        {onReset && (activeFilterCount > 0 || params.q) ? (
-          <RailActionButton onClick={onReset} title="Clear every filter">
-            Clear{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
-          </RailActionButton>
+      <Box ref={cardRef} className="mk-rail" boxShadow="sm" pb="6px">
+        <CinemaSection
+          cinemas={cinemas ?? []}
+          shownIds={shownCinemaIds}
+          isOpen={isCinemaSheetOpen}
+          onToggleOpen={() =>
+            isCinemaSheetOpen ? applyCinemas(shownCinemaIds) : openCinemaSheet()
+          }
+          // A set clicked while the sheet is out goes into the sheet, not the
+          // feed — the sheet is still being decided.
+          onChoose={(ids) =>
+            isCinemaSheetOpen ? setDraftIds([...ids]) : applyCinemas(ids)
+          }
+          presetState={presetState}
+          // A guest's set is kept in this browser (`guest-preferred-cinemas`).
+          onSavePreferred={() => preferredSave.save(shownCinemaIds)}
+          triggerRef={triggerRef}
+        />
+
+        {showPresets && isSignedIn && !screeningsOnly ? (
+          <RailPart>
+            <FeedPresets
+              params={params}
+              onChange={onChange}
+              activeFilterCount={activeFilterCount}
+            />
+          </RailPart>
         ) : null}
-      </Flex>
 
-      {showPresets && isSignedIn ? (
-        <RailSection title="Presets">
-          <FeedPresets params={params} onChange={onChange} />
-        </RailSection>
-      ) : null}
-
-      {showGroupToggle ? (
-        <RailSection title="Group by" summary={groupSummary}>
-          <RailSegmented
-            label="Group by"
-            options={GROUP_OPTIONS}
-            value={params.group}
-            onChange={(group) => onChange({ group })}
-          />
-        </RailSection>
-      ) : null}
-
-      {/* A guest has no friends, so this could only ever narrow the feed to
-          nothing — a whole section that can only be empty is hidden rather than
-          gated, the same call the app makes. */}
-      {isSignedIn ? (
-        <RailSection title="Marked by friends" summary={friendStatusSummary}>
-          <RailSegmented
-            label="Marked by friends"
-            options={FRIEND_STATUS_OPTIONS}
-            value={params.status}
-            onChange={(status) => onChange({ status })}
-          />
-        </RailSection>
-      ) : null}
-
-      <RailSection title="Day" summary={daySummary}>
-        <Stack gap="7px">
-          <RailPillRow>
-            {RELATIVE_DAY_OPTIONS.map((option) => (
-              <RailPill
-                key={option.token}
-                label={option.label}
-                isOn={params.days.includes(option.token)}
-                onToggle={() => toggleDay(option.token)}
+        {showGroupToggle && !screeningsOnly ? (
+          <RailPart>
+            <Flex
+              align="center"
+              justify="space-between"
+              gap="8px"
+              minH="18px"
+              mb="6px"
+            >
+              <RailPartLabel>Feed style</RailPartLabel>
+              <MakeDefault
+                isDefault={rememberedStyle.isDefault}
+                onMakeDefault={rememberedStyle.makeDefault}
+                title="Open the feed in this style every time, on this device"
               />
-            ))}
-          </RailPillRow>
-          <RailPillRow>
-            {WEEKDAY_DAY_OPTIONS.map((option) => (
-              <RailPill
-                key={option.token}
-                label={option.shortLabel}
-                isOn={params.days.includes(option.token)}
-                onToggle={() => toggleDay(option.token)}
-              />
-            ))}
-          </RailPillRow>
-        </Stack>
-      </RailSection>
-
-      <RailSection title="Time of day" summary={timeSummary}>
-        <RailPillRow>
-          {TIME_FILTER_PRESETS.map((preset) => (
-            <RailPill
-              key={preset.id}
-              label={preset.label}
-              isOn={params.times.includes(preset.range)}
-              onToggle={() => toggleTime(preset.range)}
+            </Flex>
+            <RailSegmented
+              label="Feed style"
+              options={FEED_STYLE_OPTIONS}
+              value={params.group}
+              onChange={(group) => onChange({ group })}
             />
-          ))}
-        </RailPillRow>
-      </RailSection>
+          </RailPart>
+        ) : null}
 
-      <RailSection title="Length" summary={runtimeSummary}>
-        <RailPillRow>
-          {RUNTIME_PRESETS.map((preset) => (
-            <RailPill
-              key={preset.token}
-              label={preset.label}
-              isOn={params.runtime.includes(preset.token)}
-              onToggle={() => toggleRuntime(preset.token)}
+        {/* Everything here reads an account's own Letterboxd link, so a guest
+            gets no section at all rather than switches that cannot turn on. */}
+        {screeningsOnly || !isSignedIn ? null : (
+          <RailPart>
+            <RailPartLabel>Letterboxd</RailPartLabel>
+            {hasLetterboxd ? null : <LetterboxdLink />}
+            <RailSwitchRow
+              label="Only films on my watchlist"
+              disabled={!hasLetterboxd}
+              isOn={params.watchlist === "only"}
+              onToggle={() =>
+                onChange({
+                  watchlist: params.watchlist === "only" ? "any" : "only",
+                })
+              }
             />
-          ))}
-        </RailPillRow>
-      </RailSection>
+            <RailSwitchRow
+              label="Hide films I've already seen"
+              disabled={!hasLetterboxd}
+              isOn={params.watched === "hide"}
+              onToggle={() =>
+                onChange({
+                  watched: params.watched === "hide" ? "any" : "hide",
+                })
+              }
+            />
+          </RailPart>
+        )}
 
-      <RailSection title="Language" summary={languageSummary}>
-        <Stack gap="7px">
-          <RailPillRow>
-            {LANGUAGE_OPTIONS.map((option) => (
-              <RailPill
-                key={option.value}
-                label={option.label}
-                isOn={params.languages.includes(option.value)}
-                onToggle={() => toggleLanguage(option.value)}
-              />
-            ))}
-          </RailPillRow>
-          {params.languages.length > 1 ? (
-            <Text fontSize="xs" color={RAIL_INK}>
-              Showing films in either language.
-            </Text>
-          ) : null}
-        </Stack>
-      </RailSection>
-
-      <RailSection title="Your lists" summary={myListsSummary}>
-        <RailPillRow>
-          <RailPill
-            label="On my watchlist"
-            isOn={params.watchlist === "only"}
+        <RailPart>
+          <Flex
+            align="center"
+            justify="space-between"
+            gap="8px"
+            minH="18px"
+            mb="4px"
+          >
+            <RailPartLabel>Language</RailPartLabel>
+            <MakeDefault
+              isDefault={remembered.isDefault}
+              onMakeDefault={remembered.makeDefault}
+              title={
+                isEnglishOnly
+                  ? "Keep English-only on every time you open the feed, on this device"
+                  : "Open the feed with every language every time, on this device"
+              }
+            />
+          </Flex>
+          <RailSwitchRow
+            label="English subtitled (or spoken) only"
+            isOn={isEnglishOnly}
             onToggle={() =>
-              onChange({
-                watchlist: (params.watchlist === "only"
-                  ? "any"
-                  : "only") as WatchlistMode,
-              })
+              onChange({ languages: isEnglishOnly ? [] : [ENGLISH] })
             }
           />
-          <RailPill
-            label="Hide films I've seen"
-            isOn={params.watched === "hide"}
-            onToggle={() =>
-              onChange({
-                watched: (params.watched === "hide"
-                  ? "any"
-                  : "hide") as WatchedMode,
-              })
-            }
-          />
-        </RailPillRow>
-      </RailSection>
+        </RailPart>
 
-      <RailSection title="Cinemas" summary={cinemaSummary} defaultOpen={false}>
-        <Stack gap={2}>
-          <CinemaPresets params={params} onChange={onChange} />
-          {params.cinemas.length ? (
-            <Box>
-              <RailActionButton onClick={() => onChange({ cinemas: [] })}>
-                Clear {params.cinemas.length} selected
-              </RailActionButton>
-            </Box>
-          ) : (
-            <Text fontSize="xs" color={RAIL_INK}>
-              Nothing selected — showing your usual cinemas.
-            </Text>
-          )}
-          {/* Chips, not a checkbox column: it is what the app's cinema picker
-              uses, it is legible on the tint where a checkbox control is not,
-              and forty of them wrapping across the card is what the rail's
-              width is for. */}
-          {[...cinemasByCity.entries()].map(([city, cityCinemas]) => (
-            <Box key={city}>
-              <RailSubLabel label={city} />
-              <RailPillRow>
-                {(cityCinemas ?? []).map((cinema) => (
-                  <RailPill
-                    key={cinema.id}
-                    label={cinema.name}
-                    isOn={params.cinemas.includes(cinema.id)}
-                    onToggle={() => toggleCinema(cinema.id)}
-                  />
-                ))}
-              </RailPillRow>
-            </Box>
-          ))}
-        </Stack>
-      </RailSection>
-
-      {lists.length ? (
         <RailSection
-          title="Letterboxd lists"
-          summary={listsSummary}
+          title="When"
+          summary="Any day, any time"
+          chips={whenChips}
           defaultOpen={false}
         >
-          <Stack gap={2}>
-            {lists.map((list) => {
-              const isOnly = params.lists.includes(list.id)
-              const isHidden = params.excludeLists.includes(list.id)
-              const name = list.title ?? list.list_slug
-              return (
-                <Box key={list.id}>
-                  <Text
-                    fontSize="sm"
-                    color={RAIL_INK}
-                    truncate
-                    title={name}
-                    mb="4px"
-                  >
-                    {name}
-                  </Text>
+          <Stack gap="10px">
+            <Box>
+              <RailFacetHeading
+                action={
+                  params.days.length ? (
+                    <RailTextButton onClick={() => onChange({ days: [] })}>
+                      Clear
+                    </RailTextButton>
+                  ) : undefined
+                }
+              >
+                Days
+              </RailFacetHeading>
+              <Stack gap="7px">
+                <RailPillRow>
+                  {RELATIVE_DAY_OPTIONS.map((option) => (
+                    <RailPill
+                      key={option.token}
+                      label={option.label}
+                      isOn={params.days.includes(option.token)}
+                      onToggle={() => toggleDay(option.token)}
+                    />
+                  ))}
+                </RailPillRow>
+                <RailPillRow>
+                  {WEEKDAY_DAY_OPTIONS.map((option) => (
+                    <RailPill
+                      key={option.token}
+                      label={option.shortLabel}
+                      title={option.label}
+                      isOn={params.days.includes(option.token)}
+                      onToggle={() => toggleDay(option.token)}
+                    />
+                  ))}
+                </RailPillRow>
+                {isoDays.length ? (
                   <RailPillRow>
-                    <RailPill
-                      label="Only"
-                      title={`Show only films on ${name}`}
-                      isOn={isOnly}
-                      onToggle={() => setListMode(list.id, isOnly ? "off" : "only")}
-                    />
-                    <RailPill
-                      label="Hide"
-                      tone="red"
-                      title={`Hide films on ${name}`}
-                      isOn={isHidden}
-                      onToggle={() =>
-                        setListMode(list.id, isHidden ? "off" : "hide")
-                      }
-                    />
+                    {isoDays.map((day) => (
+                      <RailPill
+                        key={day}
+                        label={getDaySelectionLabel(day)}
+                        title={`Remove ${getDaySelectionLabel(day)}`}
+                        isOn
+                        onToggle={() => toggleDay(day)}
+                      />
+                    ))}
                   </RailPillRow>
-                </Box>
-              )
-            })}
+                ) : null}
+                <Flex gap="6px" align="center">
+                  <RailInput
+                    type="date"
+                    label="Add a specific date"
+                    value={dateDraft}
+                    onChange={setDateDraft}
+                  />
+                  <RailTextButton
+                    title="Add this date to the filter"
+                    onClick={() => {
+                      if (!dateDraft || params.days.includes(dateDraft)) return
+                      onChange({ days: [...params.days, dateDraft] })
+                      setDateDraft("")
+                    }}
+                  >
+                    Add date
+                  </RailTextButton>
+                </Flex>
+              </Stack>
+            </Box>
+
+            <Box>
+              <RailFacetHeading
+                action={
+                  params.times.length ? (
+                    <RailTextButton onClick={() => onChange({ times: [] })}>
+                      Clear
+                    </RailTextButton>
+                  ) : undefined
+                }
+              >
+                Time of day
+              </RailFacetHeading>
+              <RangeSlider
+                scale={TIME_SCALE}
+                value={params.times}
+                onChange={(times) => onChange({ times })}
+                label="Time of day"
+              />
+            </Box>
           </Stack>
         </RailSection>
+
+        {/* With the film-level filters gone this is only friends, which a
+            guest does not have. */}
+        {screeningsOnly && !isSignedIn ? null : (
+          <RailSection
+            title="More filters"
+            summary={screeningsOnly ? "Friends" : "Friends, length, lists"}
+            chips={moreChips}
+            defaultOpen={false}
+          >
+            <Stack gap="12px">
+              {/* A guest has no friends, so this could only ever narrow the feed
+                to nothing — hidden rather than gated, the same call the app
+                makes. */}
+              {isSignedIn ? (
+                <Box>
+                  <RailFacetHeading
+                    action={
+                      friendStatusOn ? (
+                        <RailTextButton
+                          onClick={() =>
+                            onChange({ status: "all", mine: false })
+                          }
+                        >
+                          Clear
+                        </RailTextButton>
+                      ) : undefined
+                    }
+                  >
+                    {params.mine ? "Marked by you" : "Marked by friends"}
+                  </RailFacetHeading>
+                  <RailSegmented
+                    label={params.mine ? "Marked by you" : "Marked by friends"}
+                    options={FRIEND_STATUS_OPTIONS}
+                    // "Only mine" on its own already means everything you
+                    // marked, which is what "Interested" shows.
+                    value={
+                      params.mine && params.status === "all"
+                        ? "interested"
+                        : params.status
+                    }
+                    // "Any" with only your own marks would still be your agenda,
+                    // so it lets go of both.
+                    onChange={(status) =>
+                      onChange(
+                        status === "all" ? { status, mine: false } : { status },
+                      )
+                    }
+                  />
+                  {/* Your agenda, as a filter rather than a page of its own. */}
+                  <RailSwitchRow
+                    label="Only my own plans"
+                    isOn={params.mine}
+                    onToggle={() =>
+                      onChange(
+                        params.mine
+                          ? { mine: false }
+                          : {
+                              mine: true,
+                              // Your plans and a friend's are two answers to
+                              // "whose"; the newest one wins.
+                              friends: [],
+                              status:
+                                params.status === "all"
+                                  ? "interested"
+                                  : params.status,
+                            },
+                      )
+                    }
+                  />
+                </Box>
+              ) : null}
+
+              {isSignedIn ? (
+                <FriendFilter
+                  selected={params.friends}
+                  onChange={(friends) =>
+                    onChange(
+                      friends.length ? { friends, mine: false } : { friends },
+                    )
+                  }
+                />
+              ) : null}
+
+              {lists.length && !screeningsOnly ? (
+                <Box>
+                  <RailFacetHeading
+                    action={
+                      listsOn ? (
+                        <RailTextButton
+                          onClick={() =>
+                            onChange({ lists: [], excludeLists: [] })
+                          }
+                        >
+                          Clear
+                        </RailTextButton>
+                      ) : undefined
+                    }
+                  >
+                    Letterboxd lists
+                  </RailFacetHeading>
+                  <Stack gap="8px">
+                    {lists.map((list) => {
+                      const isOnly = params.lists.includes(list.id)
+                      const isHidden = params.excludeLists.includes(list.id)
+                      const setListMode = (mode: "off" | "only" | "hide") =>
+                        onChange({
+                          lists:
+                            mode === "only"
+                              ? [...new Set([...params.lists, list.id])]
+                              : params.lists.filter(
+                                  (entry) => entry !== list.id,
+                                ),
+                          excludeLists:
+                            mode === "hide"
+                              ? [...new Set([...params.excludeLists, list.id])]
+                              : params.excludeLists.filter(
+                                  (entry) => entry !== list.id,
+                                ),
+                        })
+                      return (
+                        <RailModeRow
+                          key={list.id}
+                          name={list.title ?? list.list_slug}
+                          isOnly={isOnly}
+                          isHidden={isHidden}
+                          onOnly={() => setListMode(isOnly ? "off" : "only")}
+                          onHide={() => setListMode(isHidden ? "off" : "hide")}
+                        />
+                      )
+                    })}
+                  </Stack>
+                </Box>
+              ) : null}
+
+              {screeningsOnly ? null : (
+                <Box>
+                  <RailFacetHeading
+                    action={
+                      runtimeOn ? (
+                        <RailTextButton
+                          onClick={() => onChange({ runtime: [] })}
+                        >
+                          Clear
+                        </RailTextButton>
+                      ) : undefined
+                    }
+                  >
+                    Movie length
+                  </RailFacetHeading>
+                  <RangeSlider
+                    scale={RUNTIME_SCALE}
+                    value={params.runtime}
+                    onChange={(runtime) => onChange({ runtime })}
+                    label="Movie length"
+                  />
+                </Box>
+              )}
+            </Stack>
+          </RailSection>
+        )}
+
+        {onReset ? (
+          <ClearFiltersButton
+            count={displayedFilterCount}
+            hasSearch={Boolean(params.q)}
+            onClear={clearFilters}
+          />
+        ) : null}
+      </Box>
+
+      {isCinemaSheetOpen || leavingIds !== null ? (
+        <CinemaSheet
+          anchorRef={cardRef}
+          cinemas={cinemas ?? []}
+          draftIds={draftIds ?? leavingIds ?? []}
+          isLeaving={!isCinemaSheetOpen}
+          setDraftIds={setDraftIds}
+          isSignedIn={isSignedIn}
+          presetState={presetState}
+          onSavePreferred={preferredSave.save}
+          onPromotePreset={preferredSave.promote}
+          onApply={applyCinemas}
+        />
       ) : null}
+      {preferredSave.prompt}
     </Box>
   )
 })

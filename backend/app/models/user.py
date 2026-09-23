@@ -88,6 +88,10 @@ class _UserBase(SQLModel):
     # Master switch. Which lists/cinemas/frequency to follow is configured per
     # `WatchlistDigestSource` row rather than here — a user may have several.
     notify_watchlist_digest_enabled: bool = Field(default=False)
+    # Whether the Letterboxd profile picture read on each sync may be shown as
+    # this account's avatar. Off by default: connecting Letterboxd to follow a
+    # watchlist is not consent to show its picture to other users.
+    use_letterboxd_avatar: bool = Field(default=False)
 
 
 # Properties to receive via API on creation (admin/superuser use — exposes all fields)
@@ -136,6 +140,7 @@ class UserUpdate(SQLModel):
     notify_channel_sold_out: NotificationChannel | None = Field(default=None)
     notify_channel_showtime_reminder: NotificationChannel | None = Field(default=None)
     notify_watchlist_digest_enabled: bool | None = Field(default=None)
+    use_letterboxd_avatar: bool | None = Field(default=None)
     # Legacy compat only: these three lived on User itself before the digest
     # rework moved them onto `WatchlistDigestSource` (see
     # b4d6f8a0c2e4_add_watchlist_digest_sources). A client built against that

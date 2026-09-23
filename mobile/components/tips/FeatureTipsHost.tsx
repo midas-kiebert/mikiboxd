@@ -1,6 +1,7 @@
 /**
  * Renders at most one feature tip. Candidates are listed in priority order —
- * verify email, notifications, cinemas, friends, Letterboxd, filter presets,
+ * verify email, notifications, cinemas, friends, Letterboxd, Letterboxd
+ * picture, filter presets,
  * watchlist digest — and `rollForFeatureTip` applies eligibility, dismissal,
  * per-tip cooldowns and a random chance, so the user is never handed a stack of
  * nags and does not see a tip on every single app open. The exception is
@@ -31,6 +32,7 @@ import {
 import AddFriendsTip from "@/components/tips/AddFriendsTip";
 import CinemaPresetTip from "@/components/tips/CinemaPresetTip";
 import FilterPresetTip from "@/components/tips/FilterPresetTip";
+import LetterboxdAvatarTip from "@/components/tips/LetterboxdAvatarTip";
 import LetterboxdUsernameTip from "@/components/tips/LetterboxdUsernameTip";
 import NotificationPermissionTip from "@/components/tips/NotificationPermissionTip";
 import VerifyEmailTip from "@/components/tips/VerifyEmailTip";
@@ -79,6 +81,13 @@ export default function FeatureTipsHost() {
   const shouldSuggestWatchlistDigest = currentUser?.show_watchlist_digest_tip === true;
 
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
+  // Only once a sync has actually read a picture: offering "use your picture"
+  // with nothing to show would be a promise the app cannot keep yet. Switching
+  // it on (here or in Settings) is what ends eligibility.
+  const shouldSuggestLetterboxdAvatar =
+    hasLetterboxdUsername &&
+    Boolean(currentUser?.letterboxd_avatar_url) &&
+    currentUser?.use_letterboxd_avatar === false;
 
   // The tip nudges the user to set their cinemas, so it asks whether that row
   // exists — not whether the list is empty. The list never is: the backend
@@ -142,9 +151,10 @@ export default function FeatureTipsHost() {
       //     who skipped that page.
       //  3. friends — the social half of the app, but it needs other people to
       //     accept before it pays off.
-      //  4. Letterboxd, 5. filter presets — real conveniences, no urgency;
-      //     both also carry the longer cooldown.
-      //  6. watchlist digest — last on purpose: a niche convenience, behind a
+      //  4. Letterboxd, 5. its profile picture, 6. filter presets — real
+      //     conveniences, no urgency; all carry the longer cooldown. The two
+      //     Letterboxd tips never compete: the picture needs a username first.
+      //  7. watchlist digest — last on purpose: a niche convenience, behind a
       //     backend switch, with the longest cooldown and lowest chance of the
       //     lot. It should feel like something you stumble on, not a pitch.
       { id: "verify-email", isEligible: needsEmailVerification },
@@ -152,6 +162,7 @@ export default function FeatureTipsHost() {
       { id: "cinema-presets", isEligible: shouldSuggestCinemaPreset },
       { id: "add-friends", isEligible: shouldSuggestAddFriends },
       { id: "letterboxd-username", isEligible: !hasLetterboxdUsername },
+      { id: "letterboxd-avatar", isEligible: shouldSuggestLetterboxdAvatar },
       { id: "filter-presets", isEligible: shouldSuggestFilterPreset },
       { id: "watchlist-digest", isEligible: shouldSuggestWatchlistDigest },
     ]);
@@ -162,6 +173,7 @@ export default function FeatureTipsHost() {
     shouldSuggestAddFriends,
     isBlockedFromNotifications,
     hasLetterboxdUsername,
+    shouldSuggestLetterboxdAvatar,
     shouldSuggestFilterPreset,
     shouldSuggestWatchlistDigest,
   ]);
@@ -174,6 +186,7 @@ export default function FeatureTipsHost() {
   if (visibleTipId === "add-friends") return <AddFriendsTip />;
   if (visibleTipId === "notification-permission") return <NotificationPermissionTip />;
   if (visibleTipId === "letterboxd-username") return <LetterboxdUsernameTip />;
+  if (visibleTipId === "letterboxd-avatar") return <LetterboxdAvatarTip />;
   if (visibleTipId === "filter-presets") return <FilterPresetTip />;
   if (visibleTipId === "watchlist-digest") return <WatchlistDigestTip />;
   return null;

@@ -43,7 +43,39 @@ type ShowtimeFeedData = {
 const STATUS_SCOPED_FEED_KEYS = [
   ["showtimes", "agenda"],
   ["showtimes", "me"],
+  ["showtimes", "overview"],
+  ["showtimes", "activity-summary"],
 ] as const
+
+/**
+ * The one showtime a page's panel is open on, kept apart from any feed.
+ *
+ * A panel reads its row from the feed it was opened from, and a row can leave
+ * that feed while the panel is still open on it — take your status back on
+ * your own agenda and the row goes, but the panel should stay, so you can
+ * change your mind. Held here, the row is still patched by every write below,
+ * so the panel keeps answering its own buttons instantly after its row is gone.
+ */
+export const HELD_SHOWTIME_KEY = ["showtimes", "held"] as const
+
+/** The held showtime's cache entry. */
+export type HeldShowtimeData = { held: ShowtimePublic }
+
+const isHeldData = (data: unknown): data is HeldShowtimeData =>
+  typeof data === "object" &&
+  data !== null &&
+  typeof (data as HeldShowtimeData).held === "object" &&
+  (data as HeldShowtimeData).held !== null
+
+/** The feed overview's cache: a few short lists rather than pages. */
+type OverviewData = {
+  sections: { showtimes: ShowtimePublic[] }[]
+}
+
+const isOverviewData = (data: unknown): data is OverviewData =>
+  typeof data === "object" &&
+  data !== null &&
+  Array.isArray((data as OverviewData).sections)
 
 const isShowtimeFeedData = (data: unknown): data is ShowtimeFeedData =>
   typeof data === "object" &&
@@ -76,6 +108,15 @@ export const putShowtimeInFeeds = (
   const entries = queryClient.getQueriesData({ queryKey: ["showtimes"] })
 
   for (const [queryKey, data] of entries) {
+    if (isOverviewData(data)) {
+      putShowtimeInOverview(queryClient, queryKey, data, showtime)
+      continue
+    }
+    if (isHeldData(data)) {
+      if (data.held.id === showtime.id)
+        queryClient.setQueryData(queryKey, { held: showtime })
+      continue
+    }
     if (!isShowtimeFeedData(data)) continue
 
     let changed = false
@@ -89,6 +130,27 @@ export const putShowtimeInFeeds = (
     if (!changed) continue
     queryClient.setQueryData(queryKey, { ...data, pages })
   }
+}
+
+/**
+ * The overview is patched like a feed, not only refetched: a showtime picked
+ * from it stays open in the panel after the overview has moved on, and that
+ * panel reads its row from here (see `ShowtimeFeedPage`).
+ */
+const putShowtimeInOverview = (
+  queryClient: QueryClient,
+  queryKey: readonly unknown[],
+  data: OverviewData,
+  showtime: ShowtimePublic,
+): void => {
+  let changed = false
+  const sections = data.sections.map((section) => {
+    const patched = patchPage(section.showtimes, showtime.id, showtime)
+    if (patched === section.showtimes) return section
+    changed = true
+    return { ...section, showtimes: patched }
+  })
+  if (changed) queryClient.setQueryData(queryKey, { ...data, sections })
 }
 
 /**

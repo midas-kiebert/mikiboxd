@@ -1,27 +1,23 @@
 /**
- * TanStack Router route module for one cinema's programme.
+ * TanStack Router route module for the old address of a cinema's programme.
  *
- * A deep-link target: the app sends `/cinema-showtimes/<id>` links here, so the
- * path is fixed and the route sits outside `_layout` (no sidebar). It used to
- * be a stub telling the visitor to open the app; it now shows the programme.
+ * The app sends `/cinema-showtimes/<id>` links, so the address has to keep
+ * working, but the page is gone: a cinema's programme is the home feed with
+ * that one cinema picked, headed by its name, city and links
+ * (`Feed/FeedSubjectHeader`).
  */
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, redirect } from "@tanstack/react-router"
 
-import CinemaShowtimesPage from "@/components/Showtimes/CinemaShowtimesPage"
-import { parseFeedParams } from "@/features/showtimes/feed-params"
+import { cinemaFeedSearch } from "@/features/showtimes/feed-params"
 
 export const Route = createFileRoute("/cinema-showtimes/$cinemaId" as never)({
-  component: CinemaShowtimesRoute,
-  validateSearch: (search: Record<string, unknown>) => parseFeedParams(search),
+  beforeLoad: ({ params }: { params: { cinemaId: string } }) => {
+    const cinemaId = Number.parseInt(params.cinemaId, 10)
+    throw redirect({
+      to: "/",
+      search: (Number.isFinite(cinemaId)
+        ? cinemaFeedSearch(cinemaId)
+        : {}) as never,
+    })
+  },
 })
-
-function CinemaShowtimesRoute() {
-  const cinemaId = Number.parseInt(
-    window.location.pathname.replace(/^\/cinema-showtimes\//, ""),
-    10,
-  )
-
-  if (!Number.isFinite(cinemaId)) return null
-
-  return <CinemaShowtimesPage cinemaId={cinemaId} />
-}

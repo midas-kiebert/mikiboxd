@@ -8,17 +8,18 @@
  * collapse toggle, an edge marker and a tooltip for every label; laid
  * horizontally none of that has anything to do — there is no width to reclaim,
  * so there is no collapsed state, so the label is always there to name the tab.
+ *
+ * Showtimes is left out here: it is "/", and the MiKiNO logo beside these tabs
+ * (`NavBrand.tsx`) already goes there. The mobile bottom bar has no logo, so it
+ * keeps the entry.
  */
 import { Box, Flex, Icon, Text } from "@chakra-ui/react"
-import { useQueryClient } from "@tanstack/react-query"
 import { Link as RouterLink } from "@tanstack/react-router"
-
-import type { MeGetCurrentUserResponse } from "shared"
 
 import {
   NAV_ICON_SIZE,
+  NAV_ITEMS,
   formatBadgeCount,
-  getNavItems,
 } from "@/components/Common/nav-items"
 import { useNavBadgeCounts } from "@/hooks/useNavBadgeCounts"
 
@@ -33,16 +34,15 @@ import { useNavBadgeCounts } from "@/hooks/useNavBadgeCounts"
 const ACTIVE_BG = "app.green.primary"
 const ACTIVE_FG = "app.green.secondary"
 
+/** The home feed's path, which the logo links to instead of a tab. */
+const HOME_PATH = "/"
+
 const NavTabs = () => {
   // Read flow: prepare derived values/handlers first, then return component JSX.
-  const queryClient = useQueryClient()
-  const currentUser = queryClient.getQueryData<MeGetCurrentUserResponse>([
-    "currentUser",
-  ])
   // Data hooks keep this module synced with backend data and shared cache state.
   const badgeCounts = useNavBadgeCounts()
 
-  const tabs = getNavItems(!!currentUser?.is_superuser).map(
+  const tabs = NAV_ITEMS.filter(({ path }) => path !== HOME_PATH).map(
     ({ icon, title, path, badge }) => {
       const count = badge ? badgeCounts[badge] : 0
 
@@ -52,9 +52,6 @@ const NavTabs = () => {
           from="/"
           to={path}
           search={true}
-          // Showtimes is "/", which prefix-matches every other route, so only
-          // it needs the exact test; Admin has children that must stay lit.
-          activeOptions={{ exact: path === "/" }}
           style={{ display: "block" }}
         >
           {({ isActive }) => (
@@ -76,7 +73,12 @@ const NavTabs = () => {
               {/* The label is hidden rather than dropped on a narrow desktop:
                   the icons keep their order and their badges, and the tab is
                   still named for a screen reader. */}
-              <Text truncate display={{ base: "none", lg: "block" }}>
+              <Text
+                truncate
+                display={{ base: "none", lg: "block" }}
+                position="relative"
+                top="1px"
+              >
                 {title}
               </Text>
               <Text srOnly display={{ base: "block", lg: "none" }}>

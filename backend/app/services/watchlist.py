@@ -92,5 +92,10 @@ def sync_watchlist(
             movie_id=movie.id if movie else None,
         )
 
+    # Left alone rather than cleared when the scrape found no avatar: a page
+    # whose markup Letterboxd changed underneath us should not read as
+    # everyone having removed their picture.
+    if result.avatar_url is not None:
+        user.letterboxd.avatar_url = result.avatar_url
     user.letterboxd.last_watchlist_sync = now_amsterdam_naive()
     session.commit()

@@ -251,6 +251,7 @@ function FriendShowtimesContent({
     [topBarAvatarColors]
   );
   const topBarAvatarInitial = useMemo(() => getAvatarInitial(topBarTitle), [topBarTitle]);
+  const topBarAvatarUrl = friend?.avatar_url ?? null;
 
   const debouncedSearchQuery = useDebouncedValue(searchQuery, SEARCH_DEBOUNCE_MS);
   // Clearing the field drops the results immediately — waiting out the
@@ -369,6 +370,7 @@ function FriendShowtimesContent({
           showBackButton
           accentColor={topBarAccentColor}
           avatarInitial={topBarAvatarInitial}
+          avatarUrl={topBarAvatarUrl}
         />
         <NonFriendProfile user={friend} />
       </TopSafeAreaView>
@@ -381,6 +383,7 @@ function FriendShowtimesContent({
         topBarTitle={topBarTitle}
         topBarAccentColor={topBarAccentColor}
         topBarAvatarInitial={topBarAvatarInitial}
+        topBarAvatarUrl={topBarAvatarUrl}
         topBarShowBackButton
         showtimes={showtimes}
         isLoading={isLoading}

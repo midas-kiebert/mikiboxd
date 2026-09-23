@@ -23,6 +23,7 @@ import {
   registerPushTokenForCurrentDevice,
 } from '@/utils/push-notifications';
 import { FiltersModalProvider } from '@/components/filters/FiltersModalProvider';
+import { useAppIconBadge } from '@/hooks/useAppIconBadge';
 import { useIsIntroOwed } from '@/utils/intro';
 
 const NOTIFICATION_PERMISSION_PROMPTED_KEY = 'mobile.notifications.permission_prompted_v3';
@@ -68,6 +69,9 @@ export default function TabLayout() {
   const friendRequestsBadgeLabel = receivedCount > 99 ? '99+' : String(receivedCount);
   const showPingBadge = unseenPingCount > 0;
   const pingBadgeLabel = unseenPingCount > 99 ? '99+' : String(unseenPingCount);
+  // The home-screen badge, which is a different sum from either badge above —
+  // see the hook. Mounted here because this layout is the signed-in shell.
+  useAppIconBadge(!!user);
   const isSyncingWatchlistRef = useRef(false);
   const lastRegisteredUserIdRef = useRef<string | null>(null);
   // A brand-new account still owes the intro, including the final filters

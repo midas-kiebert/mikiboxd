@@ -1,0 +1,1145 @@
+/*
+ * The Settings page (`SettingsPage.tsx` and its sections).
+ *
+ * Plain classes over Chakra's own theme variables, the idiom of
+ * `Friends/friends.css` and `Activity/activity.css`, whose header this page
+ * shares so the account pages read as one site.
+ */
+
+/* ---- Layout -------------------------------------------------------------- */
+
+.st-page {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 40px;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.st-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 720px;
+}
+
+/* ---- Header -------------------------------------------------------------- */
+
+.st-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 24px;
+  margin-bottom: 28px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--chakra-colors-border);
+}
+
+.st-head__titles {
+  min-width: 0;
+}
+
+.st-head__title {
+  margin: 0;
+  color: var(--chakra-colors-fg);
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.st-head__description {
+  margin: 6px 0 0;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+/* ---- Section index ------------------------------------------------------- */
+
+.st-index {
+  position: sticky;
+  top: 24px;
+  flex-shrink: 0;
+  width: 200px;
+  padding-top: 4px;
+}
+
+.st-index__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.st-index__link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.st-index__link:hover {
+  background: var(--chakra-colors-bg-subtle);
+  color: var(--chakra-colors-fg);
+}
+
+.st-index__link[aria-current="true"] {
+  background: var(--chakra-colors-app-green\.primary);
+  color: var(--chakra-colors-app-green\.secondary);
+}
+
+.st-index__link:focus-visible {
+  outline: 2px solid var(--chakra-colors-app-tint);
+  outline-offset: 1px;
+}
+
+.st-index__link--danger[aria-current="true"] {
+  background: var(--chakra-colors-app-red\.primary);
+  color: var(--chakra-colors-app-red\.secondary);
+}
+
+.st-index__icon {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+}
+
+/* Nudged down to meet the icon: see `components/ui/icon-label.tsx`. */
+.st-index__label {
+  position: relative;
+  top: 1px;
+}
+
+@media (max-width: 991px) {
+  .st-index {
+    display: none;
+  }
+}
+
+/* ---- Sections ------------------------------------------------------------ */
+
+/*
+ * The room below the last section is what lets it scroll up into the index's
+ * reading line (`READING_LINE_FRACTION`), so the bottom section gets
+ * highlighted too, and a section picked from the index lands at the top.
+ */
+.st-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 36px;
+  padding-bottom: 60vh;
+}
+
+.st-section {
+  scroll-margin-top: 24px;
+}
+
+.st-section__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 0 2px;
+}
+
+.st-section__icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--chakra-colors-fg-muted);
+}
+
+.st-section__title {
+  position: relative;
+  /* Nudged down to meet the icon: see `components/ui/icon-label.tsx`. */
+  top: 1.5px;
+  margin: 0;
+  color: var(--chakra-colors-fg);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.st-section__description {
+  margin: -6px 2px 12px;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* The danger zone's head is its own disclosure button. */
+.st-section__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin: 0 0 12px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.st-section__toggle:focus-visible {
+  border-radius: 8px;
+  outline: 2px solid var(--chakra-colors-app-tint);
+  outline-offset: 2px;
+}
+
+.st-section__caret {
+  width: 22px;
+  height: 22px;
+  margin-left: auto;
+  color: var(--chakra-colors-fg-muted);
+  transition: transform 180ms ease;
+}
+
+.st-section__toggle[aria-expanded="true"] .st-section__caret {
+  transform: rotate(180deg);
+}
+
+/* ---- Cards and rows ------------------------------------------------------ */
+
+.st-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--chakra-colors-app-card-border);
+  border-radius: 14px;
+  background: var(--chakra-colors-app-card-background);
+}
+
+.st-card + .st-card {
+  margin-top: 12px;
+}
+
+.st-card--danger {
+  border-color: var(--chakra-colors-app-red\.secondary);
+}
+
+.st-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+}
+
+.st-card__body + .st-card__body,
+.st-row + .st-card__body,
+.st-card__body + .st-row {
+  border-top: 1px solid var(--chakra-colors-border-muted);
+}
+
+.st-card__subtitle {
+  margin: 0;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+/* A setting on one line: what it is on the left, its control on the right. */
+.st-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 18px;
+}
+
+.st-row + .st-row {
+  border-top: 1px solid var(--chakra-colors-border-muted);
+}
+
+.st-row--wrap {
+  flex-wrap: wrap;
+}
+
+.st-row__icon {
+  width: 19px;
+  height: 19px;
+  flex-shrink: 0;
+  color: var(--chakra-colors-app-tint);
+}
+
+.st-row__icon--off {
+  color: var(--chakra-colors-fg-muted);
+}
+
+.st-row__text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.st-row__title {
+  color: var(--chakra-colors-fg);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* A row with an icon has a one-line label; nudged down to meet the icon. */
+.st-row__icon + .st-row__text {
+  position: relative;
+  top: 1px;
+}
+
+.st-row__title--off {
+  color: var(--chakra-colors-fg-muted);
+}
+
+.st-row__description {
+  color: var(--chakra-colors-fg-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+/* On a phone a row's segmented control always takes its own line, under the
+ * label rather than beside it only when the label happens to be short. */
+@media (max-width: 599px) {
+  .st-row:has(.st-segmented) .st-row__text {
+    flex-basis: calc(100% - 35px);
+  }
+
+  .st-row:has(.st-segmented) .st-segmented {
+    margin-left: 35px;
+  }
+}
+
+.st-row--busy {
+  opacity: 0.55;
+}
+
+/* A row that goes somewhere or does something when clicked. */
+.st-link-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 18px;
+  border: 0;
+  background: transparent;
+  color: var(--chakra-colors-fg);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.st-link-row + .st-link-row {
+  border-top: 1px solid var(--chakra-colors-border-muted);
+}
+
+.st-link-row:hover {
+  background: var(--chakra-colors-bg-subtle);
+}
+
+.st-link-row:first-child {
+  border-top-left-radius: 13px;
+  border-top-right-radius: 13px;
+}
+
+.st-link-row:last-child {
+  border-bottom-left-radius: 13px;
+  border-bottom-right-radius: 13px;
+}
+
+.st-link-row:focus-visible {
+  outline: 2px solid var(--chakra-colors-app-tint);
+  outline-offset: -2px;
+}
+
+.st-link-row svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--chakra-colors-fg-muted);
+}
+
+.st-link-row__label {
+  position: relative;
+  top: 1px;
+  flex: 1;
+}
+
+/* ---- Text ---------------------------------------------------------------- */
+
+.st-help {
+  margin: 0;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.st-error {
+  margin: 0;
+  color: var(--chakra-colors-app-red\.secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* ---- Fields -------------------------------------------------------------- */
+
+.st-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 16px;
+}
+
+.st-fields > .st-field--wide {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 599px) {
+  .st-fields {
+    grid-template-columns: 1fr;
+  }
+}
+
+.st-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.st-field__label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 18px;
+}
+
+.st-field__label {
+  color: var(--chakra-colors-fg-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.st-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--chakra-colors-app-card-border);
+  border-radius: 10px;
+  background: var(--chakra-colors-bg);
+  color: var(--chakra-colors-fg);
+  font: inherit;
+  font-size: 14px;
+  transition: border-color 120ms ease;
+}
+
+.st-input::placeholder {
+  color: var(--chakra-colors-fg-muted);
+  opacity: 0.8;
+}
+
+.st-input:focus {
+  border-color: var(--chakra-colors-app-tint);
+  outline: none;
+}
+
+.st-input:disabled {
+  opacity: 0.6;
+}
+
+/* A fixed part in front of what is typed: "letterboxd.com/", "CP$". */
+.st-affix {
+  display: flex;
+  align-items: stretch;
+  height: 40px;
+  border: 1px solid var(--chakra-colors-app-card-border);
+  border-radius: 10px;
+  background: var(--chakra-colors-bg);
+  transition: border-color 120ms ease;
+}
+
+.st-affix:focus-within {
+  border-color: var(--chakra-colors-app-tint);
+}
+
+.st-affix__prefix {
+  display: flex;
+  align-items: center;
+  padding: 0 0 0 12px;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.st-affix__prefix--boxed {
+  padding: 0 10px;
+  border-right: 1px solid var(--chakra-colors-app-card-border);
+  border-radius: 9px 0 0 9px;
+  background: var(--chakra-colors-bg-subtle);
+  font-weight: 700;
+}
+
+.st-affix .st-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+}
+
+.st-affix__prefix + .st-input {
+  padding-left: 0;
+}
+
+.st-affix__prefix--boxed + .st-input {
+  padding-left: 12px;
+}
+
+.st-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.st-actions--end {
+  justify-content: flex-end;
+}
+
+/* ---- Email status -------------------------------------------------------- */
+
+.st-email-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.st-email-status--ok {
+  color: var(--chakra-colors-app-green\.secondary);
+}
+
+.st-email-status--pending {
+  color: var(--chakra-colors-app-yellow\.secondary);
+}
+
+.st-email-status svg {
+  width: 14px;
+  height: 14px;
+}
+
+.st-email-status__label {
+  position: relative;
+  top: 1px;
+}
+
+.st-email-status button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.st-email-status button:hover .st-email-status__label {
+  text-decoration: underline;
+}
+
+.st-email-status button:disabled {
+  cursor: default;
+}
+
+.st-spin {
+  animation: st-spin 800ms linear infinite;
+}
+
+@keyframes st-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---- Segmented control --------------------------------------------------- */
+
+.st-segmented {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 2px;
+  max-width: 100%;
+  padding: 3px;
+  border: 1px solid var(--chakra-colors-border);
+  border-radius: 11px;
+  background: var(--chakra-colors-bg-subtle);
+}
+
+.st-segmented--stretch {
+  display: flex;
+  width: 100%;
+}
+
+.st-segmented__option {
+  display: inline-flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  height: 30px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--chakra-colors-fg-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.st-segmented--large .st-segmented__option {
+  height: 38px;
+  font-size: 14px;
+}
+
+.st-segmented__option:hover:not(:disabled) {
+  color: var(--chakra-colors-fg);
+}
+
+.st-segmented__option[aria-checked="true"] {
+  background: var(--chakra-colors-app-green\.primary);
+  color: var(--chakra-colors-app-green\.secondary);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+}
+
+/* "Off" is the one pick that should not read as "on". */
+.st-segmented__option--neutral[aria-checked="true"] {
+  background: var(--chakra-colors-app-card-background);
+  color: var(--chakra-colors-fg);
+}
+
+.st-segmented__option:disabled {
+  cursor: default;
+}
+
+.st-segmented__option:focus-visible {
+  outline: 2px solid var(--chakra-colors-app-tint);
+  outline-offset: 1px;
+}
+
+.st-segmented__option svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.st-segmented__label {
+  position: relative;
+  top: 1px;
+}
+
+/* ---- Switch -------------------------------------------------------------- */
+
+.st-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 42px;
+  height: 25px;
+  padding: 0;
+  border: 1px solid var(--chakra-colors-border);
+  border-radius: 999px;
+  background: var(--chakra-colors-app-divider);
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.st-switch[aria-checked="true"] {
+  border-color: var(--chakra-colors-app-tint);
+  background: var(--chakra-colors-app-tint);
+}
+
+.st-switch::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 19px;
+  height: 19px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+  content: "";
+  transition: transform 160ms cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+
+.st-switch[aria-checked="true"]::after {
+  transform: translateX(17px);
+}
+
+.st-switch:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.st-switch:focus-visible {
+  outline: 2px solid var(--chakra-colors-app-tint);
+  outline-offset: 2px;
+}
+
+/* ---- Notices ------------------------------------------------------------- */
+
+.st-notice {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--chakra-colors-app-yellow\.border);
+  border-radius: 10px;
+  background: var(--chakra-colors-app-yellow\.primary);
+  color: var(--chakra-colors-app-yellow\.secondary);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.st-notice svg {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.st-notice p {
+  margin: 0;
+}
+
+.st-notice button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ---- Letterboxd ---------------------------------------------------------- */
+
+.st-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.st-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 8px;
+  border-radius: 10px;
+  background: var(--chakra-colors-bg-subtle);
+}
+
+.st-stat__value {
+  color: var(--chakra-colors-fg);
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.st-stat__label {
+  color: var(--chakra-colors-fg-muted);
+  font-size: 12px;
+}
+
+.st-list-row__meta.st-sync-failed {
+  color: var(--chakra-colors-app-red\.secondary);
+}
+
+.st-icon-button {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--chakra-colors-app-card-border);
+  border-radius: 10px;
+  background: var(--chakra-colors-app-pill-background);
+  color: var(--chakra-colors-app-tint);
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.st-icon-button:hover:not(:disabled) {
+  background: var(--chakra-colors-bg-subtle);
+}
+
+.st-icon-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.st-icon-button:focus-visible {
+  outline: 2px solid var(--chakra-colors-app-tint);
+  outline-offset: 1px;
+}
+
+.st-icon-button--quiet {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  background: transparent;
+  color: var(--chakra-colors-fg-muted);
+}
+
+.st-icon-button--quiet:hover:not(:disabled) {
+  color: var(--chakra-colors-fg);
+}
+
+.st-icon-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ---- Digest sources ------------------------------------------------------ */
+
+.st-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.st-source {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--chakra-colors-app-card-border);
+  border-radius: 12px;
+  background: var(--chakra-colors-bg-subtle);
+}
+
+.st-source--draft {
+  border-style: dashed;
+  border-color: var(--chakra-colors-app-tint);
+}
+
+.st-source__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.st-source__summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--chakra-colors-fg);
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.st-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.st-chip {
+  padding: 6px 11px;
+  border: 1px solid var(--chakra-colors-app-pill-border);
+  border-radius: 9px;
+  background: var(--chakra-colors-app-pill-background);
+  color: var(--chakra-colors-fg);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.st-chip:hover:not(:disabled) {
+  border-color: var(--chakra-colors-app-tint);
+}
+
+.st-chip[aria-checked="true"] {
+  border-color: var(--chakra-colors-app-tint);
+  background: var(--chakra-colors-app-tint);
+  color: var(--chakra-colors-app-pill-active-text);
+}
+
+.st-chip:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.st-chip:focus-visible {
+  outline: 2px solid var(--chakra-colors-app-tint);
+  outline-offset: 1px;
+}
+
+.st-add-source {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 10px;
+  border: 1px dashed var(--chakra-colors-app-tint);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--chakra-colors-app-tint);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.st-add-source:hover {
+  background: var(--chakra-colors-bg-subtle);
+}
+
+.st-add-source svg {
+  width: 17px;
+  height: 17px;
+}
+
+.st-text-button {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--chakra-colors-app-tint);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.st-text-button:hover {
+  text-decoration: underline;
+}
+
+/* ---- Default visibility -------------------------------------------------- */
+
+.st-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.st-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--chakra-colors-app-card-border);
+  border-radius: 12px;
+  background: var(--chakra-colors-app-card-background);
+  color: var(--chakra-colors-fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.st-option:hover:not(:disabled) {
+  background: var(--chakra-colors-bg-subtle);
+}
+
+.st-option[aria-checked="true"] {
+  background: var(--chakra-colors-bg-subtle);
+}
+
+.st-option:disabled {
+  cursor: default;
+}
+
+.st-option:focus-visible {
+  outline: 2px solid var(--chakra-colors-app-tint);
+  outline-offset: 1px;
+}
+
+.st-option__badge {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+}
+
+.st-option__badge svg {
+  width: 17px;
+  height: 17px;
+}
+
+.st-option__radio {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--chakra-colors-fg-muted);
+}
+
+/* ---- Blocked accounts ---------------------------------------------------- */
+
+.st-person {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+}
+
+.st-person + .st-person {
+  border-top: 1px solid var(--chakra-colors-border-muted);
+}
+
+.st-person__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--chakra-colors-fg);
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Letterboxd lists ---------------------------------------------------- */
+
+.st-list-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.st-list-row__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.st-list-row__title {
+  overflow: hidden;
+  color: var(--chakra-colors-fg);
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.st-list-row__meta {
+  color: var(--chakra-colors-fg-muted);
+  font-size: 12px;
+}
+
+/* ---- Cineville pass ------------------------------------------------------ */
+
+/* Black on white whatever the theme: a scanner reads contrast, not taste. */
+.st-pass {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 16px;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #000000;
+}
+
+.st-pass__code {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+
+.st-pass svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* ---- Link buttons -------------------------------------------------------- */
+
+/* A link drawn as `FriendButton`, for the places a button would be a link. */
+.st-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--chakra-colors-app-card-border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--chakra-colors-app-text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: filter 120ms ease, background-color 120ms ease;
+}
+
+.st-button:hover {
+  background: var(--chakra-colors-bg-muted);
+}
+
+.st-button--primary {
+  border-color: var(--chakra-colors-app-tint);
+  background: var(--chakra-colors-app-tint);
+  color: var(--chakra-colors-app-pill-active-text);
+}
+
+.st-button--primary:hover {
+  background: var(--chakra-colors-app-tint);
+  filter: brightness(1.08);
+}
+
+.st-button:focus-visible {
+  outline: 2px solid var(--chakra-colors-app-tint);
+  outline-offset: 2px;
+}
+
+/* ---- Guest --------------------------------------------------------------- */
+
+.st-guest {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 20px 18px;
+  border: 1px solid var(--chakra-colors-app-card-border);
+  border-radius: 14px;
+  background: var(--chakra-colors-app-card-background);
+}
+
+.st-guest__title {
+  margin: 0;
+  color: var(--chakra-colors-fg);
+  font-size: 16px;
+  font-weight: 700;
+}

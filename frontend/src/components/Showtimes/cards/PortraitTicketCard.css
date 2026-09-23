@@ -1,0 +1,373 @@
+/*
+ * The ticket wall's card (PortraitTicketCard.tsx). Shared pieces, the ticket
+ * root and its shadows are in card-parts.css.
+ */
+
+/* ---- Shape ------------------------------------------------------------ *
+ * A plain rounded card, and one element across the top of the stub that paints
+ * both notches and the tear line with background gradients.
+ *
+ * The notches are painted in the page's colour rather than cut out. A cut
+ * needs CSS masks, and masks were measured as most of the raster work of both
+ * hovering and scrolling a wall (4 masked layers a card: 1187ms of raster for
+ * a mouse sweep, 230ms without). A cut also cannot shape a box-shadow, so a
+ * glowing ticket's shadow ran straight past its notches. Painted, each notch
+ * reaches a few pixels past the card's edge and fades out there, which takes
+ * the shadow away around it the way a real hole would.
+ *
+ * `--mk-page` has to be whatever the ticket sits on. The feed and the lab both
+ * sit on `bg`.
+ *
+ * Tone, glow and selection are classes that set the variables below, so no
+ * card carries a style string of its own.
+ */
+.mk-wall {
+  /* No resting shadow on a plain ticket: its outline already separates it
+     from the page, and a blurred shadow under every ticket was measured as
+     ~40% of the raster work of scrolling a wall at 2x. Tinted tickets keep
+     their glow below; there are only ever a few of them. */
+  --mk-shadow: none;
+  --mk-page: var(--chakra-colors-bg);
+  --mk-notch: 9px;
+  /* How far past the edge a notch clears the shadow. */
+  --mk-notch-fade: 6px;
+  --mk-edge: 1px;
+  --mk-outline: var(--chakra-colors-border);
+  --mk-face: var(--chakra-colors-bg-panel);
+  --mk-tear: var(--chakra-colors-border);
+  --mk-tear-weight: 2px;
+}
+
+/* The upright ticket only: the film feed's row carries `.mk-wall` too, for
+   the shape, and must not pick up the scaling. */
+.mk-wall--portrait {
+  /* Measured by everything on the ticket that grows with it (`--mk-u`). */
+  container-type: inline-size;
+  /* A "ticket pixel": 1px on the default wall's ticket (~210px wide, four a
+     row beside the rail) and growing with the ticket at about a third of its
+     rate, capped — so bigger tickets carry a bit larger text for the people
+     who pick them for that, while the poster takes most of the growth. Every
+     size on the stub and the title is a multiple of this. Only resolvable by
+     the ticket's descendants, which is where `100cqw` means this ticket. The
+     feed's placeholder height repeats the formula (`CARD_INTRINSIC_HEIGHT` in
+     ShowtimeFeedPage.tsx). */
+  --mk-u: clamp(1px, 1px + (100cqw - 210px) * 0.00167, 1.4px);
+}
+
+.mk-wall--toned {
+  --mk-outline: var(--p-border);
+  --mk-face: var(--p-primary);
+  /* Half-strength, same weight as a plain ticket's: in the full border tone
+     the seam was the loudest line on a tinted ticket, but a thinner dash on
+     top of a fainter one read as a different tear rather than a quieter one. */
+  --mk-tear: color-mix(in srgb, var(--p-border) 50%, transparent);
+}
+
+.mk-wall--glow {
+  --mk-shadow: 0 2px 6px color-mix(in srgb, var(--p-border) 25%, transparent);
+  --mk-lift: 0 4px 10px color-mix(in srgb, var(--p-border) 35%, transparent);
+}
+
+/*
+ * Selected: the ticket is picked up off the wall — lifted a few pixels, a
+ * deeper shadow under it, its outline a shade darker — rather than ringed.
+ * The ring it replaced was the brand tint at full strength, the brightest
+ * line on the page, and read as an alarm more than a choice.
+ *
+ * A tinted ticket keeps its own colour for the outline and the shadow, so a
+ * selected "going" ticket still says going. Everything is on `--mk-shadow`
+ * and a transform, both composited, so selecting repaints nothing. The
+ * shadow stays inside the cell's 24px bleed (`CELL_BLEED` in
+ * ShowtimeFeedPage.tsx), or `content-visibility` would clip it.
+ */
+.mk-wall--portrait {
+  transition: transform 160ms ease;
+}
+
+.mk-wall[aria-pressed="true"] {
+  --mk-outline: color-mix(
+    in srgb,
+    var(--chakra-colors-fg) 30%,
+    var(--chakra-colors-border)
+  );
+  --mk-shadow: 0 10px 22px -8px rgb(0 0 0 / 0.3), 0 2px 6px rgb(0 0 0 / 0.08);
+  transform: translateY(-4px);
+}
+
+.mk-wall--toned[aria-pressed="true"] {
+  --mk-edge: 2px;
+  --mk-outline: var(--p-border);
+  --mk-shadow: 0 10px 22px -8px
+    color-mix(in srgb, var(--p-border) 70%, rgb(0 0 0 / 0.35)), 0 2px 6px
+    rgb(0 0 0 / 0.08);
+}
+
+/* A shadow on a dark page never reads, so dark mode lifts with a light edge. */
+.dark .mk-wall[aria-pressed="true"] {
+  --mk-outline: rgb(255 255 255 / 0.4);
+  --mk-shadow: 0 0 0 1px rgb(255 255 255 / 0.06), 0 10px 22px -8px
+    rgb(0 0 0 / 0.7);
+}
+
+/* Dark's `border` step is the pale ink, so a toned ticket's own 2px edge in
+   it is what sets it apart from the other toned tickets on the wall. */
+.dark .mk-wall--toned[aria-pressed="true"] {
+  --mk-outline: var(--p-border);
+}
+
+/* An inset ring rather than a border, so selecting a ticket thickens its
+   outline without moving anything inside it. */
+.mk-wall__frame {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--mk-radius);
+  background: var(--mk-face);
+  box-shadow: inset 0 0 0 var(--mk-edge) var(--mk-outline);
+  pointer-events: none;
+}
+
+/*
+ * Centred on the seam and wider than the card by `--mk-reach` each side. Five
+ * layers, left to right: the fade outside the left edge, the left notch with
+ * its arc of outline, the right notch with its arc, the fade outside the right
+ * edge, and the tear across the middle.
+ */
+.mk-wall__seam {
+  --mk-reach: calc(var(--mk-notch) + var(--mk-notch-fade));
+  --mk-arc: calc(var(--mk-notch) + var(--mk-edge));
+  position: absolute;
+  top: calc(-1 * var(--mk-reach));
+  right: calc(-1 * var(--mk-reach));
+  left: calc(-1 * var(--mk-reach));
+  height: calc(2 * var(--mk-reach));
+  background-image: radial-gradient(
+      circle at 100% 50%,
+      var(--mk-page) var(--mk-notch),
+      transparent var(--mk-reach)
+    ),
+    radial-gradient(
+      circle at 0 50%,
+      var(--mk-page) calc(var(--mk-notch) - 0.5px),
+      var(--mk-outline) calc(var(--mk-notch) + 0.5px),
+      var(--mk-outline) calc(var(--mk-arc) - 0.5px),
+      transparent calc(var(--mk-arc) + 0.5px)
+    ),
+    radial-gradient(
+      circle at 100% 50%,
+      var(--mk-page) calc(var(--mk-notch) - 0.5px),
+      var(--mk-outline) calc(var(--mk-notch) + 0.5px),
+      var(--mk-outline) calc(var(--mk-arc) - 0.5px),
+      transparent calc(var(--mk-arc) + 0.5px)
+    ),
+    radial-gradient(
+      circle at 0 50%,
+      var(--mk-page) var(--mk-notch),
+      transparent var(--mk-reach)
+    ),
+    repeating-linear-gradient(
+      to right,
+      var(--mk-tear) 0 5px,
+      transparent 5px 10px
+    );
+  background-position: 0 0, var(--mk-reach) 0, calc(100% - var(--mk-reach)) 0,
+    100% 0, 50% 50%;
+  background-size: var(--mk-reach) 100%, var(--mk-arc) 100%, var(--mk-arc) 100%,
+    var(--mk-reach) 100%,
+    calc(100% - 2 * var(--mk-reach) - 2 * var(--mk-notch) - 6px)
+    var(--mk-tear-weight);
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+
+/* ---- Content ---------------------------------------------------------- */
+
+.mk-wall__top {
+  position: relative;
+  padding: 8px;
+}
+
+.mk-wall__shade {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  left: 8px;
+  padding: calc(28 * var(--mk-u)) calc(8 * var(--mk-u)) calc(7 * var(--mk-u));
+  border-radius: 0 0 7px 7px;
+  background-image: linear-gradient(to top, rgb(0 0 0 / 0.85), transparent);
+  color: white;
+}
+
+.mk-wall__title {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: calc(14 * var(--mk-u));
+  font-weight: 800;
+  line-height: 1.2;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.mk-wall__original {
+  display: block;
+  overflow: hidden;
+  color: rgb(255 255 255 / 0.8);
+  font-size: calc(11 * var(--mk-u));
+  font-style: italic;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* In the card's own corner rather than the poster's: it straddles the
+   poster's edge (the poster sits at 8px), so it covers as little of the
+   artwork as it can. Its outline and shadow (`.mk-seat--poster`) hold it
+   apart from both the card and the poster it overlaps. */
+.mk-wall__seats {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  left: 6px;
+  display: flex;
+}
+
+/* Every row has a fixed height, so every ticket in the wall matches whether
+   or not it has an invite, a seat or friends to show. */
+.mk-wall__stub {
+  position: relative;
+  --mk-ink: var(--chakra-colors-fg);
+  --mk-date: var(--chakra-colors-app-surface-muted);
+  padding: calc(8 * var(--mk-u)) calc(10 * var(--mk-u)) calc(12 * var(--mk-u));
+}
+
+/* A neutral chip rather than a tint of the same palette as the face behind
+   it: on a going/interested ticket the face is already that palette's
+   primary, and a chip mixed from the same palette's border sat close enough
+   in hue and lightness to disappear into it. Breaking the chip out of that
+   family — an opaque, un-toned surface — is what makes it read as a chip at
+   all rather than a slightly different patch of the same colour. */
+.mk-wall--toned .mk-wall__stub {
+  --mk-ink: var(--p-secondary);
+  --mk-date: var(--chakra-colors-bg-panel);
+}
+
+.mk-wall__row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.mk-wall__when {
+  justify-content: space-between;
+  gap: calc(6 * var(--mk-u));
+  height: calc(28 * var(--mk-u));
+  color: var(--mk-ink);
+}
+
+/* Its own chip, not a caption, and the bigger of the two: in a wall of
+   showtimes that mostly start on the hour, the day is what actually tells
+   two tickets apart, so it carries the weight the time used to. */
+.mk-wall__date {
+  overflow: hidden;
+  padding: calc(2 * var(--mk-u)) calc(8 * var(--mk-u));
+  border-radius: calc(5 * var(--mk-u));
+  background: var(--mk-date);
+  font-size: calc(15 * var(--mk-u));
+  font-weight: 800;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mk-wall__time {
+  flex-shrink: 0;
+  font-size: calc(14 * var(--mk-u));
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  opacity: 0.75;
+}
+
+/* Last row, not the one right under the date: it's the one every ticket
+   always has something in, so whatever empty space a shorter ticket carries
+   (no seat or invite, no friends) sits above it in the middle rather than
+   right above the bottom edge, where it read as a stray gap rather than a
+   row that just happens to be empty. */
+.mk-wall__tags {
+  gap: calc(3 * var(--mk-u));
+  height: calc(20 * var(--mk-u));
+  margin-top: calc(6 * var(--mk-u));
+  overflow: hidden;
+}
+
+/* The venue gives way first: subtitles are short and decide whether the
+   screening is watchable at all. */
+.mk-wall__venue {
+  display: flex;
+  min-width: 0;
+}
+
+/* Shares the friends row rather than getting one of its own: whichever of
+   "SEAT F12" or an invite line applies is rarer than the friends avatars
+   next to it, so a whole row reserved just for it was mostly dead space on
+   top of this row's own. */
+.mk-wall__note {
+  display: flex;
+  overflow: hidden;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mk-wall__your-seat {
+  overflow: hidden;
+  color: var(--chakra-colors-app-green\.secondary);
+  font-size: calc(11 * var(--mk-u));
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mk-wall__friends {
+  justify-content: space-between;
+  gap: calc(6 * var(--mk-u));
+  height: calc(30 * var(--mk-u));
+  margin-top: calc(8 * var(--mk-u));
+}
+
+/* ---- Shared pieces, grown with the ticket ------------------------------ *
+ * The chips, marks and avatars come from card-parts.css at fixed sizes; on
+ * the wall they are restated in ticket pixels so they grow with the rest of
+ * the stub. Scoped here so nothing else that draws them changes. */
+
+.mk-wall--portrait .mk-tag--xs {
+  padding: calc(1 * var(--mk-u)) calc(5 * var(--mk-u));
+  font-size: calc(10 * var(--mk-u));
+}
+
+.mk-wall--portrait .mk-seat {
+  gap: calc(3 * var(--mk-u));
+  padding: calc(2 * var(--mk-u)) calc(7 * var(--mk-u));
+  font-size: calc(11 * var(--mk-u));
+}
+
+.mk-wall--portrait .mk-seat--icon {
+  padding: calc(2 * var(--mk-u)) calc(3 * var(--mk-u));
+}
+
+.mk-wall--portrait .mk-seat__icon {
+  width: calc(13 * var(--mk-u));
+  height: calc(13 * var(--mk-u));
+}
+
+.mk-wall--portrait .mk-invited {
+  gap: calc(4 * var(--mk-u));
+}
+
+.mk-wall--portrait .mk-invited__icon {
+  width: calc(14 * var(--mk-u));
+  height: calc(14 * var(--mk-u));
+}
+
+.mk-wall--portrait .mk-invited__text,
+.mk-wall--portrait .mk-avatars__more {
+  font-size: calc(11 * var(--mk-u));
+}

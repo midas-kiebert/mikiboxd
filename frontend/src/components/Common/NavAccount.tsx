@@ -1,9 +1,11 @@
 /**
  * Shared web layout/presentation component: Nav Account.
  *
- * The account chip at the right of the top nav: who you are, and the two things
- * you can do about it. "Log out" used to be reachable only from a page's own
- * user menu, which not every page had.
+ * The account chip at the right of the top nav: who you are, and what you can
+ * do about it — Settings, Admin for a superuser, and Log out. Settings and Admin
+ * used to be tabs; they are about your account rather than places to browse, so
+ * they sit here and the tab row is just the app's destinations. "Log out" used
+ * to be reachable only from a page's own user menu, which not every page had.
  *
  * A guest gets a sign-in button in the same slot rather than an empty corner —
  * browsing without an account is a supported way to use the site, so the nav
@@ -11,9 +13,17 @@
  */
 import { Box, Flex, Icon, Text } from "@chakra-ui/react"
 import { Link, useNavigate } from "@tanstack/react-router"
-import { FiChevronDown, FiLogIn, FiLogOut, FiUser } from "react-icons/fi"
+import {
+  FiChevronDown,
+  FiLogIn,
+  FiLogOut,
+  FiSettings,
+  FiShield,
+  FiUser,
+} from "react-icons/fi"
 
 import { useIsSignedIn } from "@/auth/useSession"
+import { PersonAvatar } from "@/components/Showtimes/detail/PersonAvatar"
 import { defaultFeedParams } from "@/features/showtimes/feed-params"
 import useAuth from "shared/hooks/useAuth"
 import {
@@ -29,10 +39,6 @@ interface NavAccountProps {
   onNavigate?: () => void
 }
 
-/** The one letter the avatar tile falls back to when there is no picture. */
-const initialFor = (name: string | null | undefined, email: string): string =>
-  (name?.trim() || email).charAt(0).toUpperCase()
-
 const NavAccount = ({ onNavigate }: NavAccountProps) => {
   // Read flow: prepare derived values/handlers first, then return component JSX.
   const navigate = useNavigate()
@@ -40,7 +46,7 @@ const NavAccount = ({ onNavigate }: NavAccountProps) => {
   // Data hooks keep this module synced with backend data and shared cache state.
   const { user, logout } = useAuth(
     () => navigate({ to: "/", search: defaultFeedParams }), // onLoginSuccess
-    () => navigate({ to: "/login" }), // onLogout
+    // No onLogout: signing out leaves you on the page you were on, as a guest.
   )
 
   const handleLogout = async () => {
@@ -72,7 +78,12 @@ const NavAccount = ({ onNavigate }: NavAccountProps) => {
           _hover={{ bg: "bg.subtle" }}
         >
           <Icon as={FiLogIn} boxSize="18px" />
-          <Text truncate display={{ base: "none", sm: "block" }}>
+          <Text
+            truncate
+            display={{ base: "none", sm: "block" }}
+            position="relative"
+            top="1px"
+          >
             Sign in
           </Text>
         </Flex>
@@ -101,19 +112,23 @@ const NavAccount = ({ onNavigate }: NavAccountProps) => {
           transition="background 120ms ease"
           _hover={{ bg: "bg.subtle" }}
         >
-          <Flex
-            flexShrink={0}
-            align="center"
-            justify="center"
-            boxSize="32px"
-            borderRadius="full"
-            bg="app.green.primary"
-            color="app.green.secondary"
-            fontSize="sm"
-            fontWeight="bold"
-          >
-            {initialFor(user?.display_name, email)}
-          </Flex>
+          {user ? (
+            <PersonAvatar user={user} size={32} />
+          ) : (
+            <Flex
+              flexShrink={0}
+              align="center"
+              justify="center"
+              boxSize="32px"
+              borderRadius="full"
+              bg="app.green.primary"
+              color="app.green.secondary"
+              fontSize="sm"
+              fontWeight="bold"
+            >
+              <Icon as={FiUser} boxSize="16px" />
+            </Flex>
+          )}
           {/* minW=0 is what lets the two lines truncate instead of pushing
               the chevron off the end of the bar. The email is the first thing
               to go: on a phone the avatar and the name are the whole chip. */}
@@ -150,10 +165,28 @@ const NavAccount = ({ onNavigate }: NavAccountProps) => {
             py={2}
             style={{ cursor: "pointer" }}
           >
-            <FiUser fontSize="16px" />
-            <Box flex="1">My Profile</Box>
+            <FiSettings fontSize="16px" />
+            <Box flex="1" position="relative" top="1px">
+              Settings
+            </Box>
           </MenuItem>
         </Link>
+        {user?.is_superuser ? (
+          <Link to="/admin" onClick={onNavigate}>
+            <MenuItem
+              closeOnSelect
+              value="admin"
+              gap={2}
+              py={2}
+              style={{ cursor: "pointer" }}
+            >
+              <FiShield fontSize="16px" />
+              <Box flex="1" position="relative" top="1px">
+                Admin
+              </Box>
+            </MenuItem>
+          </Link>
+        ) : null}
         <MenuSeparator />
         <MenuItem
           value="logout"
@@ -163,7 +196,9 @@ const NavAccount = ({ onNavigate }: NavAccountProps) => {
           style={{ cursor: "pointer" }}
         >
           <FiLogOut fontSize="16px" />
-          Log Out
+          <Box as="span" position="relative" top="1px">
+            Log Out
+          </Box>
         </MenuItem>
       </MenuContent>
     </MenuRoot>

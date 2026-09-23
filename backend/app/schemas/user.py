@@ -22,6 +22,10 @@ class UserPublic(SQLModel):
     id: UUID
     is_active: bool
     display_name: str | None
+    # From their linked Letterboxd account, when they have one and it has been
+    # synced at least once (`Letterboxd.avatar_url`). `None` for everyone else,
+    # and the client falls back to an initial.
+    avatar_url: str | None = None
     seat_row: str | None = None
     seat_number: str | None = None
 
@@ -75,6 +79,12 @@ class UserMe(UserPublic):
     # Master switch; which lists/cinemas/frequency to follow lives in
     # `GET /me/watchlist-digest-sources` (a user may have several).
     notify_watchlist_digest_enabled: bool
+    # Opt-in: the account's avatar is its Letterboxd picture only when this is
+    # on. `letterboxd_avatar_url` is that picture regardless of the switch, so
+    # the user can preview what they would be opting in to; `None` until a
+    # sync has read one.
+    use_letterboxd_avatar: bool
+    letterboxd_avatar_url: str | None
     can_report: bool
     # Whether this account may ask to be told when a full showtime has seats
     # again. The capability, never the tier behind it: the app has no concept

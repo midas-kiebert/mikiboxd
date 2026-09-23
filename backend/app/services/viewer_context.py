@@ -41,9 +41,15 @@ def _skips_cinema_default(filters: Filters) -> bool:
     own usual cinemas would silently hide a friend at a cinema the viewer
     never picked. `all_cinemas` is the explicit form of the same thing, for
     feeds (like Activity's "All") that are about everyone, not just friends.
+    `only_you` is the viewer's agenda, which is wherever they said they'd go,
+    and `friend_ids` those friends', wherever they said they'd go.
     """
     return (
-        _is_cinema_name_search(filters) or filters.friends_only or filters.all_cinemas
+        _is_cinema_name_search(filters)
+        or filters.friends_only
+        or filters.only_you
+        or bool(filters.friend_ids)
+        or filters.all_cinemas
     )
 
 

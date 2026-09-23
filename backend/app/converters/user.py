@@ -169,6 +169,9 @@ def to_me(user: User, *, session: Session) -> UserMe:
         notify_watchlist_digest_enabled=user.notify_watchlist_digest_enabled,
         use_letterboxd_avatar=user.use_letterboxd_avatar,
         letterboxd_avatar_url=_letterboxd_picture(user),
+        letterboxd_account_not_found=(
+            user.letterboxd.account_not_found if user.letterboxd else False
+        ),
         can_report=not is_report_banned(user),
         can_watch_sold_out=user.is_pro,
         has_password=user.hashed_password is not None,

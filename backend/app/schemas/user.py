@@ -85,6 +85,9 @@ class UserMe(UserPublic):
     # sync has read one.
     use_letterboxd_avatar: bool
     letterboxd_avatar_url: str | None
+    # Letterboxd answered 404 for `letterboxd_username`: no such account.
+    # False when unchecked or unknown, so it only ever warns on a certainty.
+    letterboxd_account_not_found: bool = False
     can_report: bool
     # Whether this account may ask to be told when a full showtime has seats
     # again. The capability, never the tier behind it: the app has no concept

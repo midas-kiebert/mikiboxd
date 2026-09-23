@@ -1,4 +1,6 @@
 import asyncio
+from dataclasses import dataclass
+from http import HTTPStatus
 from time import perf_counter
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
@@ -8,7 +10,7 @@ from bs4 import BeautifulSoup
 from app.exceptions import scraper_exceptions
 
 from . import logger
-from .utils import SlugScrapeResult, get_page_async
+from .utils import HEADERS, SlugScrapeResult, get_page_async
 
 # Gravatar's own resizing (the fallback when no picture is uploaded) is a
 # documented, stable feature of their API — unlike Letterboxd's, below.
@@ -197,25 +199,49 @@ async def get_watchlist_async(username: str) -> SlugScrapeResult:
         )
 
 
-def get_avatar_url(username: str) -> str | None:
-    """Just the profile picture: one page, not the whole watchlist.
+@dataclass(frozen=True)
+class AccountCheck:
+    """What one look at a Letterboxd account found.
 
-    For the moment someone switches "use my profile picture" on, so what they
-    just agreed to show appears right away instead of after the next sync. The
-    watchlist's first page is used because `extract_avatar_url_from_page`
-    already knows its header. `None` for no picture and for any failure alike;
-    the caller keeps whatever it had.
+    `exists` is `False` only for a definite 404 and `None` when the answer is
+    unknown (blocked, a server error, a transport failure), which callers must
+    never read as "missing". `avatar_url` is `None` both for no picture and for
+    a failed fetch.
     """
 
-    async def fetch() -> str | None:
+    exists: bool | None
+    avatar_url: str | None = None
+
+
+def check_account(username: str) -> AccountCheck:
+    """Whether the account exists, and its profile picture: one page, not the
+    whole watchlist.
+
+    For the moment a username is linked, or "use my profile picture" is
+    switched on, so the preview and a warning about a mistyped name appear
+    right away instead of after the next sync. The watchlist's first page is
+    used because `extract_avatar_url_from_page` already knows its header.
+    """
+    url = f"https://letterboxd.com/{username}/watchlist/"
+
+    async def fetch() -> AccountCheck:
         async with ClientSession() as session:
-            page = await get_watchlist_page_async(
-                session=session, username=username, page_num=1
-            )
-            return extract_avatar_url_from_page(page) if page else None
+            async with session.get(url, headers=HEADERS) as response:
+                if response.status == HTTPStatus.NOT_FOUND:
+                    return AccountCheck(exists=False)
+                if response.status != HTTPStatus.OK:
+                    logger.warning(
+                        f"Letterboxd account check for {username}: "
+                        f"status {response.status}"
+                    )
+                    return AccountCheck(exists=None)
+                page = BeautifulSoup(await response.text(), "lxml")
+                return AccountCheck(
+                    exists=True, avatar_url=extract_avatar_url_from_page(page)
+                )
 
     try:
         return asyncio.run(fetch())
     except Exception as e:
-        logger.warning(f"Could not fetch the avatar for {username}: {e}")
-        return None
+        logger.warning(f"Could not check the Letterboxd account {username}: {e}")
+        return AccountCheck(exists=None)

@@ -6,13 +6,15 @@
  * retires that tip for good, so the app never nags about a service the user has
  * already told it they don't have.
  *
- * Once the username saves, the page turns into the question whether the
- * Letterboxd profile picture may be used as the avatar — a page of its own
- * with the picture in the middle, not a switch under the field, so it is
- * actually seen. Off unless the user says yes; saying yes makes the backend
- * fetch the picture right away. If none comes back (no such account, or no
- * picture on it) a short note says so before moving on; the switch stays on,
- * so a picture added later shows up by itself.
+ * Saving looks the account up on Letterboxd there and then. A name with no
+ * account behind it keeps the user here, with a warning under the field and
+ * the name still in it to correct (or a way to keep it anyway). Otherwise the
+ * page turns into the question whether the Letterboxd profile picture may be
+ * used as the avatar — a page of its own with the already-fetched picture in
+ * the middle, not a switch under the field, so it is actually seen. Off unless
+ * the user says yes. If saying yes still brings no picture back (none on the
+ * account, or the lookup failed) a short note says so before moving on; the
+ * switch stays on, so a picture added later shows up by itself.
  *
  * The "where do I find it?" help is open rather than collapsed here — the page
  * has the room, and a first-time user is exactly who needs it.
@@ -23,6 +25,7 @@ import useLetterboxdAvatarPreference from "shared/hooks/useLetterboxdAvatarPrefe
 
 import IntroPageShell from "@/components/intro/IntroPageShell";
 import { ThemedText } from "@/components/themed-text";
+import LetterboxdNotFoundWarning from "@/components/ui/LetterboxdNotFoundWarning";
 import PersonAvatar from "@/components/ui/PersonAvatar";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -36,13 +39,21 @@ export default function IntroLetterboxdPage({ onDone }: { onDone: () => void }) 
   const [username, setUsername] = useState("");
   const saveMutation = useSaveLetterboxdUsername();
   const [isSaved, setIsSaved] = useState(false);
+  // The saved name Letterboxd answered 404 for; the page stays up to fix it.
+  const [notFoundUsername, setNotFoundUsername] = useState<string | null>(null);
 
   const trimmedUsername = username.trim();
 
   const handleSave = useCallback(() => {
     if (!trimmedUsername) return;
     saveMutation.mutate(trimmedUsername, {
-      onSuccess: () => setIsSaved(true),
+      onSuccess: (updated) => {
+        if (updated.letterboxd_account_not_found) {
+          setNotFoundUsername(updated.letterboxd_username ?? trimmedUsername);
+        } else {
+          setIsSaved(true);
+        }
+      },
     });
   }, [saveMutation, trimmedUsername]);
 
@@ -66,8 +77,10 @@ export default function IntroLetterboxdPage({ onDone }: { onDone: () => void }) 
       onPrimary={handleSave}
       isPrimaryDisabled={!trimmedUsername}
       isPrimaryBusy={saveMutation.isPending}
-      secondaryLabel="I don't use Letterboxd"
-      onSecondary={handleNoLetterboxd}
+      // Once a name has failed, the way out keeps it: the user may be about to
+      // create that account, and saying they don't use Letterboxd is untrue.
+      secondaryLabel={notFoundUsername ? "Keep it and continue" : "I don't use Letterboxd"}
+      onSecondary={notFoundUsername ? onDone : handleNoLetterboxd}
     >
       <View style={styles.field}>
         <ThemedText style={styles.fieldLabel}>Letterboxd username</ThemedText>
@@ -86,6 +99,7 @@ export default function IntroLetterboxdPage({ onDone }: { onDone: () => void }) 
             editable={!saveMutation.isPending}
           />
         </View>
+        {notFoundUsername ? <LetterboxdNotFoundWarning username={notFoundUsername} /> : null}
       </View>
 
       <View style={styles.helpPanel}>
@@ -150,7 +164,7 @@ function AvatarQuestion({ onDone }: { onDone: () => void }) {
             />
             <View style={styles.missingNote}>
               <ThemedText style={styles.missingNoteText}>
-                {`Either there is no Letterboxd account called "${currentUser.letterboxd_username ?? ""}", or it has no profile picture, so a default is used. If you create that account or add a picture later, your avatar updates by itself.`}
+                {`Letterboxd didn't give us a profile picture for "${currentUser.letterboxd_username ?? ""}": either the account has none, or Letterboxd couldn't be reached just now. If you add one later, your avatar updates by itself.`}
               </ThemedText>
               <ThemedText style={styles.missingNoteText}>
                 You can change your Letterboxd username any time in Settings → Letterboxd.

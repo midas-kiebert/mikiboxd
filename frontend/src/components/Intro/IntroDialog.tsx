@@ -33,6 +33,7 @@ import InviteCard from "@/components/Friends/InviteCard"
 import { PersonAvatar } from "@/components/Showtimes/detail/PersonAvatar"
 import ShowtimeStatusControl from "@/components/Showtimes/detail/ShowtimeStatusControl"
 import { PanelIcon } from "@/components/Showtimes/detail/panel-icons"
+import { LetterboxdNotFoundWarning } from "@/components/Settings/LetterboxdNotFoundWarning"
 import {
   DialogBackdrop,
   DialogBody,
@@ -267,6 +268,10 @@ const LetterboxdPage = ({ onDone }: { onDone: () => void }) => {
   const trimmed = username.trim()
   // Set once the username is saved: the account the picture question is about.
   const [savedUser, setSavedUser] = useState<UserMe | null>(null)
+  // The saved name Letterboxd answered 404 for; the page stays up to fix it.
+  const [notFoundUsername, setNotFoundUsername] = useState<string | null>(
+    null,
+  )
 
   const save = useMutation({
     mutationFn: (value: string) =>
@@ -275,7 +280,11 @@ const LetterboxdPage = ({ onDone }: { onDone: () => void }) => {
       queryClient.setQueryData(["currentUser"], updated)
       queryClient.invalidateQueries({ queryKey: ["showtimes"] })
       queryClient.invalidateQueries({ queryKey: ["movies"] })
-      setSavedUser(updated)
+      if (updated.letterboxd_account_not_found) {
+        setNotFoundUsername(updated.letterboxd_username ?? null)
+      } else {
+        setSavedUser(updated)
+      }
     },
     onError: () =>
       showErrorToast("Your Letterboxd username was not saved. Try again."),
@@ -293,7 +302,11 @@ const LetterboxdPage = ({ onDone }: { onDone: () => void }) => {
       }
       primaryBusy={save.isPending}
       onPrimary={() => (trimmed ? save.mutate(trimmed) : onDone())}
-      secondaryLabel="I don't use Letterboxd"
+      // Once a name has failed, the way out keeps it: the user may be about to
+      // create that account, and saying they don't use Letterboxd is untrue.
+      secondaryLabel={
+        notFoundUsername ? "Keep it and continue" : "I don't use Letterboxd"
+      }
       onSecondary={onDone}
     >
       <div className="au-field">
@@ -316,6 +329,9 @@ const LetterboxdPage = ({ onDone }: { onDone: () => void }) => {
           />
         </div>
       </div>
+      {notFoundUsername ? (
+        <LetterboxdNotFoundWarning username={notFoundUsername} />
+      ) : null}
       <p className="in-help">
         <strong>Where do I find it?</strong> Open your profile on letterboxd.com
         and read the address bar: in letterboxd.com/yourname, your username is{" "}
@@ -332,11 +348,10 @@ const LetterboxdPage = ({ onDone }: { onDone: () => void }) => {
  * asks the same with a switch on its intro page and a tip after a first save
  * in Settings (`LetterboxdAvatarTip`).
  *
- * A brand-new link usually has no picture read yet (only a watchlist sync
- * reads one), so the preview may show the initial; saying yes makes the
- * backend fetch the picture there and then. If none comes back (no such
- * account, or no picture on it) a short note says so before moving on; the
- * switch stays on, so a picture added later shows up by itself.
+ * Saving the username already fetched the picture, so the preview shows it.
+ * Saying yes looks again; if still none comes back (none on the account, or
+ * the lookup failed) a short note says so before moving on. The switch stays
+ * on, so a picture added later shows up by itself.
  */
 const LetterboxdAvatarPrompt = ({
   user,
@@ -368,10 +383,10 @@ const LetterboxdAvatarPrompt = ({
           />
           <div className="in-note">
             <p className="in-help">
-              Either there is no Letterboxd account called{" "}
-              <strong>{user.letterboxd_username}</strong>, or it has no profile
-              picture, so a default is used. If you create that account or add a
-              picture later, your avatar updates by itself.
+              Letterboxd didn't give us a profile picture for{" "}
+              <strong>{user.letterboxd_username}</strong>: either the account
+              has none, or Letterboxd couldn't be reached just now. If you add
+              one later, your avatar updates by itself.
             </p>
             <p className="in-help">
               You can change your Letterboxd username any time in Settings →

@@ -1193,6 +1193,7 @@ export type UserMe = {
   notify_watchlist_digest_enabled: boolean
   use_letterboxd_avatar: boolean
   letterboxd_avatar_url: string | null
+  letterboxd_account_not_found?: boolean
   can_report: boolean
   can_watch_sold_out: boolean
   has_password: boolean

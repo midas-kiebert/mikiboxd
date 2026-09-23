@@ -9,6 +9,9 @@
  * refresh greys out for the cooldown the backend reports, rather than one
  * re-derived here, so the two cannot drift.
  *
+ * A linked name Letterboxd answers 404 for gets a warning under the field
+ * (the backend looks it up on every save, and again when a sync fails).
+ *
  * Emptying the username and saving unlinks it, which is why this does not use
  * the shared hook that only accepts a name.
  *
@@ -32,6 +35,8 @@ import {
 
 import { FriendButton } from "@/components/Friends/friend-controls"
 import useCustomToast from "@/hooks/useCustomToast"
+
+import { LetterboxdNotFoundWarning } from "./LetterboxdNotFoundWarning"
 
 import {
   SettingsField,
@@ -153,6 +158,9 @@ const LetterboxdSection = () => {
               />
             </div>
           </SettingsField>
+          {user?.letterboxd_account_not_found && user.letterboxd_username ? (
+            <LetterboxdNotFoundWarning username={user.letterboxd_username} />
+          ) : null}
           <div className="st-actions st-actions--end">
             <FriendButton
               primary

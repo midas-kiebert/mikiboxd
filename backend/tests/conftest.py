@@ -117,6 +117,21 @@ def isolated_letterboxd_state(
     letterboxd.reset_letterboxd_block_state()
 
 
+@pytest.fixture(scope="function", autouse=True)
+def no_letterboxd_account_lookups(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Saving a Letterboxd username looks the account up on letterboxd.com.
+    Tests answer "unknown" instead of touching the network; one that cares
+    patches `check_account` again with the answer it needs."""
+    from app.scraping.letterboxd import watchlist as letterboxd_watchlist
+    from app.services import watchlist as watchlist_service
+
+    def unknown(_username: str) -> letterboxd_watchlist.AccountCheck:
+        return letterboxd_watchlist.AccountCheck(exists=None)
+
+    monkeypatch.setattr(letterboxd_watchlist, "check_account", unknown)
+    monkeypatch.setattr(watchlist_service, "check_account", unknown)
+
+
 @pytest.fixture(scope="function")
 def client() -> Generator[TestClient, None, None]:
     with TestClient(app) as c:

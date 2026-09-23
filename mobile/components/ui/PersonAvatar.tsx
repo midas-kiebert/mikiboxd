@@ -54,7 +54,18 @@ export default function PersonAvatar({
         style,
       ]}
     >
-      <ThemedText style={{ fontSize, fontWeight: "700", color: avatarColors.secondary }}>
+      {/* The line height must follow the font size: ThemedText's default
+          24pt line box pushes a large letter up and clips its top half. */}
+      <ThemedText
+        style={{
+          fontSize,
+          lineHeight: Math.round(fontSize * 1.2),
+          fontWeight: "700",
+          textAlign: "center",
+          includeFontPadding: false,
+          color: avatarColors.secondary,
+        }}
+      >
         {getAvatarInitial(name)}
       </ThemedText>
       {photo ? (

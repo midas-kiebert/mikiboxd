@@ -1,7 +1,9 @@
 /**
  * The "Letterboxd" card in Settings: the linked username, watchlist/watched
  * counts, a manual refresh button for each list, and the opt-in for using
- * the Letterboxd profile picture as the account's avatar.
+ * the Letterboxd profile picture as the account's avatar. A linked name
+ * Letterboxd answers 404 for gets a warning under the field (the backend looks
+ * it up on every save, and again when a sync fails).
  *
  * Watchlist and watched are synced independently on the backend (separate
  * cooldowns, separate failure states), so each gets its own button, its own
@@ -24,6 +26,7 @@ import useLetterboxdAvatarPreference from 'shared/hooks/useLetterboxdAvatarPrefe
 
 import { ThemedText } from '@/components/themed-text';
 import LetterboxdAvatarTip from '@/components/tips/LetterboxdAvatarTip';
+import LetterboxdNotFoundWarning from '@/components/ui/LetterboxdNotFoundWarning';
 import AppSwitch from '@/components/ui/AppSwitch';
 import { useThemeColors } from '@/hooks/use-theme-color';
 
@@ -73,10 +76,20 @@ export default function LetterboxdSection() {
   const saveUsername = useMutation({
     mutationFn: (value: string) =>
       MeService.updateUserMe({ requestBody: { letterboxd_username: value || null } }),
-    onSuccess: (_updated, value) => {
-      if (value && !user?.letterboxd_username && !user?.use_letterboxd_avatar) {
+    onSuccess: (updated, value) => {
+      // No picture question for a name with no account behind it: the
+      // warning under the field is what needs attention.
+      if (
+        value &&
+        !user?.letterboxd_username &&
+        !user?.use_letterboxd_avatar &&
+        !updated.letterboxd_account_not_found
+      ) {
         setIsAvatarPromptOpen(true);
       }
+      // The save already looked the account up, so the warning (or the
+      // picture) shows now rather than after a refetch.
+      queryClient.setQueryData(['currentUser'], updated);
       queryClient.invalidateQueries({ queryKey: ['currentUser'] });
     },
     onError: (error) => {
@@ -135,6 +148,9 @@ export default function LetterboxdSection() {
           editable={!saveUsername.isPending}
         />
       </View>
+      {user?.letterboxd_account_not_found && user.letterboxd_username ? (
+        <LetterboxdNotFoundWarning username={user.letterboxd_username} />
+      ) : null}
       <TouchableOpacity
         style={[styles.saveButton, !canSaveUsername && styles.buttonDisabled]}
         onPress={() => saveUsername.mutate(trimmedUsername)}

@@ -231,19 +231,15 @@ def update_me(
     if not current_user.email_verified and _wants_email_delivery(user_data):
         raise EmailNotVerified()
 
-    # Switching the Letterboxd picture on fetches it now: it is otherwise only
-    # read by a watchlist sync, and a new link has usually not had one yet, so
-    # saying yes would show nothing until some later sync. Also when the
-    # username changes with the switch already on — the old picture is someone
-    # else's now.
-    avatar_just_enabled = (
+    # A saved username is looked up now: it tells the user straight away
+    # whether the account exists, and gives them their picture to preview
+    # before they decide whether to show it. Otherwise both wait for a sync.
+    # Re-saving the same name looks again, which is how a warning clears once
+    # the account has been created. Switching the picture on looks too, since
+    # a link that has not been synced has not read one yet.
+    check_letterboxd_account = bool(user_data.get("letterboxd_username")) or (
         user_data.get("use_letterboxd_avatar") is True
         and not current_user.use_letterboxd_avatar
-    ) or (
-        current_user.use_letterboxd_avatar
-        and user_data.get("use_letterboxd_avatar") is not False
-        and bool(user_data.get("letterboxd_username"))
-        and user_data["letterboxd_username"] != current_user.letterboxd_username
     )
 
     # Sticky, so the tip that points this feature out never nags someone who has
@@ -389,8 +385,8 @@ def update_me(
     except Exception as e:
         raise AppError() from e
 
-    if avatar_just_enabled:
-        _refresh_letterboxd_avatar(session=session, user=current_user)
+    if check_letterboxd_account:
+        _check_letterboxd_account(session=session, user=current_user)
 
     if incognito_mode_changed or default_visibility_mode_changed:
         showtime_visibility_crud.rebuild_effective_visibility_for_owner(
@@ -405,10 +401,10 @@ def update_me(
     return user_public
 
 
-def _refresh_letterboxd_avatar(*, session: Session, user: User) -> None:
-    """Read the linked account's picture off Letterboxd now. Left alone when
-    nothing comes back, like a sync does: a failed fetch is not a removed
-    picture."""
+def _check_letterboxd_account(*, session: Session, user: User) -> None:
+    """Look the linked account up on Letterboxd now. An unknown answer (a
+    block, a failed fetch) changes nothing, like a sync: it is neither a
+    missing account nor a removed picture."""
     if not user.letterboxd_username:
         return
     # By key, not `user.letterboxd`: the relationship can still point at the
@@ -416,10 +412,13 @@ def _refresh_letterboxd_avatar(*, session: Session, user: User) -> None:
     letterboxd = session.get(Letterboxd, user.letterboxd_username)
     if letterboxd is None:
         return
-    avatar_url = letterboxd_watchlist_scraper.get_avatar_url(user.letterboxd_username)
-    if avatar_url is not None:
-        letterboxd.avatar_url = avatar_url
-        session.add(letterboxd)
+    check = letterboxd_watchlist_scraper.check_account(user.letterboxd_username)
+    if check.exists is None:
+        return
+    letterboxd.account_not_found = not check.exists
+    if check.avatar_url is not None:
+        letterboxd.avatar_url = check.avatar_url
+    session.add(letterboxd)
 
 
 def delete_me(

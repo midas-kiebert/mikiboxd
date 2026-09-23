@@ -1,0 +1,35 @@
+/* The linked Letterboxd name has no account behind it (Settings + intro). */
+.lb-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--chakra-colors-app-red\.border);
+  border-radius: 10px;
+  background: var(--chakra-colors-app-red\.primary);
+  color: var(--chakra-colors-app-red\.secondary);
+  text-align: left;
+}
+
+.lb-warning__icon {
+  flex-shrink: 0;
+}
+
+.lb-warning__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  /* Text beside an icon reads high; nudged down to sit level with it. */
+  padding-top: 1px;
+}
+
+.lb-warning__title {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 18px;
+}
+
+.lb-warning__body {
+  font-size: 12px;
+  line-height: 17px;
+}

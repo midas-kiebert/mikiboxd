@@ -15,6 +15,10 @@ class Letterboxd(SQLModel, table=True):
     # fetched pages but could not find the element — that means the page's
     # markup changed, not that the picture is gone.
     avatar_url: str | None = Field(default=None, max_length=1024)
+    # Letterboxd answered 404 for this username: there is no such account.
+    # Only a definite 404 sets it — a block or a transport error says nothing
+    # either way — and any later fetch that finds the account clears it.
+    account_not_found: bool = Field(default=False)
     last_watchlist_sync: datetime | None
     last_watched_sync: datetime | None = None
     # Stamped before each scrape, so a sync that keeps failing (Letterboxd

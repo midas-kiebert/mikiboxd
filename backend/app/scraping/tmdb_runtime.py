@@ -255,6 +255,9 @@ def correct_tmdb_lookup_cache_entry(
         # that has since been filled in) can still find the decision by title
         # instead of resolving the film from scratch and getting it wrong again.
         cached.is_manual_override = True
+        # Correcting the row is the review a flagged tie asked for.
+        if cached.ambiguity_json is not None and cached.ambiguity_reviewed_at is None:
+            cached.ambiguity_reviewed_at = now
         if cached.title_query is None:
             cached.title_query = _title_query_from_payload(cached.lookup_payload)
         cached.updated_at = now

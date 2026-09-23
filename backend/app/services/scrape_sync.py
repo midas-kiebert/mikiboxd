@@ -1,4 +1,5 @@
 import threading
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -437,6 +438,7 @@ def reconcile_trusted_scraper_misses(
     session: Session,
     cinema_id: int,
     observed_event_keys: set[str],
+    exempt_showtime_ids: Collection[int] = (),
 ) -> int:
     """Deactivate this cinema's Cineville presences a trusted site scraper
     didn't just observe.
@@ -446,6 +448,11 @@ def reconcile_trusted_scraper_misses(
     DEGRADED) run: a Cineville showtime absent from the trusted site's own
     listing is treated as a Cineville false positive and skips the normal
     ``MISSING_STREAK_TO_DEACTIVATE`` grace period other sources get.
+
+    ``exempt_showtime_ids`` are Cineville showtimes the site *does* list at that
+    time, under a film the scraper couldn't identify (see
+    ``app.services.unidentified_listings``). Their absence from the observed
+    keys says nothing about Cineville, so they are left alone.
     """
     source_stream = f"cineville:{cinema_id}"
     stmt = (
@@ -461,6 +468,8 @@ def reconcile_trusted_scraper_misses(
     deactivated = 0
     for presence in presences:
         if presence.source_event_key in observed_event_keys:
+            continue
+        if presence.showtime_id in exempt_showtime_ids:
             continue
         presence.missing_streak = MISSING_STREAK_TO_DEACTIVATE
         presence.active = False

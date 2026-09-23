@@ -629,6 +629,11 @@ def _store_cached_tmdb_id(
     if _tmdb_cache_available is False:
         return
     now = now_amsterdam_naive()
+    ambiguity_json = (
+        json.dumps(lookup_result.ambiguity.to_payload())
+        if lookup_result.ambiguity is not None
+        else None
+    )
     try:
         with get_db_context() as session:
             stmt = select(TmdbLookupCache).where(
@@ -645,6 +650,7 @@ def _store_cached_tmdb_id(
                         tmdb_id=lookup_result.tmdb_id,
                         confidence=lookup_result.confidence,
                         is_manual_override=is_manual_override,
+                        ambiguity_json=ambiguity_json,
                         created_at=now,
                         updated_at=now,
                     )
@@ -666,6 +672,9 @@ def _store_cached_tmdb_id(
                 cached.tmdb_id = lookup_result.tmdb_id
                 cached.confidence = lookup_result.confidence
                 cached.updated_at = now
+                if not is_manual_override and cached.ambiguity_json != ambiguity_json:
+                    cached.ambiguity_json = ambiguity_json
+                    cached.ambiguity_reviewed_at = None
                 if title_query is not None:
                     cached.title_query = title_query
                 if is_manual_override:

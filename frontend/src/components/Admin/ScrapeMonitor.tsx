@@ -3,7 +3,8 @@
  * deltas and anomaly flags, plus the stored per-run recaps — so a source that
  * suddenly finds far fewer showtimes, a degraded run, or deletions is easy to
  * trace. The same data is available as raw JSON at the API paths shown below,
- * for scripts/LLMs to parse.
+ * for scripts/LLMs to parse. TMDB lookups that tied between several films are
+ * listed first, since each one needs a human to check the match.
  */
 import {
   Badge,
@@ -24,6 +25,7 @@ import { useState } from "react"
 import { AdminService } from "shared"
 
 import type { ScrapeRunView } from "shared"
+import TmdbAmbiguities from "./TmdbAmbiguities"
 
 const AdminNav = () => (
   <Stack direction="row" gap={2} mb={6}>
@@ -171,6 +173,8 @@ const ScrapeMonitor = () => {
         <Code>/api/v1/admin/scrape/runs?hours={hours}</Code> and{" "}
         <Code>/api/v1/admin/scrape/recaps</Code>
       </Text>
+
+      <TmdbAmbiguities />
 
       <Stack direction="row" gap={2} mb={4}>
         {WINDOW_OPTIONS.map((option) => (

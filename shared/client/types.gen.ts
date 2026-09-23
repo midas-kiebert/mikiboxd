@@ -1074,6 +1074,32 @@ export type SoldOutWatchPublic = {
  */
 export type TimeOfDay = "MORNING" | "AFTERNOON" | "EVENING" | "NIGHT"
 
+export type TmdbAmbiguityCandidate = {
+  tmdb_id: number
+  title: string
+  release_year: number | null
+}
+
+export type TmdbAmbiguityReviewUpdate = {
+  reviewed: boolean
+}
+
+export type TmdbAmbiguityView = {
+  cache_id: number
+  title_query: string | null
+  director_names: Array<string>
+  actor_names: Array<string>
+  year: number | null
+  duration_minutes: number | null
+  quality: string
+  candidates: Array<TmdbAmbiguityCandidate>
+  resolved_by: Array<string>
+  matched_tmdb_id: number | null
+  is_manual_override: boolean
+  created_at: string
+  reviewed_at: string | null
+}
+
 export type TmdbCacheCorrectionRequest = {
   cache_id: number
   tmdb_id?: number | null
@@ -1463,6 +1489,20 @@ export type AdminGetScrapeRecapAttachmentData = {
 }
 
 export type AdminGetScrapeRecapAttachmentResponse = unknown
+
+export type AdminListTmdbAmbiguitiesData = {
+  includeReviewed?: boolean
+  limit?: number
+}
+
+export type AdminListTmdbAmbiguitiesResponse = Array<TmdbAmbiguityView>
+
+export type AdminUpdateTmdbAmbiguityData = {
+  cacheId: number
+  requestBody: TmdbAmbiguityReviewUpdate
+}
+
+export type AdminUpdateTmdbAmbiguityResponse = TmdbAmbiguityView
 
 export type CinemasGetAllCinemasResponse = Array<CinemaPublic>
 

@@ -145,9 +145,12 @@ class UitkijkScraper(BaseCinemaScraper):
         showtimes: list[ShowtimeCreate] = []
         for show in all_shows:
             cached_movie = movie_cache.get(show.slug)
-            if cached_movie is None:
-                continue
             start_datetime = to_amsterdam_time(show.start_date)
+            if cached_movie is None:
+                self.record_unidentified_listing(
+                    title=slug_to_title_query[show.slug], datetimes=[start_datetime]
+                )
+                continue
             showtimes.append(
                 ShowtimeCreate(
                     movie_id=cached_movie.id,

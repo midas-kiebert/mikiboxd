@@ -35,7 +35,7 @@ type RemoveInterestedElsewhereDialogProps = {
 const TITLE = "Clear your other “interested” marks?";
 const MESSAGE =
   "You're going to this showing. Want to remove “interested” from these other " +
-  "showings of the same movie?";
+  "showings of the same film?";
 
 export default function RemoveInterestedElsewhereDialog({
   visible,

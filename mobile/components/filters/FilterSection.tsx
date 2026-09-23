@@ -14,7 +14,7 @@
  * hiding a single segmented control behind a caret costs a tap and saves no
  * space, so the label and the control share one line instead.
  */
-import { PropsWithChildren, useCallback, useMemo, useState } from "react";
+import { PropsWithChildren, type ReactNode, useCallback, useMemo, useState } from "react";
 import { Animated, LayoutAnimation, StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
@@ -131,6 +131,24 @@ export function FilterNavRow({
 }
 
 /**
+ * An always-open section's heading: the same uppercase label as a collapsible
+ * section, with an optional action at the right end of its line (the Feed
+ * style and Language sections' "Make this the default"). The content goes
+ * underneath, supplied by the caller.
+ */
+export function FilterHeadingRow({ label, action }: { label: string; action?: ReactNode }) {
+  const colors = useThemeColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
+  return (
+    <View style={[styles.header, styles.headingRow]}>
+      <ThemedText style={styles.label}>{label}</ThemedText>
+      {action}
+    </View>
+  );
+}
+
+/**
  * A section that is a single control: label on the left, control on the right,
  * always on one line. The controls are sized to leave room for their labels;
  * `adjustsFontSizeToFit` is the backstop for the narrowest phones, where a
@@ -188,6 +206,8 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
     headerRight: { flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 1 },
     summary: { fontSize: 12, fontWeight: "600", color: colors.text, flexShrink: 1 },
     content: { marginTop: 7 },
+    // Fixed height, so the row does not change size when its action does.
+    headingRow: { minHeight: 32, marginBottom: 4 },
     inlineRow: {
       flexDirection: "row",
       alignItems: "center",

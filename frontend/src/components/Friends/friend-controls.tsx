@@ -178,13 +178,13 @@ const VISIBILITY_OPTIONS = [
     sharesStatus: true,
     label: "Always",
     tone: "green",
-    hint: "on every showtime you pick",
+    hint: "on every screening you pick",
   },
   {
     sharesStatus: false,
     label: "Only when invited",
     tone: "orange",
-    hint: "only on showtimes you invite them to",
+    hint: "only on screenings you invite them to",
   },
 ] as const
 
@@ -227,13 +227,13 @@ export const FriendVisibilityChoice = ({
             letterSpacing="0.2px"
             color="app.textSecondary"
           >
-            <IconLabel>Can see your showtimes:</IconLabel>
+            <IconLabel>Can see your screenings:</IconLabel>
           </Text>
         </Flex>
       </Flex>
       <Flex
         role="radiogroup"
-        aria-label={`Who can see your showtimes — ${name}`}
+        aria-label={`Who can see your screenings — ${name}`}
         gap="3px"
         p="3px"
         borderRadius="10px"
@@ -306,7 +306,7 @@ export const RemoveFriendDialog = ({
         </DialogHeader>
         <DialogBody>
           <Text fontSize="sm" color="app.textSecondary">
-            You will no longer see each other's showtimes, and neither of you
+            You will no longer see each other's screenings, and neither of you
             can send invites until you are friends again.
           </Text>
         </DialogBody>

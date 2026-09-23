@@ -47,6 +47,7 @@ import ShowtimeRow from "@/components/showtimes/ShowtimeRow";
 import MovieDescriptionSection from "@/components/movies/MovieDescriptionSection";
 import ListLoadingLogo from "@/components/layout/ListLoadingLogo";
 import { useDelayedTrue } from "@/hooks/useDelayedTrue";
+import { useFeedDefaults } from "@/hooks/useFeedDefaults";
 import { LOADING_LOGO_DELAY_MS, LOADING_LOGO_COOLDOWN_MS } from "@/constants/loading-logo";
 import LoadMoreFooter from "@/components/ui/LoadMoreFooter";
 import { FeedItemEntrance } from "@/components/ui/FeedItemEntrance";
@@ -282,6 +283,8 @@ function MovieContent({
   // session selection itself, which is already `sessionCinemaIds`.
   const isSignedIn = useIsSignedIn();
   const { data: preferredCinemaIds } = useFetchSelectedCinemas({ enabled: isSignedIn });
+  // Clearing puts language back to its default, not off (see useFeedDefaults).
+  const { defaultLanguages } = useFeedDefaults();
 
   const shouldInheritFilters = useMemo(
     () => (Array.isArray(inheritFilters) ? inheritFilters[0] : inheritFilters) === "1",
@@ -510,7 +513,7 @@ function MovieContent({
         url: shareUrl,
       });
     } catch {
-      Alert.alert("Error", "Could not share this movie.");
+      Alert.alert("Error", "Could not share this film.");
     }
   };
 
@@ -554,7 +557,7 @@ function MovieContent({
     <>
       {hasMovieFailed ? (
         <View style={styles.centered}>
-          <ThemedText style={styles.errorText}>Could not load movie.</ThemedText>
+          <ThemedText style={styles.errorText}>Could not load film.</ThemedText>
         </View>
       ) : (
         <>
@@ -651,7 +654,7 @@ function MovieContent({
                 onPress={() => void handleShareMovie()}
                 activeOpacity={0.8}
                 accessibilityRole="button"
-                accessibilityLabel="Share this movie"
+                accessibilityLabel="Share this film"
               >
                 <MaterialIcons name="share" size={10} color={colors.pillText} />
                 <ThemedText style={styles.shareBtnText}>Share</ThemedText>
@@ -667,8 +670,6 @@ function MovieContent({
               inline
               onOpenFilters={() => { triggerSelectionHaptic(); setFiltersModalVisible(true); }}
               onOpenCinemaModal={openCinemaModal}
-              groupByMovie={false}
-              setGroupByMovie={() => {}}
               watchlistOnly={false}
               setWatchlistOnly={() => {}}
               hideWatched={false}
@@ -688,7 +689,7 @@ function MovieContent({
                 setSelectedShowtimeFilter("all");
                 setSelectedDays([]);
                 setSelectedTimeRanges([]);
-                setSelectedLanguages([]);
+                setSelectedLanguages([...defaultLanguages]);
                 if (preferredCinemaIds) setSessionCinemaIds(preferredCinemaIds);
               }}
             />
@@ -801,9 +802,9 @@ function MovieContent({
                     <ListLoadingLogo />
                   </View>
                 ) : isShowtimesEmptyLoading || refreshing ? null : isShowtimesError ? (
-                  <ThemedText style={styles.errorText}>Could not load showtimes.</ThemedText>
+                  <ThemedText style={styles.errorText}>Could not load screenings.</ThemedText>
                 ) : (
-                  <ThemedText style={styles.noShowtimes}>No upcoming showtimes</ThemedText>
+                  <ThemedText style={styles.noShowtimes}>No upcoming screenings</ThemedText>
                 )
               }
               ListFooterComponent={<LoadMoreFooter loading={isFetchingNextPage} size="small" />}

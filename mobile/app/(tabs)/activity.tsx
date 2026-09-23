@@ -386,10 +386,10 @@ function ActivityPage({ mode, isFocused, colors, styles, registerControls }: Act
       onPress={goToShowtimes}
       activeOpacity={0.85}
       accessibilityRole="button"
-      accessibilityLabel="Browse all showtimes"
+      accessibilityLabel="Browse all screenings"
     >
       <MaterialIcons name="list" size={17} color={colors.pillActiveText} />
-      <ThemedText style={styles.emptyActionText}>Browse showtimes</ThemedText>
+      <ThemedText style={styles.emptyActionText}>Browse screenings</ThemedText>
     </TouchableOpacity>
   );
   const addFriendsButton = (

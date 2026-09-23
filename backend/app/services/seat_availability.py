@@ -26,6 +26,7 @@ before it starts changes by the minute.
 
 import random
 import threading
+import time
 from collections import defaultdict
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
@@ -455,6 +456,24 @@ _immediate_check_hosts_lock = threading.Lock()
 # poller run after this, and an unselected one simply stops promising a number
 # and offers the check again.
 _SKIPPED_CHECK_RETRY_AFTER = timedelta(minutes=1)
+# How long a hand-requested read may wait for a free slot (process-wide, and
+# at its ticket shop) before giving up. Reads take about a second, so this only
+# runs out when something is genuinely stuck.
+MANUAL_CHECK_MAX_WAIT_SECONDS = 15.0
+_HOST_WAIT_POLL_SECONDS = 0.25
+
+
+def _claim_immediate_check_host(host: str, *, wait_seconds: float) -> bool:
+    """Take `host`'s one in-flight slot, waiting up to `wait_seconds` for it."""
+    deadline = time.monotonic() + wait_seconds
+    while True:
+        with _immediate_check_hosts_lock:
+            if host not in _immediate_check_hosts:
+                _immediate_check_hosts.add(host)
+                return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(_HOST_WAIT_POLL_SECONDS)
 
 
 def _defer_skipped_check(
@@ -535,7 +554,16 @@ def check_now(
         return
     if manual_request_id is None and showtime.seats_checked_at is not None:
         return
-    if not _immediate_check_semaphore.acquire(blocking=False):
+    # A pressed button waits its turn rather than being dropped: skipping it
+    # would leave the person looking at a button that did nothing. The wait is
+    # bounded, and the budget already bounds how many can be waiting.
+    wait = MANUAL_CHECK_MAX_WAIT_SECONDS if manual_request_id is not None else 0
+    acquired = (
+        _immediate_check_semaphore.acquire(timeout=wait)
+        if wait
+        else _immediate_check_semaphore.acquire(blocking=False)
+    )
+    if not acquired:
         _defer_skipped_check(
             session=session, showtime=showtime, manual_request_id=manual_request_id
         )
@@ -543,22 +571,26 @@ def check_now(
     host: str | None = None
     try:
         host = urlsplit(showtime.ticket_link).netloc
-        with _immediate_check_hosts_lock:
-            if host in _immediate_check_hosts:
-                host = None
-                _defer_skipped_check(
-                    session=session,
-                    showtime=showtime,
-                    manual_request_id=manual_request_id,
-                )
-                return
-            _immediate_check_hosts.add(host)
+        if not _claim_immediate_check_host(host, wait_seconds=wait):
+            host = None
+            _defer_skipped_check(
+                session=session,
+                showtime=showtime,
+                manual_request_id=manual_request_id,
+            )
+            return
         try:
             availability = fetch_seat_availability(ticket_link=showtime.ticket_link)
         except SeatAvailabilityFetchError as e:
             logger.warning(
                 f"Immediate seat availability read failed for showtime {showtime_id}: {e}"
             )
+            # Kept, and marked, so this screening stops offering the button for
+            # a while: pressing it again would most likely fail the same way.
+            if manual_request_id is not None:
+                seat_check_request_crud.mark_failed(
+                    session=session, request_id=manual_request_id
+                )
             # Without this the due time this call was triggered by (set by
             # `request_reading_on_interest`, always <= now) is never moved, so
             # `is_read_pending` keeps reporting "checking" forever — the poller
@@ -701,6 +733,10 @@ MANUAL_CHECK_MIN_AGE = timedelta(minutes=10)
 MANUAL_CHECK_BUDGET_WINDOW = timedelta(hours=1)
 MANUAL_CHECK_GLOBAL_LIMIT = 120
 MANUAL_CHECK_HOST_LIMIT = 20
+# A pressed read that failed at the ticket shop takes the button away for this
+# long: the next press would most likely fail the same way, and a button that
+# does nothing is worse than none.
+MANUAL_CHECK_FAILED_COOLDOWN = timedelta(hours=6)
 
 
 class ManualCheckBudget(NamedTuple):
@@ -740,9 +776,10 @@ def load_manual_check_budget(
             if used_by_host.get(host, 0) < MANUAL_CHECK_HOST_LIMIT
         ),
         recently_requested=frozenset(
-            seat_check_request_crud.get_requested_since(
+            seat_check_request_crud.get_blocking_requests(
                 session=session,
-                since=reference - MANUAL_CHECK_MIN_AGE,
+                requested_since=reference - MANUAL_CHECK_MIN_AGE,
+                failed_since=reference - MANUAL_CHECK_FAILED_COOLDOWN,
                 showtime_ids=[showtime.id for showtime in showtimes],
             )
         ),
@@ -757,7 +794,7 @@ def is_check_requestable(
     Readable at all, not started (nothing reads a screening once it has begun),
     nothing already on its way — asking twice for the reading being fetched
     buys nothing — and either never read or read at least
-    `MANUAL_CHECK_MIN_AGE` ago. Sold out is not an exception: a ticket handed
+    `MANUAL_CHECK_MIN_AGE` ago with a count to show for it. Sold out is not an exception: a ticket handed
     back is the one thing the poller will never notice there, so a person asking
     is worth the request. The other half is `ManualCheckBudget`.
     """
@@ -765,10 +802,13 @@ def is_check_requestable(
         return False
     if showtime.datetime <= now:
         return False
-    return (
-        showtime.seats_checked_at is None
-        or showtime.seats_checked_at <= now - MANUAL_CHECK_MIN_AGE
-    )
+    if showtime.seats_checked_at is None:
+        return True
+    # Read before, and the shop had no count to give. Asking again gets the
+    # same nothing; the poller keeps trying on its own slow cadence.
+    if effective_seat_level(showtime) is None:
+        return False
+    return showtime.seats_checked_at <= now - MANUAL_CHECK_MIN_AGE
 
 
 def reserve_manual_check(*, session: Session, showtime_id: int) -> int | None:
@@ -790,7 +830,8 @@ def reserve_manual_check(*, session: Session, showtime_id: int) -> int | None:
         return None
     seat_check_request_crud.lock_budget(session=session)
     seat_check_request_crud.delete_older_than(
-        session=session, before=now - MANUAL_CHECK_BUDGET_WINDOW
+        session=session,
+        before=now - max(MANUAL_CHECK_BUDGET_WINDOW, MANUAL_CHECK_FAILED_COOLDOWN),
     )
     budget = load_manual_check_budget(session=session, showtimes=[showtime], now=now)
     if not budget.allows(showtime):
@@ -817,18 +858,22 @@ def to_public(
     """This showtime's availability as the client sees it, or None if there is
     nothing to say about it and never will be — see the schema's docstring.
 
-    `budget` settles the global half of `can_request_check`. Lists embedding
-    availability in every row leave it out and get the per-screening rule
-    alone: nothing in a list offers the button, and the sheet that does always
-    refetches through `get_seat_availability`, which passes one.
+    `budget` settles the global half of `can_request_check`, and without one
+    the check is never offered. Lists embedding availability in every row
+    leave it out: the clients cache that row value, and a button drawn from it
+    would ignore the budget and the cooldown — a press that does nothing. The
+    sheet and panel refetch through `get_seat_availability` on every open,
+    which passes one.
     """
     now = now_amsterdam_naive()
     level = effective_seat_level(showtime)
     checking = is_read_pending(showtime, now=now)
     trackable = is_trackable(showtime)
-    can_request_check = is_check_requestable(
-        showtime, now=now, checking=checking
-    ) and (budget is None or budget.allows(showtime))
+    can_request_check = (
+        budget is not None
+        and budget.allows(showtime)
+        and is_check_requestable(showtime, now=now, checking=checking)
+    )
     if level is None:
         if not checking and not trackable:
             return None

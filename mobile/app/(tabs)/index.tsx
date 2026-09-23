@@ -40,6 +40,7 @@ import { ShowtimesListContent } from '@/components/showtimes/ShowtimesScreen';
 import LoadMoreFooter from '@/components/ui/LoadMoreFooter';
 import ListLoadingLogo from '@/components/layout/ListLoadingLogo';
 import { useDelayedTrue } from '@/hooks/useDelayedTrue';
+import { useFeedDefaults } from '@/hooks/useFeedDefaults';
 import { LOADING_LOGO_DELAY_MS, LOADING_LOGO_COOLDOWN_MS } from '@/constants/loading-logo';
 import { FeedItemEntrance } from '@/components/ui/FeedItemEntrance';
 import MovieCard from '@/components/movies/MovieCard';
@@ -250,6 +251,8 @@ function MainShowtimesScreen() {
   // restore to — the session selection *is* what they saved — so their cinema
   // choice is deliberately left alone by it.
   const { data: preferredCinemaIds } = useFetchSelectedCinemas({ enabled: isSignedIn });
+  // Clearing puts language back to its default, not off (see useFeedDefaults).
+  const { defaultLanguages } = useFeedDefaults();
 
   const dayAnchorKey =
     DateTime.now().setZone('Europe/Amsterdam').startOf('day').toISODate() ?? '';
@@ -526,8 +529,6 @@ function MainShowtimesScreen() {
     hasLoadedFeed;
 
   const activeChipsProps = {
-    groupByMovie,
-    setGroupByMovie: (v: boolean) => { setIsFilterTransitionLoading(true); setGroupByMovie(v); },
     watchlistOnly: effectiveWatchlistOnly,
     setWatchlistOnly: (v: boolean) => { setIsFilterTransitionLoading(true); setWatchlistOnly(v); },
     watchlistExclude: effectiveWatchlistExclude,
@@ -564,13 +565,12 @@ function MainShowtimesScreen() {
       setWatchlistExclude(false);
       setHideWatched(false);
       setWatchedOnly(false);
-      setGroupByMovie(false);
       setSelectedDays([]);
       setSelectedTimeRanges([]);
       setSelectedRuntimeRanges([]);
       setSelectedListIds([]);
       setExcludeListIds([]);
-      setSelectedLanguages([]);
+      setSelectedLanguages([...defaultLanguages]);
       if (preferredCinemaIds) setSessionCinemaIds(preferredCinemaIds);
     },
   };
@@ -641,7 +641,7 @@ function MainShowtimesScreen() {
     if (isMoviesEmptyLoading || refreshing) return <View style={styles.emptyPlaceholder} />;
     return (
       <ThemedView style={styles.centerContainer}>
-        <ThemedText style={styles.emptyText}>No movies found</ThemedText>
+        <ThemedText style={styles.emptyText}>No films found</ThemedText>
         {searchFieldFallback}
       </ThemedView>
     );
@@ -705,7 +705,7 @@ function MainShowtimesScreen() {
           }}
           refreshing={refreshing}
           onRefresh={handleRefresh}
-          emptyText="No showtimes found"
+          emptyText="No screenings found"
           emptyExtra={searchFieldFallback}
           openModalOptions={SHOWTIME_MODAL_OPTIONS}
           inheritFiltersOnMovieNav

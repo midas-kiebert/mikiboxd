@@ -280,8 +280,8 @@ type ShowtimeFeedPageProps = {
 const ShowtimeFeedPage = ({
   feed,
   header,
-  emptyText = "No upcoming showtimes.",
-  filteredEmptyText = "No showtimes match these filters.",
+  emptyText = "No upcoming screenings.",
+  filteredEmptyText = "No screenings match these filters.",
   emptyState,
   hasNav = true,
   showRail = true,

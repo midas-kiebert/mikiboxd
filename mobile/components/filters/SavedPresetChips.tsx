@@ -191,7 +191,7 @@ export default function SavedPresetChips({ onApply }: SavedPresetChipsProps) {
     // dialog appears — the chip itself gives no long-press feedback.
     triggerLongPressHaptic();
     Alert.alert(
-      "Delete preset?",
+      "Delete quick filter?",
       `Remove "${preset.name}"?`,
       [
         { text: "Cancel", style: "cancel" },

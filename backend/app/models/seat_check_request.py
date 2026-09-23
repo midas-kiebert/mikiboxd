@@ -15,8 +15,8 @@ class SeatCheckRequest(SQLModel, table=True):
     budget and multiply the real rate at a cinema's ticket shop by the worker
     count. The rows double as the per-screening cooldown — a screening that was
     asked about minutes ago is not asked about again, whether or not that read
-    produced a number. Rows older than the budget window are useless and are
-    pruned as new ones are written.
+    produced a number. Rows past both the budget window and the failed-read
+    cooldown are useless and are pruned as new ones are written.
     """
 
     id: int | None = Field(default=None, primary_key=True)
@@ -25,3 +25,7 @@ class SeatCheckRequest(SQLModel, table=True):
     # counts — several cinemas can sell from one shop.
     host: str = Field(index=True)
     requested_at: datetime = Field(default_factory=now_amsterdam_naive, index=True)
+    # The read this press paid for failed at the ticket shop. Such a row keeps
+    # the screening's button away for longer than the ordinary cooldown — see
+    # `MANUAL_CHECK_FAILED_COOLDOWN`.
+    failed: bool = Field(default=False)

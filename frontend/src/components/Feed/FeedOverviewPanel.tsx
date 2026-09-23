@@ -340,7 +340,7 @@ const CustomListPicker = ({
           {presets.length ? (
             <>
               <MenuSeparator />
-              <MenuItemGroup title="Your presets">
+              <MenuItemGroup title="Your quick filters">
                 {presets.map((preset) => (
                   <MenuItem
                     key={preset.id}

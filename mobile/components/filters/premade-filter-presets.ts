@@ -42,7 +42,7 @@ export type PremadeFilterPreset = {
 export const PREMADE_FILTER_PRESETS: readonly PremadeFilterPreset[] = [
   {
     id: "friends-showtimes",
-    name: "Friends' showtimes",
+    name: "Friends' screenings",
     summary: "Marked interested by friends · Every cinema",
     icon: "groups",
     filters: { selected_showtime_filter: "interested" },
@@ -51,7 +51,7 @@ export const PREMADE_FILTER_PRESETS: readonly PremadeFilterPreset[] = [
   {
     id: "watchlist",
     name: "Watchlist",
-    summary: "Watchlist only · Grouped by movie",
+    summary: "Watchlist only · Grouped by film",
     icon: "bookmark",
     filters: { watchlist_only: true, group_by_movie: true },
   },
@@ -101,9 +101,6 @@ export const buildPremadeSavedPreset = ({
 
   return buildSavedPresetCreate({
     name: preset.name,
-    // These are suggestions, not a declaration about what should load at
-    // startup, so none of them claims the single favorite slot.
-    isFavorite: false,
     untouchedFields: [
       ...CONTROLLABLE_FILTER_DIMENSIONS.filter((dimension) => !controlled.has(dimension)),
       ...(isPartial ? listIds.map(listDimension) : []),

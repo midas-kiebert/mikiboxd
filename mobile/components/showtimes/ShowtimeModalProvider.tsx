@@ -126,14 +126,14 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
           if (openRequestIdRef.current !== requestId) return;
           if (options?.requireUpcoming && hasShowtimeStarted(fetched.datetime)) {
             setVisible(false);
-            Alert.alert("Invite expired", "This showtime has already passed.");
+            Alert.alert("Invite expired", "This screening has already passed.");
             return;
           }
           setCurrentShowtime(fetched);
         } catch (error) {
           if (openRequestIdRef.current !== requestId) return;
           console.error("Error loading showtime for modal:", error);
-          Alert.alert("Error", "Could not open this showtime.");
+          Alert.alert("Error", "Could not open this screening.");
           setVisible(false);
         } finally {
           if (openRequestIdRef.current === requestId) setIsLoadingById(false);

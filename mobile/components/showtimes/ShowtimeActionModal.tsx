@@ -170,7 +170,7 @@ type ReportReason =
   | "wrong_subtitles";
 
 const REPORT_REASON_OPTIONS: { value: ReportReason; label: string }[] = [
-  { value: "incorrect_movie", label: "Wrong movie" },
+  { value: "incorrect_movie", label: "Wrong film" },
   { value: "incorrect_time", label: "Wrong time" },
   { value: "wrong_subtitles", label: "Wrong subtitles" },
   { value: "does_not_exist", label: "Doesn't exist" },
@@ -891,7 +891,7 @@ export default function ShowtimeActionModal({
     }) => ShowtimesService.reportShowtime({ showtimeId, requestBody: { reason } }),
     onSuccess: () => {
       setIsReportDialogVisible(false);
-      Alert.alert("Thanks!", "We'll take a look at this showtime.");
+      Alert.alert("Thanks!", "We'll take a look at this screening.");
     },
     onError: () => {
       Alert.alert("Error", "Could not submit the report. Please try again.");
@@ -1127,7 +1127,7 @@ export default function ShowtimeActionModal({
   const showSeatBusynessInfo =
     isCheckingSeatAvailability || Boolean(seatMeta) || isSeatTrackable;
 
-  const { mutate: requestSeatCheck } = useMutation({
+  const { mutate: requestSeatCheck, isPending: isRequestingSeatCheck } = useMutation({
     mutationFn: (showtimeId: number) =>
       ShowtimesService.requestSeatAvailabilityCheck({ showtimeId }),
     onSuccess: (availability, showtimeId) => {
@@ -1148,6 +1148,9 @@ export default function ShowtimeActionModal({
 
   const handleRequestSeatCheck = useCallback(() => {
     if (selectedShowtimeId === null) return;
+    // One press, one request: a second tap before the answer lands would only
+    // be refused by the server.
+    if (isRequestingSeatCheck) return;
     if (!requireAccount("seats")) return;
     triggerSelectionHaptic();
     // Painted before the request, not after it: the reading itself takes a few
@@ -1163,7 +1166,13 @@ export default function ShowtimeActionModal({
           : previous
     );
     requestSeatCheck(selectedShowtimeId);
-  }, [selectedShowtimeId, requireAccount, queryClient, requestSeatCheck]);
+  }, [
+    selectedShowtimeId,
+    isRequestingSeatCheck,
+    requireAccount,
+    queryClient,
+    requestSeatCheck,
+  ]);
 
   // ─── Waiting for a returned ticket ─────────────────────────────────────────
   // The account either has this or it doesn't; there is no tier to show, no
@@ -1203,7 +1212,7 @@ export default function ShowtimeActionModal({
       Alert.alert(
         "Error",
         (error as { body?: { detail?: string } })?.body?.detail ??
-          "Could not watch this showtime for tickets."
+          "Could not watch this screening for tickets."
       );
     },
     onSuccess: (watch) => queryClient.setQueryData(soldOutWatchQueryKey, watch),
@@ -1219,7 +1228,7 @@ export default function ShowtimeActionModal({
     },
     onError: (_error, _variables, context) => {
       queryClient.setQueryData(soldOutWatchQueryKey, context?.previous);
-      Alert.alert("Error", "Could not stop watching this showtime.");
+      Alert.alert("Error", "Could not stop watching this screening.");
     },
   });
 
@@ -2052,7 +2061,7 @@ export default function ShowtimeActionModal({
             {!visible ? null : isLoadingShowtime ? (
               <ActivityIndicator size="large" color={colors.tint} />
             ) : (
-              <ThemedText style={styles.loadingErrorText}>Showtime unavailable.</ThemedText>
+              <ThemedText style={styles.loadingErrorText}>Screening unavailable.</ThemedText>
             )}
           </View>
         ) : (
@@ -2242,7 +2251,7 @@ export default function ShowtimeActionModal({
                 />
               ) : (
                 <ThemedText style={styles.audienceEmptyText}>
-                  No friends are interested in this showtime yet.
+                  No friends are interested in this screening yet.
                 </ThemedText>
               )}
             </View>
@@ -2902,7 +2911,7 @@ export default function ShowtimeActionModal({
           <View style={styles.seatDialogCard}>
             <ThemedText style={styles.seatDialogTitle}>Report an issue</ThemedText>
             <ThemedText style={styles.reportDialogSubtitle}>
-              What&apos;s wrong with this showtime?
+              What&apos;s wrong with this screening?
             </ThemedText>
             <View style={styles.reportReasonList}>
               {REPORT_REASON_OPTIONS.map((option) => (
@@ -2935,7 +2944,7 @@ export default function ShowtimeActionModal({
         icon="notifications-active"
         tone="primary"
         title={`Remind ${remindDialogFriend?.name ?? "friend"}?`}
-        message="They'll get a notification nudging them about this showtime."
+        message="They'll get a notification nudging them about this screening."
         confirmLabel="Remind"
         cancelLabel="Cancel"
         onConfirm={handleConfirmRemindFriend}
@@ -2985,8 +2994,8 @@ export default function ShowtimeActionModal({
             <ThemedText style={styles.confirmDialogTitle}>Dismiss invite?</ThemedText>
             <ThemedText style={styles.confirmDialogMessage}>
               {inviterNames
-                ? `The invite from ${inviterNames} will be removed from your list. You can still find this showtime yourself.`
-                : "This invite will be removed from your list. You can still find this showtime yourself."}
+                ? `The invite from ${inviterNames} will be removed from your list. You can still find this screening yourself.`
+                : "This invite will be removed from your list. You can still find this screening yourself."}
             </ThemedText>
             <View style={styles.confirmDialogActions}>
               <TouchableOpacity

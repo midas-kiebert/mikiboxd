@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import delete, func, text
+from sqlalchemy import and_, delete, func, or_, text
 from sqlmodel import Session, col, select
 
 from app.models.seat_check_request import SeatCheckRequest
@@ -45,15 +45,27 @@ def count_by_host_since(
     return dict(session.exec(stmt).all())
 
 
-def get_requested_since(
-    *, session: Session, since: datetime, showtime_ids: list[int]
+def get_blocking_requests(
+    *,
+    session: Session,
+    requested_since: datetime,
+    failed_since: datetime,
+    showtime_ids: list[int],
 ) -> set[int]:
-    """Which of `showtime_ids` have been asked about by hand after `since`."""
+    """Which of `showtime_ids` may not be asked about by hand right now: asked
+    about after `requested_since`, or asked about after `failed_since` and the
+    read failed."""
     if not showtime_ids:
         return set()
     stmt = select(col(SeatCheckRequest.showtime_id)).where(
-        col(SeatCheckRequest.requested_at) > since,
         col(SeatCheckRequest.showtime_id).in_(showtime_ids),
+        or_(
+            col(SeatCheckRequest.requested_at) > requested_since,
+            and_(
+                col(SeatCheckRequest.failed).is_(True),
+                col(SeatCheckRequest.requested_at) > failed_since,
+            ),
+        ),
     )
     return set(session.exec(stmt).all())
 
@@ -67,6 +79,14 @@ def create(
     session.add(request)
     session.flush()
     return request
+
+
+def mark_failed(*, session: Session, request_id: int) -> None:
+    request = session.get(SeatCheckRequest, request_id)
+    if request is None:
+        return
+    request.failed = True
+    session.add(request)
 
 
 def delete_by_id(*, session: Session, request_id: int) -> None:

@@ -617,7 +617,7 @@ def generate_showtime_report_email(
     Plain inline HTML rather than a Jinja template — this is an internal
     moderation notification, not a branded user-facing email.
     """
-    subject = f"{BRAND_NAME} - Showtime report: {movie_title} ({reason_label})"
+    subject = f"{BRAND_NAME} - Screening report: {movie_title} ({reason_label})"
     admin_link = f"{settings.FRONTEND_HOST}/admin/reports"
     html_content = f"""
     <p><strong>{html.escape(movie_title)}</strong> at <strong>{html.escape(cinema_name)}</strong>, {html.escape(showtime_datetime_label)}</p>

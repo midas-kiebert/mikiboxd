@@ -308,10 +308,10 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Showtimes',
+          title: 'Screenings',
           tabBarButton: (props) => <HapticTab {...props} tabKey="index" />,
           tabBarIcon: () => <TabIcon tabKey="index" name="list.bullet.rectangle" />,
-          tabBarLabel: () => <TabLabel tabKey="index">Showtimes</TabLabel>,
+          tabBarLabel: () => <TabLabel tabKey="index">Screenings</TabLabel>,
         }}
       />
       <Tabs.Screen

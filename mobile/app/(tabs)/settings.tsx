@@ -719,7 +719,7 @@ function SettingsScreen() {
             <View style={styles.card}>
               <ThemedText style={styles.helperText}>
                 Replays the first-run intro from page one. The last step (the Filters highlight)
-                appears on the showtimes tab once its list has loaded.
+                appears on the screenings tab once its list has loaded.
               </ThemedText>
               <TouchableOpacity
                 style={styles.secondaryButton}
@@ -806,7 +806,7 @@ function SettingsScreen() {
                 </View>
                 <ThemedText style={styles.label}>Shortcut button</ThemedText>
                 <View style={styles.cinevilleShortcutRow}>
-                  <ThemedText style={styles.cinevilleShortcutLabel}>On the showtimes tab</ThemedText>
+                  <ThemedText style={styles.cinevilleShortcutLabel}>On the screenings tab</ThemedText>
                   <AppSwitch
                     value={isShortcutOnShowtimes}
                     onValueChange={(value) => setCinevilleShortcutEnabled('showtimes', value)}
@@ -939,8 +939,8 @@ function SettingsScreen() {
                   Clear &quot;interested&quot; when you go
                 </ThemedText>
                 <ThemedText style={styles.notificationToggleDescription}>
-                  When you mark a showtime &quot;going&quot;, ask to remove &quot;interested&quot; from
-                  other showtimes of the same movie.
+                  When you mark a screening &quot;going&quot;, ask to remove &quot;interested&quot; from
+                  other screenings of the same film.
                 </ThemedText>
               </View>
               <AppSwitch
@@ -1108,7 +1108,7 @@ function SettingsScreen() {
             <View style={[styles.card, styles.dangerCard]} onLayout={handleDangerCardLayout}>
               <ThemedText style={styles.dangerHelperText}>
                 Permanently delete your account and all associated data. Your friends,
-                showtime selections and invites go with it. This cannot be undone.
+                screening selections and invites go with it. This cannot be undone.
               </ThemedText>
               <TouchableOpacity
                 style={[styles.dangerButton, deleteMutation.isPending && styles.buttonDisabled]}

@@ -57,7 +57,7 @@ export default function AddFriendsTip() {
       tipId="add-friends"
       icon="group-add"
       title="Add your friends"
-      message="See each other's showtimes, send invites, and keep track of who's going where."
+      message="See each other's screenings, send invites, and keep track of who's going where."
       actionLabel="Done"
       closeOnAction
       onDismiss={dismissTip}

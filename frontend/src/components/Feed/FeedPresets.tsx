@@ -169,7 +169,6 @@ const FeedPresets = memo(function FeedPresets({
       MeService.createSavedPreset({
         requestBody: buildSavedPresetCreate({
           name: name.trim(),
-          isFavorite: false,
           // Everything the feed can express is controlled by the preset. The
           // app's save prompt lets you opt dimensions out one by one; that is a
           // refinement, and leaving it out means a preset here simply restores
@@ -183,7 +182,7 @@ const FeedPresets = memo(function FeedPresets({
     onSuccess: () => {
       setIsSaveOpen(false)
       setName("")
-      showSuccessToast("Preset saved.")
+      showSuccessToast("Quick filter saved.")
       queryClient.invalidateQueries({ queryKey: displayPresetsQueryKey })
     },
   })
@@ -268,7 +267,7 @@ const FeedPresets = memo(function FeedPresets({
               <Stack gap={3}>
                 <Input
                   autoFocus
-                  placeholder="Name this preset"
+                  placeholder="Name this quick filter"
                   value={name}
                   onChange={(event) => setName(event.target.value)}
                 />

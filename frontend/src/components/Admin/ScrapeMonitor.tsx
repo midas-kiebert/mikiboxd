@@ -33,10 +33,10 @@ const AdminNav = () => (
       <Link to="/admin">Overview</Link>
     </Button>
     <Button asChild size="sm" variant="outline">
-      <Link to="/admin/movies">Movies</Link>
+      <Link to="/admin/movies">Films</Link>
     </Button>
     <Button asChild size="sm" variant="outline">
-      <Link to="/admin/showtimes">Showtimes</Link>
+      <Link to="/admin/showtimes">Screenings</Link>
     </Button>
     <Button asChild size="sm" variant="outline">
       <Link to="/admin/reports">Reports</Link>

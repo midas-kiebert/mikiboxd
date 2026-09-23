@@ -104,7 +104,7 @@ export default function IntroFiltersSpotlight({
       <SpotlightOverlay
         target={targetRect}
         title="Try out some filters!"
-        message="Only show showtimes your friends have marked, on certain days, at certain times, from your favorite Letterboxd lists etc."
+        message="Only show screenings your friends have marked, on certain days, at certain times, from your favorite Letterboxd lists etc."
         primaryLabel="Open filters"
         onPrimary={handleOpenFilters}
         secondaryLabel="Not now"

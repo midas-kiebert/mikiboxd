@@ -52,7 +52,7 @@ const PrivacyPolicy = () => {
           <Text>
             If you connect a Letterboxd account, we store the username you
             provide and the list of films on your watchlist and watched list, so
-            we can match them against showtimes.
+            we can match them against screenings.
           </Text>
           <Text>
             If you enable notifications, we store a device push token so we can
@@ -77,7 +77,7 @@ const PrivacyPolicy = () => {
 
         <Section title="How we use it">
           <Text>
-            Your data is used to run the app: to show you showtimes, to show
+            Your data is used to run the app: to show you screenings, to show
             your friends what you&apos;re going to (according to your visibility
             settings), to deliver the notifications you&apos;ve opted into, and
             to send the email digest if you&apos;ve turned it on. We do not sell
@@ -97,7 +97,7 @@ const PrivacyPolicy = () => {
           <Text>
             Your username is visible to other users, in search and on invites.
             Depending on your visibility settings, your going/interested status
-            on a showtime may be visible to your friends. You can block another
+            on a screening may be visible to your friends. You can block another
             user at any time from their profile, which removes any friendship
             and invites between you and stops further contact in either
             direction. You can report a user for harassment, impersonation,
@@ -110,7 +110,7 @@ const PrivacyPolicy = () => {
           <Text>
             We keep your data for as long as your account exists. You can delete
             your account at any time from Settings → Danger zone in the app —
-            this permanently removes your account, your friends, your showtime
+            this permanently removes your account, your friends, your screening
             selections, and your invites. This cannot be undone.
           </Text>
           <Text>

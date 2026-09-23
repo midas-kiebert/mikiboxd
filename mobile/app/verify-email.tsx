@@ -111,7 +111,7 @@ export default function VerifyEmailScreen() {
   }
 
   const leaveLabel =
-    authStatus === "signed-out" ? "Log in" : isSignedIn ? "Continue" : "Browse showtimes";
+    authStatus === "signed-out" ? "Log in" : isSignedIn ? "Continue" : "Browse screenings";
 
   // Render/output using the state and derived values prepared above.
   return (

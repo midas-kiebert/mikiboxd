@@ -76,7 +76,7 @@ export default function NotificationPermissionTip() {
       tipId="notification-permission"
       icon="notifications-off"
       title="Notifications are blocked"
-      message="Your device is not letting MiKiNO send notifications, so invites from friends and reminders for showtimes you are interested in will not reach you."
+      message="Your device is not letting MiKiNO send notifications, so invites from friends and reminders for screenings you are interested in will not reach you."
       actionLabel={canAskSystemPermission ? "Allow notifications" : "Open system settings"}
       onAction={handleAllow}
       onDismiss={dismissTip}

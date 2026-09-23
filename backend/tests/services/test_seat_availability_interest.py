@@ -36,6 +36,14 @@ READABLE_TICKET_LINK = (
 UNREADABLE_TICKET_LINK = "https://tickets.example.com/order/1"
 
 
+# Room left everywhere: these tests are about the per-screening rule.
+OPEN_BUDGET = ManualCheckBudget(
+    global_open=True,
+    open_hosts=frozenset({urlsplit(READABLE_TICKET_LINK).netloc}),
+    recently_requested=frozenset(),
+)
+
+
 def _showtime(**kwargs) -> Showtime:
     kwargs.setdefault("ticket_link", READABLE_TICKET_LINK)
     kwargs.setdefault("datetime", NOW + timedelta(days=2))
@@ -226,7 +234,7 @@ def test_a_cinema_we_cannot_read_says_nothing_at_all() -> None:
 def test_a_readable_showtime_nobody_has_read_offers_the_check() -> None:
     showtime = _showtime(seats_checked_at=None, seats_next_check_at=None)
 
-    public = to_public(showtime)
+    public = to_public(showtime, budget=OPEN_BUDGET)
 
     assert public is not None
     assert public.trackable is True
@@ -240,7 +248,7 @@ def test_a_read_already_on_its_way_is_not_worth_asking_for_again() -> None:
         seats_checked_at=None, seats_next_check_at=NOW - timedelta(seconds=1)
     )
 
-    public = to_public(showtime)
+    public = to_public(showtime, budget=OPEN_BUDGET)
 
     assert public is not None
     assert public.checking is True
@@ -256,7 +264,7 @@ def test_a_fresh_reading_is_not_offered_again() -> None:
         seats_next_check_at=NOW + timedelta(hours=1),
     )
 
-    public = to_public(showtime)
+    public = to_public(showtime, budget=OPEN_BUDGET)
 
     assert public is not None
     assert public.can_request_check is False
@@ -270,24 +278,26 @@ def test_a_reading_ten_minutes_old_is_offered_again() -> None:
         seats_next_check_at=NOW + timedelta(hours=1),
     )
 
-    public = to_public(showtime)
+    public = to_public(showtime, budget=OPEN_BUDGET)
 
     assert public is not None
     assert public.level is not None
     assert public.can_request_check is True
 
 
-def test_an_old_read_with_nothing_usable_is_offered_again() -> None:
+def test_an_old_read_with_nothing_usable_is_not_offered_again() -> None:
+    """Read, and the shop had no count to give. A press would get the same
+    nothing, so there is no button."""
     showtime = _showtime(
         seats_checked_at=NOW - timedelta(hours=1),
         seats_next_check_at=NOW + timedelta(hours=12),
     )
 
-    public = to_public(showtime)
+    public = to_public(showtime, budget=OPEN_BUDGET)
 
     assert public is not None
     assert public.level is None
-    assert public.can_request_check is True
+    assert public.can_request_check is False
 
 
 def test_a_started_screening_is_never_offered_a_check() -> None:
@@ -297,7 +307,7 @@ def test_a_started_screening_is_never_offered_a_check() -> None:
         seats_next_check_at=NOW + timedelta(hours=12),
     )
 
-    public = to_public(showtime)
+    public = to_public(showtime, budget=OPEN_BUDGET)
 
     assert public is not None
     assert public.can_request_check is False
@@ -329,6 +339,18 @@ def test_a_spent_budget_withdraws_the_check() -> None:
     public = to_public(showtime, budget=open_budget)
     assert public is not None
     assert public.can_request_check is True
+
+
+def test_list_rows_never_offer_the_check() -> None:
+    """Rows embedded in showtime lists carry no budget. Clients cache them, so
+    a button drawn from one could ignore the budget and cooldown — a press that
+    does nothing. Only the detail endpoints offer it."""
+    showtime = _showtime(seats_checked_at=None, seats_next_check_at=None)
+
+    public = to_public(showtime)
+
+    assert public is not None
+    assert public.can_request_check is False
 
 
 def test_a_reading_survives_its_ticket_link_becoming_unreadable() -> None:

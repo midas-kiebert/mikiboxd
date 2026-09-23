@@ -218,7 +218,7 @@ const MakeDefault = ({
 
 const FEED_STYLE_OPTIONS: readonly RailSegmentedOption<boolean>[] = [
   { value: false, label: "Ticket wall", tone: "neutral" },
-  { value: true, label: "Movie rows", tone: "neutral" },
+  { value: true, label: "Film rows", tone: "neutral" },
 ]
 
 /**
@@ -981,13 +981,13 @@ const FeedFilterRail = memo(function FeedFilterRail({
                       ) : undefined
                     }
                   >
-                    Movie length
+                    Film length
                   </RailFacetHeading>
                   <RangeSlider
                     scale={RUNTIME_SCALE}
                     value={params.runtime}
                     onChange={(runtime) => onChange({ runtime })}
-                    label="Movie length"
+                    label="Film length"
                   />
                 </Box>
               )}

@@ -17,12 +17,12 @@ export type SharedTabShowtimeFilter = "all" | "interested" | "going";
 
 const SHARED_TAB_FILTERS: readonly { id: SharedTabFilterId; label: string }[] = [
   { id: "showtime-filter", label: "Any Status" },
-  { id: "watchlist-only", label: "All Movies" },
+  { id: "watchlist-only", label: "All Films" },
   { id: "cinemas", label: "Cinemas" },
   { id: "days", label: "Any Day" },
   { id: "times", label: "any time" },
   { id: "runtime", label: "Any Runtime" },
-  { id: "presets", label: "Presets" },
+  { id: "presets", label: "Quick filters" },
 ] as const;
 
 /**
@@ -144,7 +144,7 @@ export const buildSharedTabPillFilters = ({
       };
     }
     if (filter.id === "watchlist-only") {
-      return { ...filter, label: watchlistOnly ? "Watchlist Only" : "All Movies" };
+      return { ...filter, label: watchlistOnly ? "Watchlist Only" : "All Films" };
     }
     if (filter.id === "cinemas") {
       return { ...filter, label: cinemasLabel };

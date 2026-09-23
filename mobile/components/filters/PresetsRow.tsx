@@ -89,16 +89,16 @@ export default function PresetsRow({ onApplyPreset }: PresetsRowProps) {
           hitSlop={10}
           activeOpacity={0.7}
           accessibilityRole="button"
-          accessibilityLabel="What are saved presets?"
+          accessibilityLabel="What are quick filters?"
         >
           <ThemedText style={[styles.caption, styles.captionSentence]}>
-            You can add Filter Presets here
+            You can add quick filters here
           </ThemedText>
           <MaterialIcons name="info-outline" size={13} color={colors.textSecondary} />
         </TouchableOpacity>
       ) : (
         <View style={[styles.captionRow, styles.captionRowSpaced]}>
-          <ThemedText style={styles.caption}>Presets</ThemedText>
+          <ThemedText style={styles.caption}>Quick filters</ThemedText>
           {/* What a preset is takes a paragraph to explain, and the caption has
               room for a word — so the explanation stays one tap away. */}
           <TouchableOpacity
@@ -106,7 +106,7 @@ export default function PresetsRow({ onApplyPreset }: PresetsRowProps) {
             hitSlop={10}
             activeOpacity={0.7}
             accessibilityRole="button"
-            accessibilityLabel="What are saved presets?"
+            accessibilityLabel="What are quick filters?"
           >
             <MaterialIcons name="info-outline" size={13} color={colors.textSecondary} />
           </TouchableOpacity>

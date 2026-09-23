@@ -20,10 +20,10 @@ import { TMDB_AMBIGUITIES_QUERY_KEY } from "./TmdbAmbiguities"
 const AdminNav = () => (
   <Stack direction="row" gap={2} mb={6}>
     <Button asChild size="sm" variant="outline">
-      <Link to="/admin/movies">Movies</Link>
+      <Link to="/admin/movies">Films</Link>
     </Button>
     <Button asChild size="sm" variant="outline">
-      <Link to="/admin/showtimes">Showtimes</Link>
+      <Link to="/admin/showtimes">Screenings</Link>
     </Button>
     <Button asChild size="sm" variant="outline">
       <Link to="/admin/reports">Reports</Link>

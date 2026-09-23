@@ -104,7 +104,7 @@ export const PrivacySection = () => {
       id="privacy"
       title="Default status visibility"
       icon={meta.icon}
-      description="Who can see your status on a new showtime, until you change it for that showtime. Friends you invite, and friends who invite you, always can."
+      description="Who can see your status on a new screening, until you change it for that screening. Friends you invite, and friends who invite you, always can."
     >
       <div
         className="st-options"
@@ -161,9 +161,9 @@ export const PrivacySection = () => {
 
       <ConfirmDialog
         open={pendingMode !== null}
-        title="Apply to your showtimes too?"
-        message="Showtimes you're going to or interested in follow this default. Keep them as they are, or apply the new setting to them too? Showtimes you set individually keep their own setting either way."
-        confirmLabel="New showtimes only"
+        title="Apply to your screenings too?"
+        message="Screenings you're going to or interested in follow this default. Keep them as they are, or apply the new setting to them too? Screenings you set individually keep their own setting either way."
+        confirmLabel="New screenings only"
         secondaryLabel="Apply to all"
         onConfirm={() => {
           if (pendingMode) save(pendingMode, false)

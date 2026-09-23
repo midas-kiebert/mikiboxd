@@ -55,7 +55,7 @@ const Outcome = ({ ambiguity }: { ambiguity: TmdbAmbiguityView }) => {
     (candidate) => candidate.tmdb_id === ambiguity.matched_tmdb_id,
   )
   if (ambiguity.matched_tmdb_id === null) {
-    return <Badge colorPalette="red">No match — showtimes skipped</Badge>
+    return <Badge colorPalette="red">No match — screenings skipped</Badge>
   }
   const matchedLabel = matched
     ? `${matched.title}${matched.release_year ? ` (${matched.release_year})` : ""}`

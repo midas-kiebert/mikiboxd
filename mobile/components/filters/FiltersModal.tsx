@@ -2,11 +2,24 @@
  * Mobile filter UI component: Filters Modal.
  * Comprehensive bottom-sheet filter modal opened by the "Filters" pill.
  *
- * Laid out as a scroll box of collapsible sections plus a footer pinned below
- * it. The footer holds the actions that end the visit — applying the filters,
- * and saving/managing presets — so they are reachable from any scroll
- * position. Saved presets themselves are applied from the top bar
- * (SavedPresetChips in PresetsRow), not from in here.
+ * Top to bottom, in the website filter rail's order (`FeedFilterRail`):
+ *
+ *     Cinemas         opens the cinema sheet
+ *     Feed style      screenings or films, and making that the default
+ *     Letterboxd      watchlist · watched, or a field to link a username
+ *     Language        English subtitled (or spoken), and making that the default
+ *     When            days and time of day (folded)
+ *     More filters    friends, Letterboxd lists, film length (folded)
+ *     Clear filters
+ *
+ * The defaults (`useFeedDefaults`) are only ever written by "Make this the
+ * default"; clearing puts language back to its default and leaves the feed
+ * style alone, as on the website.
+ *
+ * A footer pinned below the scroll box holds the actions that end the visit —
+ * applying the filters, and saving/managing quick filters — so they are
+ * reachable from any scroll position. Quick filters themselves are applied
+ * from the top bar (SavedPresetChips in PresetsRow), not from in here.
  */
 import { useCallback, useMemo, useState } from "react";
 import {
@@ -45,17 +58,23 @@ import { formatTimePillLabel } from "@/components/filters/time-range-utils";
 import { formatRuntimePillLabel } from "@/components/filters/runtime-range-utils";
 import DaysFilterSection from "@/components/filters/DaysFilterSection";
 import SpecificDatesModal from "@/components/filters/SpecificDatesModal";
-import FilterMoviesSection from "@/components/filters/FilterMoviesSection";
-import FilterSection, { FilterInlineRow, FilterNavRow, FilterSubLabel } from "@/components/filters/FilterSection";
+import LetterboxdListFilters, { LetterboxdWatchFilters } from "@/components/filters/LetterboxdFilters";
+import FilterSection, {
+  FilterHeadingRow,
+  FilterInlineRow,
+  FilterNavRow,
+  FilterSubLabel,
+} from "@/components/filters/FilterSection";
+import { sameLanguages, useFeedDefaults } from "@/hooks/useFeedDefaults";
 import SegmentedControl, { type SegmentedOption } from "@/components/ui/SegmentedControl";
 import AppBottomSheet from "@/components/sheets/AppBottomSheet";
 import { useFiltersModal } from "@/components/filters/filters-modal-context";
 import type { OpenCinemaModalOptions } from "@/components/filters/CinemaFilterModal";
 import useTrackEvent from "shared/hooks/useTrackEvent";
 
-const GROUP_BY_OPTIONS: readonly SegmentedOption<"showtimes" | "movies">[] = [
-  { value: "showtimes", label: "Showtimes" },
-  { value: "movies", label: "Movies" },
+const FEED_STYLE_OPTIONS: readonly SegmentedOption<"screenings" | "films">[] = [
+  { value: "screenings", label: "Screenings" },
+  { value: "films", label: "Films" },
 ];
 
 // Icons and palettes match how a status is drawn everywhere else (orange
@@ -85,7 +104,7 @@ const ENGLISH: Language = "en";
 const INTERESTED_FILTER_LABEL = "Include interested";
 
 /**
- * Slack below the last section ("Time of day") so its slider has somewhere to
+ * Slack below the last section ("More filters") so its slider has somewhere to
  * appear when the section is expanded from the bottom of the scroll: without it
  * the content mounts just past the viewport and you have to scroll down again to
  * reach the control you just opened. Sized to the expanded section's own height
@@ -218,18 +237,21 @@ export default function FiltersModal({
   }, [sessionCinemaIds, preferredCinemaIds]);
 
 
-  const dayLabel = formatDayPillLabel(selectedDays);
-  const timeLabel = formatTimePillLabel(selectedTimeRanges);
-
-  // Short summary of the "Movie Filters" section shown in its header while
-  // collapsed, mirroring the Days/Time sections. Only counts dimensions that
-  // section actually renders (list filtering only shows up with showLists).
-  const movieFiltersSummary = useMemo(() => {
+  const whenSummary = useMemo(() => {
     const parts: string[] = [];
-    if (watchlistOnly) parts.push("Watchlist");
-    if (watchlistExclude) parts.push("Hide watchlist");
-    if (watchedOnly) parts.push("Watched only");
-    if (hideWatched) parts.push("Hide watched");
+    if (selectedDays.length > 0) parts.push(formatDayPillLabel(selectedDays));
+    if (selectedTimeRanges.length > 0) parts.push(formatTimePillLabel(selectedTimeRanges));
+    return parts.length > 0 ? parts.join(", ") : "Any day, any time";
+  }, [selectedDays, selectedTimeRanges]);
+
+  // Short summary of "More filters" shown in its header while collapsed. Only
+  // counts what that section actually renders on this page.
+  const moreFiltersSummary = useMemo(() => {
+    const parts: string[] = [];
+    if (showStatusFilter && selectedShowtimeFilter !== "all") {
+      parts.push(selectedShowtimeFilter === "going" ? "Friends going" : "Friends interested");
+    }
+    if (showInterestedFilter && !includeInterested) parts.push("Going only");
     if (showLists) {
       const listCount = selectedListIds.length + excludeListIds.length;
       if (listCount > 0) parts.push(`${listCount} list${listCount === 1 ? "" : "s"}`);
@@ -237,18 +259,19 @@ export default function FiltersModal({
     if (showRuntime && selectedRuntimeRanges.length > 0) {
       parts.push(formatRuntimePillLabel(selectedRuntimeRanges));
     }
-    return parts.length > 0 ? parts.join(", ") : "All movies";
+    return parts.length > 0 ? parts.join(", ") : "Any";
   }, [
-    watchlistOnly,
-    watchlistExclude,
-    watchedOnly,
-    hideWatched,
+    showStatusFilter,
+    selectedShowtimeFilter,
+    showInterestedFilter,
+    includeInterested,
     showLists,
     selectedListIds,
     excludeListIds,
     showRuntime,
     selectedRuntimeRanges,
   ]);
+  const showMoreFilters = showStatusFilter || showInterestedFilter || showLists || showRuntime;
 
   // ─── Presets (apply + save) ──────────────────────────────────────────────────
   const [savePresetVisible, setSavePresetVisible] = useState(false);
@@ -308,24 +331,37 @@ export default function FiltersModal({
     ]
   );
 
-  // Drives the "Save as preset" highlight: there is only something worth
+  // Drives the "Save as quick filter" highlight: there is only something worth
   // saving once the user has actually narrowed something down (a cinema
   // selection counts here, even though hasAnyActiveFilter ignores it — saving a
-  // preset does store the cinemas).
+  // quick filter does store the cinemas).
   const hasSomethingToSave = useMemo(
     () => hasAnyActiveFilter(currentFilters) || cinemaActive,
     [currentFilters, cinemaActive]
   );
 
-  // What there is to save is exactly what there is to clear, cinemas included —
-  // plus the interested switch, which no preset carries (it belongs to one
-  // agenda, not to the shared filter set) but "Clear filters" still resets.
-  const hasSomethingToClear =
-    hasSomethingToSave || (showInterestedFilter && !includeInterested);
+  const {
+    defaultGroupByMovie,
+    defaultLanguages,
+    setDefaultGroupByMovie,
+    setDefaultLanguages,
+  } = useFeedDefaults();
 
-  // Mirrors the feeds' own "clear all" (the × beside the active filter chips)
-  // down to the cinemas: they go back to the account's saved picks rather than
-  // to every cinema, since "no selection" is not what the user chose once.
+  // Clearing works as it does on the website: the feed style is a view, not a
+  // filter, so it is never cleared; language goes back to its default rather
+  // than off; cinemas go back to the preferred ones. So a feed sitting at its
+  // defaults has nothing to clear — plus the interested switch, which no
+  // quick filter carries (it belongs to one agenda) but clearing still resets.
+  const languagesAreDefault = sameLanguages(selectedLanguages, defaultLanguages);
+  const hasSomethingToClear =
+    hasAnyActiveFilter({
+      ...currentFilters,
+      group_by_movie: false,
+      selected_languages: languagesAreDefault ? null : selectedLanguages,
+    }) ||
+    cinemaActive ||
+    (showInterestedFilter && !includeInterested);
+
   const handleClearFilters = () => {
     triggerSelectionHaptic();
     setSelectedShowtimeFilter("all");
@@ -335,13 +371,12 @@ export default function FiltersModal({
     setWatchlistExclude(false);
     setHideWatched(false);
     setWatchedOnly(false);
-    setGroupByMovie(false);
     setSelectedDays([]);
     setSelectedTimeRanges([]);
     setSelectedRuntimeRanges([]);
     setSelectedListIds([]);
     setExcludeListIds([]);
-    setSelectedLanguages([]);
+    setSelectedLanguages([...defaultLanguages]);
     if (preferredCinemaIds) setCinemaIds(preferredCinemaIds);
   };
 
@@ -377,10 +412,7 @@ export default function FiltersModal({
   );
   const { value: displayIncludeInterested, change: changeIncludeInterested } =
     useOptimisticValue(includeInterested, setIncludeInterested);
-  const { value: displayWatchlistOnlySimple, change: changeWatchlistOnlySimple } =
-    useOptimisticValue(watchlistOnly, setWatchlistOnly);
-  const { value: displayHideWatchedSimple, change: changeHideWatchedSimple } =
-    useOptimisticValue(hideWatched, setHideWatched);
+  const displayLanguages: Language[] = displayEnglishOnly ? [ENGLISH] : [];
 
   return (
     <>
@@ -415,98 +447,128 @@ export default function FiltersModal({
               </>
             )}
 
-            {/* One-control sections: each is a single row rather than a
-                collapsible, and they sit together between one pair of dividers. */}
-            <View style={styles.inlineRowGroup}>
-              {showGroupByMovie && (
-                <FilterInlineRow label="Group By">
-                  <SegmentedControl
-                    options={GROUP_BY_OPTIONS}
-                    value={displayGroupByMovie ? "movies" : "showtimes"}
-                    onChange={(value) => changeGroupByMovie(value === "movies")}
-                    accessibilityLabelPrefix="Group by"
-                  />
-                </FilterInlineRow>
-              )}
-
-              {showStatusFilter && (
-                <FilterInlineRow label="Marked by Friends">
-                  <SegmentedControl
-                    options={friendStatusOptions}
-                    value={displayShowtimeFilter}
-                    onChange={changeShowtimeFilter}
-                    accessibilityLabelPrefix="Marked by friends"
-                  />
-                </FilterInlineRow>
-              )}
-
-              {showInterestedFilter && (
-                <FilterInlineRow label="Interested">
-                  <Pill
-                    label={INTERESTED_FILTER_LABEL}
-                    icon={displayIncludeInterested ? "check-box" : "check-box-outline-blank"}
-                    active={displayIncludeInterested}
-                    onPress={() => changeIncludeInterested(!displayIncludeInterested)}
-                    colors={colors}
-                    style={styles.inlineControlPill}
-                  />
-                </FilterInlineRow>
-              )}
-
-              <FilterInlineRow label="Language">
-                <Pill
-                  label={ENGLISH_FILTER_LABEL}
-                  icon={displayEnglishOnly ? "check-box" : "check-box-outline-blank"}
-                  active={displayEnglishOnly}
-                  onPress={() => changeEnglishOnly(!displayEnglishOnly)}
-                  colors={colors}
-                  style={styles.inlineControlPill}
+            {showGroupByMovie && (
+              <>
+                <FilterHeadingRow
+                  label="Feed style"
+                  action={
+                    <MakeDefaultButton
+                      isDefault={displayGroupByMovie === defaultGroupByMovie}
+                      onPress={() => setDefaultGroupByMovie(displayGroupByMovie)}
+                      colors={colors}
+                    />
+                  }
                 />
-              </FilterInlineRow>
+                <SegmentedControl
+                  options={FEED_STYLE_OPTIONS}
+                  value={displayGroupByMovie ? "films" : "screenings"}
+                  onChange={(value) => changeGroupByMovie(value === "films")}
+                  accessibilityLabelPrefix="Feed style"
+                  stretch
+                />
+                <Divider colors={colors} />
+              </>
+            )}
+
+            {/* The film-level filters. Absent on a page about one film. */}
+            {showLists && (
+              <>
+                <FilterHeadingRow label="Letterboxd" />
+                <LetterboxdWatchFilters
+                  colors={colors}
+                  canUseWatchlistFilter={canUseWatchlistFilter}
+                  watchlistOnly={watchlistOnly}
+                  setWatchlistOnly={setWatchlistOnly}
+                  setWatchlistExclude={setWatchlistExclude}
+                  hideWatched={hideWatched}
+                  setHideWatched={setHideWatched}
+                  setWatchedOnly={setWatchedOnly}
+                />
+                <Divider colors={colors} />
+              </>
+            )}
+
+            <FilterHeadingRow
+              label="Language"
+              action={
+                <MakeDefaultButton
+                  isDefault={sameLanguages(displayLanguages, defaultLanguages)}
+                  onPress={() => setDefaultLanguages(displayLanguages)}
+                  colors={colors}
+                />
+              }
+            />
+            <View style={styles.pillRow}>
+              <Pill
+                label={ENGLISH_FILTER_LABEL}
+                icon={displayEnglishOnly ? "check-box" : "check-box-outline-blank"}
+                active={displayEnglishOnly}
+                onPress={() => changeEnglishOnly(!displayEnglishOnly)}
+                colors={colors}
+                style={styles.inlineControlPill}
+              />
             </View>
             <Divider colors={colors} />
 
-            {/* Everything that filters on the film itself: which of the user's
-                Letterboxd sets it belongs to, and how long it is. */}
-            {(showRuntime || showLists || canUseWatchlistFilter) && (
+            <FilterSection label="When" summary={whenSummary}>
+              <FilterSubLabel label="Days" isFirst />
+              <DaysFilterSection
+                selectedDays={selectedDays}
+                onChange={setSelectedDays}
+                onOpenSpecificDates={() => setSpecificDatesVisible(true)}
+              />
+              <FilterSubLabel label="Time of day" />
+              <TimeRangeSliderInline
+                selectedTimeRanges={selectedTimeRanges}
+                onChange={setSelectedTimeRanges}
+              />
+            </FilterSection>
+            <Divider colors={colors} />
+
+            {showMoreFilters && (
               <>
-                <FilterSection label="Movie Filters" summary={movieFiltersSummary}>
-                  {showLists ? (
-                    <FilterMoviesSection
+                <FilterSection label="More filters" summary={moreFiltersSummary}>
+                  {(showStatusFilter || showInterestedFilter) && (
+                    <View style={styles.inlineRowGroup}>
+                      {showStatusFilter && (
+                        <FilterInlineRow label="Marked by Friends">
+                          <SegmentedControl
+                            options={friendStatusOptions}
+                            value={displayShowtimeFilter}
+                            onChange={changeShowtimeFilter}
+                            accessibilityLabelPrefix="Marked by friends"
+                          />
+                        </FilterInlineRow>
+                      )}
+                      {showInterestedFilter && (
+                        <FilterInlineRow label="Interested">
+                          <Pill
+                            label={INTERESTED_FILTER_LABEL}
+                            icon={displayIncludeInterested ? "check-box" : "check-box-outline-blank"}
+                            active={displayIncludeInterested}
+                            onPress={() => changeIncludeInterested(!displayIncludeInterested)}
+                            colors={colors}
+                            style={styles.inlineControlPill}
+                          />
+                        </FilterInlineRow>
+                      )}
+                    </View>
+                  )}
+                  {showLists && (
+                    <LetterboxdListFilters
                       colors={colors}
-                      canUseWatchlistFilter={canUseWatchlistFilter}
-                      watchlistOnly={watchlistOnly}
-                      setWatchlistOnly={setWatchlistOnly}
-                      watchlistExclude={watchlistExclude}
-                      setWatchlistExclude={setWatchlistExclude}
-                      hideWatched={hideWatched}
-                      setHideWatched={setHideWatched}
-                      watchedOnly={watchedOnly}
-                      setWatchedOnly={setWatchedOnly}
+                      isFirst={!showStatusFilter && !showInterestedFilter}
                       selectedListIds={selectedListIds}
                       setSelectedListIds={setSelectedListIds}
                       excludeListIds={excludeListIds}
                       setExcludeListIds={setExcludeListIds}
                     />
-                  ) : (
-                    canUseWatchlistFilter && (
-                      <>
-                        <FilterSubLabel label="Watchlist" isFirst />
-                        <View style={styles.pillRow}>
-                          <Pill label="All movies" active={!displayWatchlistOnlySimple} onPress={() => changeWatchlistOnlySimple(false)} colors={colors} />
-                          <Pill label="Watchlisted only" active={displayWatchlistOnlySimple} onPress={() => changeWatchlistOnlySimple(true)} colors={colors} />
-                        </View>
-                        <View style={styles.pillRow}>
-                          <Pill label="Hide watched" active={displayHideWatchedSimple} onPress={() => changeHideWatchedSimple(!displayHideWatchedSimple)} colors={colors} />
-                        </View>
-                      </>
-                    )
                   )}
                   {showRuntime && (
                     <>
                       <FilterSubLabel
-                        label="Movie Length"
-                        isFirst={!showLists && !canUseWatchlistFilter}
+                        label="Film length"
+                        isFirst={!showStatusFilter && !showInterestedFilter && !showLists}
                       />
                       <RuntimeRangeSliderInline
                         selectedRuntimeRanges={selectedRuntimeRanges}
@@ -518,27 +580,6 @@ export default function FiltersModal({
                 <Divider colors={colors} />
               </>
             )}
-
-            {/* Days */}
-            <FilterSection label="Days" summary={dayLabel}>
-              <DaysFilterSection
-                selectedDays={selectedDays}
-                onChange={setSelectedDays}
-                onOpenSpecificDates={() => setSpecificDatesVisible(true)}
-              />
-            </FilterSection>
-
-            <Divider colors={colors} />
-
-            {/* Time */}
-            <FilterSection label="Time of day" summary={timeLabel}>
-              <TimeRangeSliderInline
-                selectedTimeRanges={selectedTimeRanges}
-                onChange={setSelectedTimeRanges}
-              />
-            </FilterSection>
-
-            <Divider colors={colors} />
 
             {/* Below the last filter rather than in the footer: it undoes what
                 is above it, and the space under the sections was empty anyway.
@@ -600,7 +641,7 @@ export default function FiltersModal({
                   ]}
                   numberOfLines={1}
                 >
-                  Save as preset
+                  Save as quick filter
                 </ThemedText>
               </TouchableOpacity>
               <TouchableOpacity
@@ -611,11 +652,11 @@ export default function FiltersModal({
                 }}
                 activeOpacity={0.8}
                 accessibilityRole="button"
-                accessibilityLabel="Manage presets"
+                accessibilityLabel="Manage quick filters"
               >
                 <MaterialIcons name="tune" size={17} color={colors.textSecondary} />
                 <ThemedText style={styles.presetButtonText} numberOfLines={1}>
-                  Presets
+                  Quick filters
                 </ThemedText>
               </TouchableOpacity>
             </View>
@@ -630,7 +671,7 @@ export default function FiltersModal({
           >
             {resultCount !== undefined ? (
               <ThemedText style={styles.viewResultsButtonText}>
-                View {resultCount} {groupByMovie ? "Movies" : "Showtimes"}
+                View {resultCount} {groupByMovie ? "Films" : "Screenings"}
               </ThemedText>
             ) : (
               <CountSkeleton />
@@ -670,6 +711,43 @@ export default function FiltersModal({
 
 function Divider({ colors }: { colors: ReturnType<typeof useThemeColors> }) {
   return <View style={{ height: 1, backgroundColor: colors.divider, marginVertical: 8 }} />;
+}
+
+/**
+ * "Make this the default" at the right of a section heading — or, muted and
+ * inert, "This is the default" once it is. The website rail's button: the
+ * control above only ever changes this visit, and the default only changes
+ * when you say so.
+ */
+function MakeDefaultButton({
+  isDefault,
+  onPress,
+  colors,
+}: {
+  isDefault: boolean;
+  onPress: () => void;
+  colors: ReturnType<typeof useThemeColors>;
+}) {
+  const color = isDefault ? colors.textSecondary : colors.tint;
+  return (
+    <TouchableOpacity
+      onPress={() => {
+        triggerSelectionHaptic();
+        onPress();
+      }}
+      disabled={isDefault}
+      activeOpacity={0.6}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: isDefault }}
+      style={{ flexDirection: "row", alignItems: "center", gap: 3 }}
+    >
+      {isDefault && <MaterialIcons name="check" size={13} color={color} />}
+      <ThemedText style={{ fontSize: 12, lineHeight: 16, fontWeight: "600", color }}>
+        {isDefault ? "This is the default" : "Make this the default"}
+      </ThemedText>
+    </TouchableOpacity>
+  );
 }
 
 function CountSkeleton() {
@@ -732,7 +810,7 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       borderWidth: 1.5,
       borderColor: colors.divider,
       backgroundColor: colors.cardBackground,
-      // "Save as preset" is the primary of the two, so it takes the
+      // "Save as quick filter" is the primary of the two, so it takes the
       // leftover width while "Manage" stays at its label's size.
       flex: 1,
     },

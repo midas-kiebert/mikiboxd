@@ -236,7 +236,7 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
     })
   }, [availability, queryClient, showtime])
 
-  const { mutate: check } = useMutation({
+  const { mutate: check, isPending: isRequestingCheck } = useMutation({
     mutationFn: () =>
       ShowtimesService.requestSeatAvailabilityCheck({ showtimeId }),
     onSuccess: (fresh) => {
@@ -301,6 +301,9 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
     level === "sold_out"
 
   const handleCheck = () => {
+    // One press, one request: a second click before the answer lands would
+    // only be refused by the server.
+    if (isRequestingCheck) return
     if (!requireAccount()) return
     // Painted before the request rather than after it: the reading takes a few
     // seconds at the ticket shop, and a control that looks untouched for that

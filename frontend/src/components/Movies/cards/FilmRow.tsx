@@ -340,7 +340,7 @@ const FilmRow = ({
               title="Every screening of this film"
             >
               <PanelIcon.arrowForward className="fr-act__icon" aria-hidden />
-              <span className="fr-act__label">All showtimes</span>
+              <span className="fr-act__label">All screenings</span>
             </Link>
             <button
               type="button"

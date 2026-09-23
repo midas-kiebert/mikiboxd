@@ -1,6 +1,6 @@
 /**
- * Full-screen sheet for managing saved presets: favorite (applied on startup),
- * reorder, and delete. Opened from the Filters modal's Presets section.
+ * Full-screen sheet for managing quick filters: reorder and delete. Opened
+ * from the Filters modal's footer.
  */
 import { useMemo } from "react";
 import {
@@ -35,7 +35,7 @@ export default function ManagePresetsModal({
   // Mounted alongside the filters sheet whether or not it is open, so the query
   // is held back until it actually is — and a guest, who has no presets and no
   // way to reach this, never fires it at all.
-  const { presets, isLoading, remove, setFavorite, move } = useDisplayPresets({
+  const { presets, isLoading, remove, move } = useDisplayPresets({
     enabled: visible,
   });
   // A preset that follows a whole city says so by name rather than by count,
@@ -46,13 +46,9 @@ export default function ManagePresetsModal({
     [allCinemas]
   );
 
-  const favoriteHasCinemas = presets.some(
-    (p) => p.isFavorite && p.cinemaIds != null
-  );
-
   const confirmDelete = (preset: DisplayPreset) => {
     Alert.alert(
-      "Delete preset?",
+      "Delete quick filter?",
       `Remove "${preset.name}"?`,
       [
         { text: "Cancel", style: "cancel" },
@@ -74,33 +70,25 @@ export default function ManagePresetsModal({
       visible={visible}
       onClose={onClose}
       onBack={onClose}
-      title="Manage presets"
+      title="Quick filters"
       backgroundColor={colors.nestedModalBackground}
       contentReady={!isLoading}
-      loadingLabel="Loading presets…"
-      // A handful of preset cards — nothing that could stall the rise — so they
+      loadingLabel="Loading quick filters…"
+      // A handful of quick filter cards — nothing that could stall the rise — so they
       // go up the moment the fetch lands rather than waiting out the animation.
       deferContent={false}
     >
         {presets.length === 0 ? (
           <View style={styles.center}>
             <ThemedText style={styles.empty}>
-              No presets yet. Save your filters as a preset to reuse them in one tap.
+              No quick filters yet. Save your current filters as a quick filter to reuse them in one tap.
             </ThemedText>
           </View>
         ) : (
           <BottomSheetScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
             <ThemedText style={styles.hintText}>
-              The starred preset is applied on startup. Use the arrows to reorder.
+              Use the arrows to reorder.
             </ThemedText>
-            {favoriteHasCinemas && (
-              <View style={styles.warning}>
-                <MaterialIcons name="info-outline" size={13} color={colors.yellow.secondary} />
-                <ThemedText style={styles.warningText}>
-                  Your default preset includes a cinema selection, which will override your default cinema selection. You will still revert to your default cinema selection when you clear your filters.
-                </ThemedText>
-              </View>
-            )}
             {presets.map((preset, index) => {
               const canMoveUp = index > 0;
               const canMoveDown = index < presets.length - 1;
@@ -134,19 +122,6 @@ export default function ManagePresetsModal({
                       {describeDisplayPreset(preset, cityNamesById)}
                     </ThemedText>
                   </View>
-
-                  <TouchableOpacity
-                    style={[styles.iconBtn, preset.isFavorite && styles.iconBtnFavorite]}
-                    onPress={() => setFavorite({ preset, makeFavorite: !preset.isFavorite })}
-                    activeOpacity={0.7}
-                    hitSlop={6}
-                  >
-                    <MaterialIcons
-                      name={preset.isFavorite ? "star" : "star-border"}
-                      size={18}
-                      color={preset.isFavorite ? colors.yellow.secondary : colors.textSecondary}
-                    />
-                  </TouchableOpacity>
 
                   <TouchableOpacity
                     style={styles.iconBtn}
@@ -197,18 +172,5 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
       justifyContent: "center",
       backgroundColor: colors.surfaceMuted,
     },
-    iconBtnFavorite: { backgroundColor: colors.yellow.primary },
     iconBtnDisabled: { opacity: 0.4 },
-    warning: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      gap: 7,
-      paddingHorizontal: 10,
-      paddingVertical: 8,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: colors.yellow.border,
-      backgroundColor: colors.yellow.primary,
-    },
-    warningText: { flex: 1, fontSize: 11, color: colors.text, lineHeight: 16 },
   });

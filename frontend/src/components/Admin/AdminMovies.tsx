@@ -35,7 +35,7 @@ const EditMovieForm = ({ movie }: { movie: AdminMoviePublic }) => {
     mutationFn: (data: MovieUpdate) =>
       AdminService.updateMovie({ movieId: movie.id, requestBody: data }),
     onSuccess: () => {
-      showSuccessToast("Movie updated.")
+      showSuccessToast("Film updated.")
       queryClient.invalidateQueries({ queryKey: ["admin", "movies"] })
     },
     onError: (err: ApiError) => handleError(err),
@@ -59,7 +59,7 @@ const EditMovieForm = ({ movie }: { movie: AdminMoviePublic }) => {
           <Input {...register("original_language")} />
         </Field>
         <Button type="submit" loading={mutation.isPending} alignSelf="start">
-          Save movie record
+          Save film record
         </Button>
       </Stack>
     </form>
@@ -79,7 +79,7 @@ const AdminMovies = () => {
   return (
     <Box>
       <Heading size="md" mb={4}>
-        Movies
+        Films
       </Heading>
       <Input
         placeholder="Search by title…"
@@ -107,7 +107,7 @@ const AdminMovies = () => {
       {selected && (
         <Tabs.Root defaultValue="edit" variant="subtle">
           <Tabs.List>
-            <Tabs.Trigger value="edit">Edit movie record</Tabs.Trigger>
+            <Tabs.Trigger value="edit">Edit film record</Tabs.Trigger>
             <Tabs.Trigger value="override">
               Override TMDB lookup cache
             </Tabs.Trigger>

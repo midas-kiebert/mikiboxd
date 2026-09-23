@@ -112,7 +112,7 @@ export default function FriendListRow({
             activeOpacity={0.8}
             hitSlop={6}
             accessibilityRole="button"
-            accessibilityLabel={`Invite ${name} to this showtime`}
+            accessibilityLabel={`Invite ${name} to this screening`}
           >
             <MaterialIcons name="mail-outline" size={13} color={colors.blue.secondary} />
             <ThemedText style={styles.inviteButtonText}>Invite</ThemedText>

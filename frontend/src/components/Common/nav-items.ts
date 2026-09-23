@@ -42,7 +42,7 @@ export interface NavItem {
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  { icon: FiList, title: "Showtimes", path: "/" },
+  { icon: FiList, title: "Screenings", path: "/" },
   { icon: FiZap, title: "Activity", path: "/activity" },
   {
     icon: FaUserFriends,

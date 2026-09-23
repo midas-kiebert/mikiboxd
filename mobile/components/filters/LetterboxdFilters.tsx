@@ -1,19 +1,20 @@
 /**
- * Body of the "Movie Filters" section of the Filters modal (the collapsible
- * `FilterSection` wrapper supplies the heading).
+ * The film filters of the Filters modal, in two parts: `LetterboxdWatchFilters`
+ * is the body of the "Letterboxd" section, and `LetterboxdListFilters` (the
+ * default export) the lists block inside "More filters".
  *
  * Without a Letterboxd username the watchlist/watched cards have nothing to
  * work with, so their place is taken by a prompt for that username.
  *
- * Every movie-set filter lives here as a one-line card: the Letterboxd
- * watchlist / watched, plus Letterboxd *lists* (curated ones such as the Top
- * 500, and custom lists pasted in by the user). Ticking a card's checkbox
- * includes it; the smaller "Hide" button next to it excludes it. Includes
- * combine as a union and excludes are subtracted, so you can e.g. include
- * Watchlist + Top 500 while excluding Watched. The checkbox carries the common
- * case and Hide is deliberately the quieter control — a card can only be in one
- * of the two states, so ticking clears a hide and vice versa. Each card shows
- * when its data was last synced.
+ * Every movie-set filter lives here as a one-line card. The watchlist and
+ * watched cards do one thing each — only films on the watchlist, hide films
+ * already seen. A Letterboxd *list* card (curated ones such as the Top 500, and
+ * custom lists pasted in by the user) does two: ticking its checkbox includes
+ * the list, the smaller "Hide" button next to it excludes it. Includes combine
+ * as a union and excludes are subtracted. The checkbox carries the common case
+ * and Hide is deliberately the quieter control — a card can only be in one of
+ * the two states, so ticking clears a hide and vice versa. Each card shows when
+ * its data was last synced.
  *
  * Syncing: watchlist/watched refresh automatically on app open; curated lists
  * refresh weekly server-side; custom lists refresh on app open when stale. A
@@ -44,17 +45,21 @@ import { triggerSelectionHaptic } from "@/utils/long-press";
 type Colors = ReturnType<typeof useThemeColors>;
 type ItemMode = "off" | "include" | "exclude";
 
-type Props = {
+type WatchProps = {
   colors: Colors;
   canUseWatchlistFilter: boolean;
   watchlistOnly: boolean;
   setWatchlistOnly: (v: boolean) => void;
-  watchlistExclude: boolean;
   setWatchlistExclude: (v: boolean) => void;
   hideWatched: boolean;
   setHideWatched: (v: boolean) => void;
-  watchedOnly: boolean;
   setWatchedOnly: (v: boolean) => void;
+};
+
+type ListProps = {
+  colors: Colors;
+  /** The first block of its section, so no gap above its heading. */
+  isFirst?: boolean;
   selectedListIds: string[];
   setSelectedListIds: (v: string[]) => void;
   excludeListIds: string[];
@@ -72,24 +77,115 @@ function formatSynced(iso: string | null | undefined): string {
   return relative ? `Synced ${relative}` : "Synced just now";
 }
 
-export default function FilterMoviesSection({
+/** Re-render periodically so the "Synced … ago" labels stay current. */
+function useSyncedLabelTick() {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
+}
+
+function invalidateWatchData(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: ["currentUser"] });
+  queryClient.invalidateQueries({ queryKey: ["showtimes"] });
+  queryClient.invalidateQueries({ queryKey: ["movies"] });
+}
+
+/**
+ * The Letterboxd section: watchlist and watched. Without a username linked, a
+ * prompt for one takes their place; a guest gets the sign-in card instead.
+ */
+export function LetterboxdWatchFilters({
   colors,
   canUseWatchlistFilter,
   watchlistOnly,
   setWatchlistOnly,
-  watchlistExclude,
   setWatchlistExclude,
   hideWatched,
   setHideWatched,
-  watchedOnly,
   setWatchedOnly,
+}: WatchProps) {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isSignedIn = useIsSignedIn();
+  const [watchlistSyncing, setWatchlistSyncing] = useState(false);
+  const [watchedSyncing, setWatchedSyncing] = useState(false);
+  useSyncedLabelTick();
+
+  // One direction each: only your watchlist, or hide what you've seen. The
+  // other two (hide the watchlist, only what you've seen) were too niche for
+  // the confusion they added. Setting one also clears its retired opposite,
+  // which an older quick filter may still carry.
+  const setWatchlistMode = (mode: ItemMode) => {
+    triggerSelectionHaptic();
+    setWatchlistOnly(mode === "include");
+    setWatchlistExclude(false);
+  };
+  const setWatchedMode = (mode: ItemMode) => {
+    triggerSelectionHaptic();
+    setHideWatched(mode === "exclude");
+    setWatchedOnly(false);
+  };
+
+  const refreshWatch = (
+    fn: () => Promise<unknown>,
+    setBusy: (b: boolean) => void
+  ) => {
+    setBusy(true);
+    fn()
+      .catch(() => {})
+      .finally(() => {
+        setBusy(false);
+        invalidateWatchData(queryClient);
+      });
+  };
+
+  if (!isSignedIn) {
+    // Connecting Letterboxd writes a username onto an account, so there is
+    // nothing to offer a guest here but the account itself.
+    return <SignedOutPanel variant="card" feature="letterboxd" />;
+  }
+  if (!canUseWatchlistFilter) return <LetterboxdUsernamePrompt />;
+
+  return (
+    <>
+      <FilterItemCard
+        title="Only films on my watchlist"
+        subtitle={formatSynced(user?.watchlist_last_synced)}
+        singleMode="include"
+        mode={watchlistOnly ? "include" : "off"}
+        onChangeMode={setWatchlistMode}
+        stale={daysSince(user?.watchlist_last_synced) >= 1}
+        syncing={watchlistSyncing}
+        onSync={() => refreshWatch(() => MeService.syncWatchlist(), setWatchlistSyncing)}
+        colors={colors}
+      />
+      <FilterItemCard
+        title="Hide films I've already seen"
+        subtitle={formatSynced(user?.watched_last_synced)}
+        singleMode="exclude"
+        mode={hideWatched ? "exclude" : "off"}
+        onChangeMode={setWatchedMode}
+        stale={daysSince(user?.watched_last_synced) >= 1}
+        syncing={watchedSyncing}
+        onSync={() => refreshWatch(() => MeService.syncWatched(), setWatchedSyncing)}
+        colors={colors}
+      />
+    </>
+  );
+}
+
+/** Letterboxd lists — curated ones, and the user's own — for "More filters". */
+export default function LetterboxdListFilters({
+  colors,
+  isFirst = false,
   selectedListIds,
   setSelectedListIds,
   excludeListIds,
   setExcludeListIds,
-}: Props) {
+}: ListProps) {
   const styles = createStyles(colors);
-  const queryClient = useQueryClient();
   const { user } = useAuth();
 
   // Two sources, one shape. The account endpoint answers with the user's own
@@ -105,37 +201,10 @@ export default function FilterMoviesSection({
 
   const [newUrl, setNewUrl] = useState("");
   const [syncingId, setSyncingId] = useState<string | null>(null);
-  const [watchlistSyncing, setWatchlistSyncing] = useState(false);
-  const [watchedSyncing, setWatchedSyncing] = useState(false);
-
-  // Re-render periodically so the "Synced … ago" labels stay current.
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 30_000);
-    return () => clearInterval(id);
-  }, []);
+  useSyncedLabelTick();
 
   const curatedLists = lists.filter((l) => l.is_curated);
   const customLists = lists.filter((l) => !l.is_curated);
-
-  // ─── Mode helpers ───────────────────────────────────────────────────────────
-  const watchlistMode: ItemMode = watchlistOnly
-    ? "include"
-    : watchlistExclude
-      ? "exclude"
-      : "off";
-  const setWatchlistMode = (mode: ItemMode) => {
-    triggerSelectionHaptic();
-    setWatchlistOnly(mode === "include");
-    setWatchlistExclude(mode === "exclude");
-  };
-
-  const watchedMode: ItemMode = watchedOnly ? "include" : hideWatched ? "exclude" : "off";
-  const setWatchedMode = (mode: ItemMode) => {
-    triggerSelectionHaptic();
-    setWatchedOnly(mode === "include");
-    setHideWatched(mode === "exclude");
-  };
 
   const listMode = (id: string): ItemMode =>
     selectedListIds.includes(id)
@@ -153,7 +222,6 @@ export default function FilterMoviesSection({
     );
   };
 
-  // ─── Actions ────────────────────────────────────────────────────────────────
   const handleAdd = () => {
     const url = newUrl.trim();
     if (!url || addList.isPending) return;
@@ -187,63 +255,10 @@ export default function FilterMoviesSection({
     );
   };
 
-  const refreshWatch = (
-    fn: () => Promise<unknown>,
-    setBusy: (b: boolean) => void
-  ) => {
-    setBusy(true);
-    fn()
-      .catch(() => {})
-      .finally(() => {
-        setBusy(false);
-        queryClient.invalidateQueries({ queryKey: ["currentUser"] });
-        queryClient.invalidateQueries({ queryKey: ["showtimes"] });
-        queryClient.invalidateQueries({ queryKey: ["movies"] });
-      });
-  };
-
   return (
     <>
-      <FilterSubLabel label="Watchlist & watched" isFirst />
-      {/* The two modes are not symmetric and neither is self-evident, so the
-          section says once what ticking and hiding do. It sits above the first
-          block that actually renders cards — above a sign-in prompt it would be
-          explaining controls that aren't there. */}
-      {canUseWatchlistFilter && <ModeHint colors={colors} />}
-      {canUseWatchlistFilter ? (
-        <>
-          <FilterItemCard
-            title="Watchlist"
-            subtitle={formatSynced(user?.watchlist_last_synced)}
-            mode={watchlistMode}
-            onChangeMode={setWatchlistMode}
-            stale={daysSince(user?.watchlist_last_synced) >= 1}
-            syncing={watchlistSyncing}
-            onSync={() => refreshWatch(() => MeService.syncWatchlist(), setWatchlistSyncing)}
-            colors={colors}
-          />
-          <FilterItemCard
-            title="Watched"
-            subtitle={formatSynced(user?.watched_last_synced)}
-            mode={watchedMode}
-            onChangeMode={setWatchedMode}
-            stale={daysSince(user?.watched_last_synced) >= 1}
-            syncing={watchedSyncing}
-            onSync={() => refreshWatch(() => MeService.syncWatched(), setWatchedSyncing)}
-            colors={colors}
-          />
-        </>
-      ) : isSignedIn ? (
-        <LetterboxdUsernamePrompt />
-      ) : (
-        // Connecting Letterboxd writes a username onto an account, so there is
-        // nothing to offer a guest here but the account itself.
-        <SignedOutPanel variant="card" feature="letterboxd" />
-      )}
-
-      {/* Curated lists */}
-      <FilterSubLabel label="Curated lists" />
-      {!canUseWatchlistFilter && <ModeHint colors={colors} />}
+      <FilterSubLabel label="Curated lists" isFirst={isFirst} />
+      <ModeHint colors={colors} />
       {listsLoading && curatedLists.length === 0 ? (
         <ActivityIndicator color={colors.tint} style={{ marginVertical: 8 }} />
       ) : (
@@ -375,11 +390,17 @@ function FilterItemCard({
   syncing,
   onSync,
   onRemove,
+  singleMode,
   colors,
 }: {
   title: string;
   subtitle: string;
   mode: ItemMode;
+  /**
+   * A card with one thing to do rather than two: the row toggles this mode, and
+   * there is no separate Hide button. The title says what it does.
+   */
+  singleMode?: "include" | "exclude";
   onChangeMode: (mode: ItemMode) => void;
   stale?: boolean;
   syncing?: boolean;
@@ -389,8 +410,10 @@ function FilterItemCard({
 }) {
   const styles = createStyles(colors);
   const { value: displayMode, change } = useOptimisticValue(mode, onChangeMode);
-  const included = displayMode === "include";
-  const excluded = displayMode === "exclude";
+  const isOn = singleMode ? displayMode === singleMode : displayMode === "include";
+  const included = singleMode ? isOn : displayMode === "include";
+  const excluded = singleMode ? false : displayMode === "exclude";
+  const rowMode: ItemMode = singleMode ?? "include";
   const borderColor = included
     ? colors.green.border
     : excluded
@@ -404,10 +427,10 @@ function FilterItemCard({
         // `pressed` updates synchronously on touch-down, so the row dims
         // instantly even while the movie list re-filters in the background.
         style={({ pressed }) => [styles.selectRow, pressed && styles.pressed]}
-        onPress={() => change(included ? "off" : "include")}
+        onPress={() => change(included ? "off" : rowMode)}
         accessibilityRole="checkbox"
         accessibilityState={{ checked: included }}
-        accessibilityLabel={`Show only films from ${title}`}
+        accessibilityLabel={singleMode ? title : `Show only films from ${title}`}
       >
         <View style={[styles.checkbox, included && styles.checkboxChecked]}>
           {included && (
@@ -432,11 +455,13 @@ function FilterItemCard({
           )}
         </TouchableOpacity>
       )}
-      <HideButton
-        active={excluded}
-        onPress={() => change(excluded ? "off" : "exclude")}
-        colors={colors}
-      />
+      {!singleMode && (
+        <HideButton
+          active={excluded}
+          onPress={() => change(excluded ? "off" : "exclude")}
+          colors={colors}
+        />
+      )}
       {onRemove && (
         <TouchableOpacity onPress={onRemove} hitSlop={8} activeOpacity={0.7}>
           <MaterialIcons name="close" size={16} color={colors.textSecondary} />

@@ -131,7 +131,7 @@ export default function CinemaPresetTip() {
         tipId="cinema-presets"
         icon="check-circle"
         title="Cinemas saved"
-        message={`Your showtimes now come from ${savedCinemaCount} cinema${
+        message={`Your screenings now come from ${savedCinemaCount} cinema${
           savedCinemaCount === 1 ? "" : "s"
         }. Open the cinema filter any time to change them.`}
         actionLabel="Done"

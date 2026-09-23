@@ -2453,7 +2453,8 @@ def test_requesting_a_fresh_reading_of_a_stale_count(
     mocker,
 ) -> None:
     """A count ten minutes old or more can be asked for again — once, until
-    that request is itself ten minutes old."""
+    that request is itself ten minutes old. Offered by the detail endpoint;
+    list rows never offer it."""
     check_now = mocker.patch("app.api.routes.showtimes._check_seat_availability_now")
     showtime = showtime_factory(
         datetime=now_amsterdam_naive() + timedelta(days=2),
@@ -2557,6 +2558,51 @@ def test_opening_a_showtime_re_arms_its_tickets_available_notice(
     db_transaction.refresh(selection)
     assert selection.tickets_available_alert_sent_at is None
     assert selection.sold_out_alert_sent_at == stamped
+
+
+def test_a_failed_hand_requested_read_withdraws_the_button_for_hours(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    showtime_factory,
+    mocker,
+) -> None:
+    """Past the ordinary ten-minute cooldown, a screening whose pressed read
+    failed at the ticket shop still offers nothing: the next press would most
+    likely fail the same way."""
+    from app.models.seat_check_request import SeatCheckRequest
+    from app.scraping.seat_availability import SeatAvailabilityFetchError
+
+    mocker.patch(
+        "app.services.seat_availability.fetch_seat_availability",
+        side_effect=SeatAvailabilityFetchError("shop is down"),
+    )
+    showtime = showtime_factory(
+        datetime=now_amsterdam_naive() + timedelta(days=2),
+        ticket_link=_READABLE_TICKET_LINK,
+        seats_checked_at=None,
+        seats_next_check_at=None,
+    )
+    showtime_id = showtime.id
+    db_transaction.commit()
+
+    client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/seat-availability/check",
+        headers=normal_user_token_headers,
+    )
+    request = db_transaction.exec(
+        select(SeatCheckRequest).where(SeatCheckRequest.showtime_id == showtime_id)
+    ).one()
+    assert request.failed is True
+    request.requested_at = now_amsterdam_naive() - timedelta(minutes=11)
+    db_transaction.add(request)
+    db_transaction.commit()
+
+    body = client.get(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/seat-availability",
+    ).json()
+    assert body["checking"] is False
+    assert body["can_request_check"] is False
 
 
 def test_requesting_a_seat_reading_needs_an_account(

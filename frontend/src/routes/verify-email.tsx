@@ -88,7 +88,7 @@ function VerifyEmail() {
       search={defaultFeedParams}
       className="au-button au-button--primary"
     >
-      {isSignedIn ? "Go to your showtimes" : "Browse showtimes"}
+      {isSignedIn ? "Go to your screenings" : "Browse screenings"}
     </Link>
   )
 

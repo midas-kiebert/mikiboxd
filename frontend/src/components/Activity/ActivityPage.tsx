@@ -421,7 +421,7 @@ const EmptyActivity = ({
       className="ac-empty__action"
     >
       <FiList aria-hidden />
-      <span className="ac-empty__action-label">Browse showtimes</span>
+      <span className="ac-empty__action-label">Browse screenings</span>
     </Link>
   )
   const addFriends = (

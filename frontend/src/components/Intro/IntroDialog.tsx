@@ -208,7 +208,7 @@ const CinemasPage = ({ onDone }: { onDone: () => void }) => {
   return (
     <PageShell
       title="Select your favorite cinemas"
-      message="We'll only show you showtimes at the cinemas you pick. You can change this any time."
+      message="We'll only show you screenings at the cinemas you pick. You can change this any time."
       primaryLabel={
         save.isPending
           ? "Saving…"
@@ -296,7 +296,7 @@ const LetterboxdPage = ({ onDone }: { onDone: () => void }) => {
   return (
     <PageShell
       title="Connect your Letterboxd"
-      message="Filter showtimes down to your watchlist, or hide films you have already seen."
+      message="Filter screenings down to your watchlist, or hide films you have already seen."
       primaryLabel={
         save.isPending ? "Saving…" : trimmed ? "Save and continue" : "Continue"
       }
@@ -443,20 +443,20 @@ const STATUS_STEPS = [
   {
     icon: PanelIcon.bookmarkBorder,
     tone: "orange",
-    title: "Mark a showtime as interested",
+    title: "Mark a screening as interested",
     message: "Your friends can see what you want to watch.",
   },
   {
     icon: PanelIcon.checkCircle,
     tone: "green",
     title: "Going? Say so",
-    message: "Mark a showtime as going once you have reserved a ticket.",
+    message: "Mark a screening as going once you have reserved a ticket.",
   },
   {
     icon: PanelIcon.mailOutline,
     tone: "blue",
     title: "You can invite friends too",
-    message: "Pick a friend and they get an invite for this exact showtime.",
+    message: "Pick a friend and they get an invite for this exact screening.",
   },
 ] as const
 
@@ -507,7 +507,7 @@ const FriendsPage = ({ onDone }: { onDone: () => void }) => {
   return (
     <PageShell
       title="Add your friends"
-      message="See each other's showtimes, send invites, and keep track of who's going where."
+      message="See each other's screenings, send invites, and keep track of who's going where."
       primaryLabel="Start browsing"
       onPrimary={() => {
         onDone()

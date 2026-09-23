@@ -116,7 +116,7 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
     <IntroPageShell
       icon="theaters"
       title="Select your favorite cinemas"
-      message="We'll only show you showtimes at the cinemas you pick. You can change this any time."
+      message="We'll only show you screenings at the cinemas you pick. You can change this any time."
       primaryLabel={selectedCount === 0 ? "Continue without saving" : "Save and continue"}
       onPrimary={handleSave}
       // Only the loading case is blocked: pressing through a list that has

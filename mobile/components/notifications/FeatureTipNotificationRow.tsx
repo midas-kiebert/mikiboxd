@@ -27,12 +27,12 @@ const TIP_PRESENTATION: Record<FeatureTipId, Presentation> = {
   "watchlist-digest": {
     icon: "mail",
     title: "Get watchlist films by email",
-    subtitle: "Hear when one gets a showtime at your cinemas",
+    subtitle: "Hear when one gets a screening at your cinemas",
   },
   "letterboxd-username": {
     icon: "bookmark-added",
     title: "Connect your Letterboxd watchlist",
-    subtitle: "Filter showtimes by your watchlist",
+    subtitle: "Filter screenings by your watchlist",
   },
   "letterboxd-avatar": {
     icon: "account-circle",
@@ -42,7 +42,7 @@ const TIP_PRESENTATION: Record<FeatureTipId, Presentation> = {
   "add-friends": {
     icon: "person-add",
     title: "Add some friends",
-    subtitle: "See what they're watching and plan showtimes together",
+    subtitle: "See what they're watching and plan screenings together",
   },
   "cinema-presets": {
     icon: "theaters",
@@ -51,13 +51,13 @@ const TIP_PRESENTATION: Record<FeatureTipId, Presentation> = {
   },
   "filter-presets": {
     icon: "tune",
-    title: "Save your filters as a preset",
+    title: "Save your filters as a quick filter",
     subtitle: "Reuse the filters you set most often",
   },
   "notification-permission": {
     icon: "notifications-active",
     title: "Allow notifications",
-    subtitle: "Hear when friends pick a showtime",
+    subtitle: "Hear when friends pick a screening",
   },
 };
 

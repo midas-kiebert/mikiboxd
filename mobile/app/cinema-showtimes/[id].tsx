@@ -36,6 +36,7 @@ import {
 } from "@/components/feeds/feed-paging";
 import ListLoadingLogo from "@/components/layout/ListLoadingLogo";
 import { useDelayedTrue } from "@/hooks/useDelayedTrue";
+import { useFeedDefaults } from "@/hooks/useFeedDefaults";
 import { LOADING_LOGO_DELAY_MS, LOADING_LOGO_COOLDOWN_MS } from "@/constants/loading-logo";
 import { FeedItemEntrance } from "@/components/ui/FeedItemEntrance";
 import LoadMoreFooter from "@/components/ui/LoadMoreFooter";
@@ -252,6 +253,8 @@ function CinemaShowtimesContent({
     selectedLanguages,
     setSelectedLanguages,
   } = useSharedTabFilters();
+  // Clearing puts language back to its default, not off (see useFeedDefaults).
+  const { defaultLanguages } = useFeedDefaults();
   const { user } = useAuth();
   // The status filter is about who is going; a guest has no such answer to
   // filter by, so it is not offered here either (see FiltersModalProvider).
@@ -461,13 +464,12 @@ function CinemaShowtimesContent({
     setWatchlistExclude(false);
     setHideWatched(false);
     setWatchedOnly(false);
-    setGroupByMovie(false);
     setSelectedDays([]);
     setSelectedTimeRanges([]);
     setSelectedRuntimeRanges([]);
     setSelectedListIds([]);
     setExcludeListIds([]);
-    setSelectedLanguages([]);
+    setSelectedLanguages([...defaultLanguages]);
   };
 
   // Same notice under either feed's empty state: the search field is shared by
@@ -531,7 +533,7 @@ function CinemaShowtimesContent({
           // for that case.
           isMoviesEmptyLoading || refreshing ? null : (
             <View style={styles.centerContainer}>
-              <ThemedText style={styles.emptyText}>No movies found</ThemedText>
+              <ThemedText style={styles.emptyText}>No films found</ThemedText>
               {searchFieldFallback}
             </View>
           )
@@ -580,8 +582,6 @@ function CinemaShowtimesContent({
         searchLeftSlot={filtersButton}
         filterRow={
           <ActiveFilterChips
-            groupByMovie={groupByMovie}
-            setGroupByMovie={setGroupByMovie}
             watchlistOnly={effectiveWatchlistOnly}
             setWatchlistOnly={setWatchlistOnly}
             watchlistExclude={effectiveWatchlistExclude}
@@ -610,7 +610,7 @@ function CinemaShowtimesContent({
           />
         }
         listContent={moviesContent}
-        emptyText="No showtimes for this cinema"
+        emptyText="No screenings for this cinema"
         emptyExtra={searchFieldFallback}
         openModalOptions={showtimeModalOptions}
       />

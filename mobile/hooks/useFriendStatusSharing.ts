@@ -11,7 +11,7 @@ import {
 export type { FriendStatusSharing };
 
 const reportError = () =>
-  Alert.alert("Error", "Could not update who can see your showtimes.");
+  Alert.alert("Error", "Could not update who can see your screenings.");
 
 export function useFriendStatusSharing(
   friendId: string,

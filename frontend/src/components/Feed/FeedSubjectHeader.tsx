@@ -401,8 +401,8 @@ const NonFriendPanel = ({ user }: { user: UserWithFriendStatus }) => {
           {isBlocked
             ? `Unblock ${name} to send or receive friend requests and invites again.`
             : user.sent_request
-              ? `Once ${name} accepts, you'll see their agenda here and can invite them to showtimes.`
-              : `Become friends to see ${name}'s agenda and invite them to showtimes.`}
+              ? `Once ${name} accepts, you'll see their agenda here and can invite them to screenings.`
+              : `Become friends to see ${name}'s agenda and invite them to screenings.`}
         </Text>
         {isBlocked ? null : user.received_request ? (
           <Flex gap={3} alignSelf="stretch">

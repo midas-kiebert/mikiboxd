@@ -94,7 +94,7 @@ export function ShowtimesListContent({
   onLoadMore,
   refreshing,
   onRefresh,
-  emptyText = "No showtimes found",
+  emptyText = "No screenings found",
   emptyExtra,
   openModalOptions,
   inheritFiltersOnMovieNav = false,
@@ -383,7 +383,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
   onLongPressFilter,
   filterRow,
   listContent,
-  emptyText = "No showtimes found",
+  emptyText = "No screenings found",
   emptyExtra,
   openModalOptions,
   inheritFiltersOnMovieNav,
@@ -407,7 +407,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
       <SearchBar
         value={searchQuery}
         onChangeText={onSearchChange}
-        placeholder="Search showtimes"
+        placeholder="Search screenings"
         searchField={searchField}
         onChangeSearchField={onChangeSearchField}
         hiddenSearchFields={hiddenSearchFields}
@@ -466,7 +466,7 @@ export function ShowtimesScreenSkeleton({
   topBarAvatarInitial,
   searchQuery,
   onSearchChange,
-  searchPlaceholder = "Search showtimes",
+  searchPlaceholder = "Search screenings",
   searchField,
   onChangeSearchField,
   hiddenSearchFields,

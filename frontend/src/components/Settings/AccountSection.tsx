@@ -130,7 +130,7 @@ export const DangerZoneSection = () => {
           <div className="st-card__body">
             <p className="st-help">
               Permanently delete your account and all associated data. Your
-              friends, showtime selections and invites go with it. This cannot
+              friends, screening selections and invites go with it. This cannot
               be undone.
             </p>
             {isSuperuser ? (

@@ -72,7 +72,7 @@ export default function IntroLetterboxdPage({ onDone }: { onDone: () => void }) 
     <IntroPageShell
       icon="bookmark-added"
       title="Connect your Letterboxd"
-      message="Filter showtimes down to your watchlist, or hide films you have already seen."
+      message="Filter screenings down to your watchlist, or hide films you have already seen."
       primaryLabel="Save and continue"
       onPrimary={handleSave}
       isPrimaryDisabled={!trimmedUsername}

@@ -1117,6 +1117,9 @@ export default function CinemaFilterModal({
                         canSaveMyCinemas && styles.footerButtonTextHighlighted,
                       ]}
                       numberOfLines={1}
+                      // The narrowest phones: a point smaller beats an ellipsis.
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.85}
                     >
                       {isCurrentSelectionMyCinemas ? "These are your preferred cinemas" : "Set as preferred cinemas"}
                     </ThemedText>
@@ -1513,13 +1516,13 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       flex: 1,
     },
     // Applies the current selection to this session only — no account write.
-    // The tint-filled "go" action, as wide as the preferred button beside it:
-    // it is the obvious way out, so nobody saves preferred cinemas by mistake.
+    // The tint-filled "go" action, so it stays the obvious way out and nobody
+    // saves preferred cinemas by mistake — but only as wide as its one word,
+    // leaving the preferred button beside it room for its whole label.
     applyButton: {
-      flex: 1,
       alignItems: "center",
       justifyContent: "center",
-      paddingHorizontal: 14,
+      paddingHorizontal: 22,
       paddingVertical: 11,
       borderRadius: 12,
       borderWidth: 1.5,

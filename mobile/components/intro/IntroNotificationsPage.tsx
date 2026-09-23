@@ -48,10 +48,10 @@ const NOTIFICATION_EXAMPLES: readonly {
   label: string;
   detail: string;
 }[] = [
-  { icon: "mail", label: "Invites", detail: "A friend asks you along to a showtime." },
+  { icon: "mail", label: "Invites", detail: "A friend asks you along to a screening." },
   { icon: "person-add", label: "Friend requests", detail: "Someone wants to follow along." },
   { icon: "groups", label: "Friend activity", detail: "A friend is going to a film you want to see." },
-  { icon: "alarm", label: "Reminders", detail: "Before a showtime you said you were interested in." },
+  { icon: "alarm", label: "Reminders", detail: "Before a screening you said you were interested in." },
 ];
 
 export default function IntroNotificationsPage({ onDone }: { onDone: () => void }) {
@@ -139,7 +139,7 @@ export default function IntroNotificationsPage({ onDone }: { onDone: () => void 
       message={
         isGranted
           ? "You can change what you hear about, and whether it arrives by push or email, in Settings."
-          : "Invites, friend requests and showtime reminders reach you as they happen. Nothing else."
+          : "Invites, friend requests and screening reminders reach you as they happen. Nothing else."
       }
       primaryLabel={primaryLabel}
       onPrimary={handlePrimary}

@@ -69,7 +69,7 @@ export const ACCOUNT_FEATURE_COPY: Record<AccountFeature, AccountFeatureCopy> = 
   },
   presets: {
     icon: "bookmark",
-    title: "Saved filters",
+    title: "Quick filters",
     message:
       "Keep the filter combinations you use most, and bring one back in a tap.",
   },

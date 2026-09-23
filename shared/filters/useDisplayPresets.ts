@@ -1,7 +1,7 @@
 /**
  * Shared data hook for saved presets, with the persisted manual order
  * applied. Used by both the preset chips and the manage modal so
- * order/favorite/delete stay in sync via the query cache.
+ * order/delete stay in sync via the query cache.
  */
 import { useCallback, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -14,7 +14,6 @@ import {
   loadDisplayPresetOrder,
   presetKey,
   saveDisplayPresetOrder,
-  setDisplayPresetFavorite,
   sortDisplayPresetsByOrder,
   type DisplayPreset,
 } from "./saved-presets";
@@ -41,27 +40,10 @@ export function useDisplayPresets({ enabled = true }: { enabled?: boolean } = {}
 
   const invalidatePresets = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: displayPresetsQueryKey });
-    queryClient.invalidateQueries({ queryKey: ["user", "favorite_saved_preset"] });
   }, [queryClient]);
 
   const removeMutation = useMutation({
     mutationFn: (preset: DisplayPreset) => deleteDisplayPreset(preset),
-    onSettled: invalidatePresets,
-  });
-
-  const favoriteMutation = useMutation({
-    mutationFn: ({ preset, makeFavorite }: { preset: DisplayPreset; makeFavorite: boolean }) =>
-      setDisplayPresetFavorite(preset, makeFavorite),
-    // Optimistically reflect the new favorite (single favorite overall) for instant feedback.
-    onMutate: ({ preset, makeFavorite }) => {
-      const key = presetKey(preset);
-      queryClient.setQueryData<DisplayPreset[]>(displayPresetsQueryKey, (old) =>
-        old?.map((p) => ({
-          ...p,
-          isFavorite: presetKey(p) === key ? makeFavorite : false,
-        }))
-      );
-    },
     onSettled: invalidatePresets,
   });
 
@@ -93,7 +75,6 @@ export function useDisplayPresets({ enabled = true }: { enabled?: boolean } = {}
     isLoading,
     remove: removeMutation.mutate,
     isRemoving: removeMutation.isPending,
-    setFavorite: favoriteMutation.mutate,
     move,
   };
 }

@@ -346,7 +346,7 @@ export default function TimeFilterModal({
           <ThemedText style={styles.subtitle}>
             {localSelectedTimeRanges.length > 0
               ? `${localSelectedTimeRanges.length} range${localSelectedTimeRanges.length === 1 ? "" : "s"} selected`
-              : "Select presets or add custom showtime ranges"}
+              : "Select presets or add custom screening ranges"}
           </ThemedText>
         </View>
 

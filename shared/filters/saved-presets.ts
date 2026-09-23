@@ -81,7 +81,6 @@ const isUntouchedToken = (value: string): value is PresetDimension =>
 export type DisplayPreset = {
   id: string;
   name: string;
-  isFavorite: boolean;
   /** Dimensions the preset leaves as-is on apply; everything else is controlled. */
   untouchedFields: PresetDimension[];
   filters: SavedPresetFilters;
@@ -99,7 +98,6 @@ export type DisplayPreset = {
 const savedToDisplay = (preset: SavedPresetPublic): DisplayPreset => ({
   id: preset.id,
   name: preset.name,
-  isFavorite: preset.is_favorite,
   untouchedFields: preset.untouched_fields.filter(isUntouchedToken),
   filters: preset.filters,
   cinemaIds: preset.cinema_ids ?? null,
@@ -355,21 +353,6 @@ export const deleteDisplayPreset = (preset: DisplayPreset): Promise<unknown> =>
 /** Stable identity for ordering/keying. */
 export const presetKey = (preset: Pick<DisplayPreset, "id">) => preset.id;
 
-/**
- * Set or clear the favorite preset. Marking a preset favorite is what makes
- * it apply on startup (see useSharedTabFilters).
- */
-export const setDisplayPresetFavorite = async (
-  preset: DisplayPreset,
-  makeFavorite: boolean
-): Promise<void> => {
-  if (!makeFavorite) {
-    await MeService.clearFavoriteSavedPreset();
-    return;
-  }
-  await MeService.setFavoriteSavedPreset({ presetId: preset.id });
-};
-
 // ─── Manual ordering (persisted locally, shared by chips + manage modal) ──────
 
 const ORDER_STORAGE_KEY = "display_preset_order_v1";
@@ -414,7 +397,6 @@ export const sortDisplayPresetsByOrder = (
 
 export const buildSavedPresetCreate = (args: {
   name: string;
-  isFavorite: boolean;
   /** Dimensions the user opted to leave as-is (must exclude `cinemas`). */
   untouchedFields: PresetDimension[];
   includeCinemas: boolean;
@@ -434,7 +416,8 @@ export const buildSavedPresetCreate = (args: {
   cinema_ids:
     args.includeCinemas && !args.matchedCinemaPresetId ? args.cinemaIds : null,
   cinema_preset_id: args.includeCinemas ? args.matchedCinemaPresetId ?? null : null,
-  is_favorite: args.isFavorite,
+  // Quick filters no longer have a default; the field stays for the API.
+  is_favorite: false,
 });
 
 /** One row in the "save preset" prompt: a dimension the user can include. */
@@ -544,7 +527,7 @@ export const summarizeCurrentSelections = (args: {
   if (args.showRuntime) {
     rows.push({
       dimension: "runtime_ranges",
-      title: "Movie Length",
+      title: "Film Length",
       valueLabel: formatRuntimePillLabel(runtimeRanges),
       active: runtimeRanges.length > 0,
     });
@@ -555,7 +538,7 @@ export const summarizeCurrentSelections = (args: {
     rows.push({
       dimension: "group_by_movie",
       title: "Group by",
-      valueLabel: groupByMovie ? "Movies" : "Showtimes",
+      valueLabel: groupByMovie ? "Films" : "Screenings",
       active: groupByMovie,
     });
   }
@@ -621,7 +604,7 @@ export const describeDisplayPreset = (
     parts.push(formatRuntimePillLabel(f.runtime_ranges ?? []));
   }
   if (controls("group_by_movie") && f.group_by_movie) {
-    parts.push("Group by movies");
+    parts.push("Group by films");
   }
   if (controls("selected_languages") && (f.selected_languages?.length ?? 0) > 0) {
     parts.push(formatLanguagesLabel(f.selected_languages ?? []));

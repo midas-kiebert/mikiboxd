@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Language } from "shared/client";
-import { useFetchFavoriteSavedPreset } from "shared/hooks/useFetchFavoriteSavedPreset";
 import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { useSessionDaySelections } from "shared/hooks/useSessionDaySelections";
 import { useSessionShowtimeFilter } from "shared/hooks/useSessionShowtimeFilter";
@@ -17,6 +16,7 @@ import { useSessionWatchlistExclude } from "shared/hooks/useSessionWatchlistExcl
 import { useSessionWatchedOnly } from "shared/hooks/useSessionWatchedOnly";
 
 import { useCinemaSelection } from "@/hooks/useCinemaSelection";
+import { useFeedDefaults } from "@/hooks/useFeedDefaults";
 import { useIsSignedIn } from "@/utils/auth-session";
 import { useGuestCinemaSelection } from "@/utils/guest-cinema-selection";
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas";
@@ -28,7 +28,6 @@ import {
   toSharedTabShowtimeFilter,
   type SharedTabShowtimeFilter,
 } from "@/components/filters/shared-tab-filters";
-import { listDimension } from "@/components/filters/saved-presets";
 import { normalizeSingleTimeRangeSelection } from "@/components/filters/time-range-utils";
 
 const EMPTY_DAYS: string[] = [];
@@ -37,22 +36,10 @@ const EMPTY_RUNTIME_RANGES: string[] = [];
 const EMPTY_LIST_IDS: string[] = [];
 const EMPTY_LANGUAGES: Language[] = [];
 const SESSION_CINEMA_SELECTIONS_KEY = ["session", "cinema_selections"] as const;
-const SESSION_DAY_SELECTIONS_KEY = ["session", "day_selections"] as const;
-const SESSION_SHOWTIME_FILTER_KEY = ["session", "showtime_filter"] as const;
-const SESSION_TIME_RANGE_SELECTIONS_KEY = ["session", "time_range_selections"] as const;
-const SESSION_RUNTIME_RANGE_SELECTIONS_KEY = [
-  "session",
-  "runtime_range_selections",
-] as const;
-const SESSION_WATCHLIST_ONLY_KEY = ["session", "watchlist_only"] as const;
-const SESSION_HIDE_WATCHED_KEY = ["session", "hide_watched"] as const;
-const SESSION_WATCHLIST_EXCLUDE_KEY = ["session", "watchlist_exclude"] as const;
-const SESSION_WATCHED_ONLY_KEY = ["session", "watched_only"] as const;
-const SESSION_SELECTED_LIST_IDS_KEY = ["session", "selected_list_ids"] as const;
-const SESSION_EXCLUDE_LIST_IDS_KEY = ["session", "exclude_list_ids"] as const;
 const SESSION_GROUP_BY_MOVIE_KEY = ["session", "group_by_movie"] as const;
+const SESSION_LANGUAGE_SELECTIONS_KEY = ["session", "language_selections"] as const;
 // A ceiling on how long a feed waits for the seeding below, not a target: the
-// two requests it depends on are small and normally settle well inside this.
+// reads it depends on are small and normally settle well inside this.
 // Only a stalled/offline account query would ever hit it, and at that point
 // the feed's own fetch is about to fail for the same reason — better that
 // than leaving the feed gated forever on a query that never settles.
@@ -60,7 +47,7 @@ const FILTER_HYDRATION_FALLBACK_MS = 4000;
 
 export function useSharedTabFilters() {
   const queryClient = useQueryClient();
-  const initializedFromFavoritesRef = useRef(false);
+  const initializedDefaultsRef = useRef(false);
   const applyShowtimeFilterFrameRef = useRef<number | null>(null);
   const applyWatchlistOnlyFrameRef = useRef<number | null>(null);
   const applyHideWatchedFrameRef = useRef<number | null>(null);
@@ -92,13 +79,14 @@ export function useSharedTabFilters() {
     useSessionWatchlistExclude();
   const { selection: watchedOnly, setSelection: setWatchedOnly } =
     useSessionWatchedOnly();
-  // A guest has no account to read defaults from, so these stay off rather than
-  // 401-ing on a loop. Their equivalent — the cinemas they picked on this
-  // device — is read from storage instead, and seeded below by the same effect.
+  // A guest has no account to read preferred cinemas from, so this stays off
+  // rather than 401-ing on a loop. Their equivalent — the cinemas they picked
+  // on this device — is read from storage instead, and seeded below by the
+  // same effect.
   const isSignedIn = useIsSignedIn();
-  const favoriteSavedPresetQuery = useFetchFavoriteSavedPreset({ enabled: isSignedIn });
   const favoriteCinemasQuery = useFetchSelectedCinemas({ enabled: isSignedIn });
   const guestCinemaIds = useGuestCinemaSelection();
+  const feedDefaults = useFeedDefaults();
   const { data: allCinemas } = useFetchCinemas();
   const hasCinemaList = (allCinemas?.length ?? 0) > 0;
 
@@ -117,9 +105,10 @@ export function useSharedTabFilters() {
   }, []);
   const isHydrated =
     hydrationFallback ||
-    (!isSignedIn
-      ? guestCinemaIds !== undefined && (guestCinemaIds.length > 0 || hasCinemaList)
-      : favoriteSavedPresetQuery.isFetched && favoriteCinemasQuery.isFetched);
+    (feedDefaults.isLoaded &&
+      (!isSignedIn
+        ? guestCinemaIds !== undefined && (guestCinemaIds.length > 0 || hasCinemaList)
+        : favoriteCinemasQuery.isFetched));
 
   const initialShowtimeFilter = toSharedTabShowtimeFilter(sessionShowtimeFilter);
   const initialWatchlistOnly = Boolean(sessionWatchlistOnly);
@@ -270,13 +259,19 @@ export function useSharedTabFilters() {
     []
   );
 
+  // Startup: the only things a feed opens with are its defaults — the preferred
+  // cinemas, and the feed style and language set with "Make this the default"
+  // (`useFeedDefaults`). Every other filter opens off. Each is only seeded when
+  // this session has not set it yet.
   useEffect(() => {
-    if (initializedFromFavoritesRef.current) return;
+    if (initializedDefaultsRef.current) return;
+    if (!feedDefaults.isLoaded) return;
 
-    // A guest has one dimension to seed and one source for it: the cinemas they
-    // picked on this device. Everything below reads a saved preset, which is an
-    // account-only thing to have, so there is nothing else here for them.
+    const rawSessionCinemaIds = queryClient.getQueryData<number[]>(
+      SESSION_CINEMA_SELECTIONS_KEY
+    );
     if (!isSignedIn) {
+      // A guest's preferred cinemas are the ones they picked on this device.
       if (guestCinemaIds === undefined) return;
       // A guest who has picked nothing yet gets every cinema, and that is the
       // full list resolved into a real selection rather than an empty one —
@@ -285,144 +280,38 @@ export function useSharedTabFilters() {
       // the empty selection this is meant to avoid, and the ref below would
       // stop us ever coming back to fix it.
       if (guestCinemaIds.length === 0 && !hasCinemaList) return;
-      const rawSessionCinemaIds = queryClient.getQueryData<number[]>(
-        SESSION_CINEMA_SELECTIONS_KEY
-      );
-      if (rawSessionCinemaIds === undefined) {
-        setSessionCinemaIds(guestCinemaIds);
-      }
-      initializedFromFavoritesRef.current = true;
-      return;
-    }
-
-    if (!favoriteSavedPresetQuery.isFetched || !favoriteCinemasQuery.isFetched) return;
-
-    const savedFavorite = favoriteSavedPresetQuery.data;
-    const savedUntouched = new Set(savedFavorite?.untouched_fields ?? []);
-    const filterSource = savedFavorite;
-    // Opt-out model: a saved preset controls every dimension except the ones it
-    // left untouched.
-    const appliesDimension = (dimension: string) => !savedUntouched.has(dimension);
-
-    // Cinemas are opt-in: a saved favorite that carries a selection wins;
-    // otherwise fall back to the favorite cinema preset.
-    const rawSessionCinemaIds = queryClient.getQueryData<number[]>(
-      SESSION_CINEMA_SELECTIONS_KEY
-    );
-    if (rawSessionCinemaIds === undefined) {
-      if (savedFavorite && savedFavorite.cinema_ids) {
-        setSessionCinemaIds(savedFavorite.cinema_ids);
-      } else if (favoriteCinemasQuery.data !== undefined) {
+      if (rawSessionCinemaIds === undefined) setSessionCinemaIds(guestCinemaIds);
+    } else {
+      if (!favoriteCinemasQuery.isFetched) return;
+      if (rawSessionCinemaIds === undefined && favoriteCinemasQuery.data !== undefined) {
         setSessionCinemaIds(favoriteCinemasQuery.data);
       }
     }
 
-    if (filterSource) {
-      const rawSessionShowtimeFilter = queryClient.getQueryData<SharedTabShowtimeFilter>(
-        SESSION_SHOWTIME_FILTER_KEY
-      );
-      if (appliesDimension("selected_showtime_filter") && rawSessionShowtimeFilter === undefined) {
-        setSelectedShowtimeFilter(
-          toSharedTabShowtimeFilter(filterSource.filters.selected_showtime_filter)
-        );
-      }
-
-      const rawWatchlistOnly = queryClient.getQueryData<boolean>(SESSION_WATCHLIST_ONLY_KEY);
-      if (appliesDimension("watchlist_only") && rawWatchlistOnly === undefined) {
-        setWatchlistOnly(Boolean(filterSource.filters.watchlist_only));
-      }
-
-      const rawWatchlistExclude = queryClient.getQueryData<boolean>(
-        SESSION_WATCHLIST_EXCLUDE_KEY
-      );
-      if (appliesDimension("watchlist_only") && rawWatchlistExclude === undefined) {
-        setWatchlistExclude(Boolean(filterSource.filters.watchlist_exclude));
-      }
-
-      const rawHideWatched = queryClient.getQueryData<boolean>(SESSION_HIDE_WATCHED_KEY);
-      if (appliesDimension("hide_watched") && rawHideWatched === undefined) {
-        setHideWatched(Boolean(filterSource.filters.hide_watched));
-      }
-
-      const rawWatchedOnly = queryClient.getQueryData<boolean>(SESSION_WATCHED_ONLY_KEY);
-      if (appliesDimension("hide_watched") && rawWatchedOnly === undefined) {
-        setWatchedOnly(Boolean(filterSource.filters.watched_only));
-      }
-
-      // Lists: apply the favorite's stored membership for every controlled list.
-      // A legacy favorite controls all lists (clears them); lists left untouched
-      // keep their (cold-start empty) default.
-      const rawSelectedListIds = queryClient.getQueryData<string[]>(
-        SESSION_SELECTED_LIST_IDS_KEY
-      );
-      if (rawSelectedListIds === undefined) {
-        setSessionListIds(
-          (filterSource.filters.selected_list_ids ?? []).filter((id) =>
-            appliesDimension(listDimension(id))
-          )
-        );
-      }
-
-      const rawExcludeListIds = queryClient.getQueryData<string[]>(
-        SESSION_EXCLUDE_LIST_IDS_KEY
-      );
-      if (rawExcludeListIds === undefined) {
-        setSessionExcludeListIds(
-          (filterSource.filters.exclude_list_ids ?? []).filter((id) =>
-            appliesDimension(listDimension(id))
-          )
-        );
-      }
-
-      const rawSessionDays = queryClient.getQueryData<string[]>(SESSION_DAY_SELECTIONS_KEY);
-      if (appliesDimension("days") && rawSessionDays === undefined) {
-        setSessionDays(filterSource.filters.days ?? []);
-      }
-
-      const rawSessionTimeRanges = queryClient.getQueryData<string[]>(
-        SESSION_TIME_RANGE_SELECTIONS_KEY
-      );
-      if (appliesDimension("time_ranges") && rawSessionTimeRanges === undefined) {
-        setSelectedTimeRanges(filterSource.filters.time_ranges ?? []);
-      }
-
-      const rawSessionRuntimeRanges = queryClient.getQueryData<string[]>(
-        SESSION_RUNTIME_RANGE_SELECTIONS_KEY
-      );
-      if (appliesDimension("runtime_ranges") && rawSessionRuntimeRanges === undefined) {
-        setSelectedRuntimeRanges(filterSource.filters.runtime_ranges ?? []);
-      }
-
-      const rawGroupByMovie = queryClient.getQueryData<boolean>(
-        SESSION_GROUP_BY_MOVIE_KEY
-      );
-      if (appliesDimension("group_by_movie") && rawGroupByMovie === undefined) {
-        setGroupByMovie(Boolean(filterSource.filters.group_by_movie));
-      }
+    if (queryClient.getQueryData<boolean>(SESSION_GROUP_BY_MOVIE_KEY) === undefined) {
+      setGroupByMovie(feedDefaults.defaultGroupByMovie);
+    }
+    if (
+      queryClient.getQueryData<Language[]>(SESSION_LANGUAGE_SELECTIONS_KEY) === undefined &&
+      feedDefaults.defaultLanguages.length > 0
+    ) {
+      setSessionLanguages([...feedDefaults.defaultLanguages]);
     }
 
-    initializedFromFavoritesRef.current = true;
+    initializedDefaultsRef.current = true;
   }, [
     favoriteCinemasQuery.data,
     favoriteCinemasQuery.isFetched,
-    favoriteSavedPresetQuery.data,
-    favoriteSavedPresetQuery.isFetched,
+    feedDefaults.isLoaded,
+    feedDefaults.defaultGroupByMovie,
+    feedDefaults.defaultLanguages,
     guestCinemaIds,
     hasCinemaList,
     isSignedIn,
     queryClient,
     setSessionCinemaIds,
-    setSessionDays,
-    setSelectedShowtimeFilter,
-    setSelectedTimeRanges,
-    setSelectedRuntimeRanges,
     setGroupByMovie,
-    setWatchlistOnly,
-    setWatchlistExclude,
-    setHideWatched,
-    setWatchedOnly,
-    setSessionListIds,
-    setSessionExcludeListIds,
+    setSessionLanguages,
   ]);
 
   return {
@@ -471,8 +360,8 @@ export function useSharedTabFilters() {
  * paint before the write lands, and an instance that owns no setters gets
  * nothing from the mirror but the extra render it takes to catch up — which is
  * the delay before a preset button lights back up when you remove a filter.
- * And it is a great deal cheaper: `useSharedTabFilters` carries the favourite-
- * preset query and the one-shot seeding effect, none of which a reader needs.
+ * And it is a great deal cheaper: `useSharedTabFilters` carries the defaults
+ * queries and the one-shot seeding effect, none of which a reader needs.
  */
 export function useCurrentFilterPresetState(): PageFilterPresetState {
   const { selection: sessionShowtimeFilter } = useSessionShowtimeFilter();

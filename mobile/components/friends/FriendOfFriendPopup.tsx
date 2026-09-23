@@ -194,7 +194,7 @@ function PopupCardBody({
           which the notice below then says instead. */}
       {isFriend ? null : (
         <ThemedText style={styles.hint}>
-          You&apos;re not friends yet — you can see them on this showtime through someone
+          You&apos;re not friends yet — you can see them on this screening through someone
           you both know.
         </ThemedText>
       )}

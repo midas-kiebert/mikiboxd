@@ -23,18 +23,18 @@ type ShowtimeTourStep = {
 export const SHOWTIME_TOUR_STEPS: readonly ShowtimeTourStep[] = [
   {
     target: "interested",
-    title: "Mark a showtime as interested",
+    title: "Mark a screening as interested",
     message: "Your friends can see what you want to watch.",
   },
   {
     target: "going",
     title: "Going? Say so",
-    message: "Mark a showtime as going once you have reserved a ticket.",
+    message: "Mark a screening as going once you have reserved a ticket.",
   },
   {
     target: "invite",
     title: "You can invite friends too",
-    message: "Pick a friend and they get an invite for this exact showtime.",
+    message: "Pick a friend and they get an invite for this exact screening.",
   },
 ];
 

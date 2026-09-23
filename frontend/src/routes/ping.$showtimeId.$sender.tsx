@@ -175,7 +175,7 @@ function PingLinkPage() {
         textAlign="center"
       >
         <Text fontSize="2xl" fontWeight="bold">
-          Showtime Invite
+          Screening Invite
         </Text>
 
         {hasStarted || pingMutation.isPending ? (

@@ -42,7 +42,7 @@ export default function LetterboxdUsernameTip() {
         tipId="letterboxd-username"
         icon="check-circle"
         title="Letterboxd username saved"
-        message="Your watchlist will sync shortly. After that you can filter showtimes down to your watchlist, or hide films you have already seen."
+        message="Your watchlist will sync shortly. After that you can filter screenings down to your watchlist, or hide films you have already seen."
         actionLabel="Done"
         closeOnAction
         onDismiss={dismissTip}

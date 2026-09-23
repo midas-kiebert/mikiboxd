@@ -30,6 +30,7 @@ import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-util
 import FriendAgendaOptions from '@/components/friends/FriendAgendaOptions';
 import NonFriendProfile from '@/components/friends/NonFriendProfile';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { useFeedDefaults } from '@/hooks/useFeedDefaults';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import { getAvatarColors, getAvatarInitial } from '@/utils/avatar-color';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
@@ -197,6 +198,8 @@ function FriendShowtimesContent({
     setSessionCinemaIds,
   } = useSharedTabFilters();
   const { data: preferredCinemaIds } = useFetchSelectedCinemas();
+  // Clearing puts language back to its default, not off (see useFeedDefaults).
+  const { defaultLanguages } = useFeedDefaults();
   const effectiveCinemaIds = sessionCinemaIds ?? preferredCinemaIds;
 
   const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
@@ -327,7 +330,7 @@ function FriendShowtimesContent({
     setSelectedTimeRanges([]);
     setSelectedListIds([]);
     setExcludeListIds([]);
-    setSelectedLanguages([]);
+    setSelectedLanguages([...defaultLanguages]);
     if (preferredCinemaIds) setSessionCinemaIds(preferredCinemaIds);
   };
 
@@ -403,8 +406,6 @@ function FriendShowtimesContent({
           <ActiveFilterChips
             onOpenFilters={() => setFiltersModalVisible(true)}
             onOpenCinemaModal={openCinemaModal}
-            groupByMovie={false}
-            setGroupByMovie={NOOP_GROUP_BY_MOVIE}
             watchlistOnly={effectiveWatchlistOnly}
             setWatchlistOnly={setWatchlistOnly}
             watchlistExclude={effectiveWatchlistExclude}
@@ -442,7 +443,7 @@ function FriendShowtimesContent({
             sharesStatus={friend.shares_status ?? true}
           />
         }
-        emptyText="No showtimes in this agenda"
+        emptyText="No screenings in this agenda"
         emptyExtra={searchFieldFallback}
         openModalOptions={showtimeModalOptions}
       />

@@ -136,7 +136,7 @@ export default function NonFriendProfile({ user: seed }: NonFriendProfileProps) 
           </ThemedText>
         ) : (
           <ThemedText style={styles.hint}>
-            Become friends to see {name}&apos;s agenda and invite them to showtimes.
+            Become friends to see {name}&apos;s agenda and invite them to screenings.
           </ThemedText>
         )}
 

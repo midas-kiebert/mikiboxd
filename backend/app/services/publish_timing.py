@@ -237,9 +237,7 @@ def _compare_with_cineville(
         )
     ).all():
         assert row.source_created_at is not None
-        cineville_created[(row.cinema_id, row.source_event_key)] = (
-            row.source_created_at
-        )
+        cineville_created[(row.cinema_id, row.source_event_key)] = row.source_created_at
     leads: dict[int, list[float]] = defaultdict(list)
     for row in site_rows:
         created = cineville_created.get((row.cinema_id, row.source_event_key))

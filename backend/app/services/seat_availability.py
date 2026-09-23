@@ -643,9 +643,7 @@ def check_now(
         _immediate_check_semaphore.release()
 
 
-def mark_showtime_viewed(
-    *, session: Session, showtime_id: int, user_id: UUID
-) -> None:
+def mark_showtime_viewed(*, session: Session, showtime_id: int, user_id: UUID) -> None:
     """The user just opened this showtime, so they have seen whatever its
     returned tickets were: the next time it sells out and gets tickets back is
     news again, and they are told about that one too.
@@ -786,9 +784,7 @@ def load_manual_check_budget(
     )
 
 
-def is_check_requestable(
-    showtime: Showtime, *, now: datetime, checking: bool
-) -> bool:
+def is_check_requestable(showtime: Showtime, *, now: datetime, checking: bool) -> bool:
     """The per-screening half of whether the check button is offered.
 
     Readable at all, not started (nothing reads a screening once it has begun),

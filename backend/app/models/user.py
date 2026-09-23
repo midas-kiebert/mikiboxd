@@ -146,9 +146,7 @@ class UserUpdate(SQLModel):
     notify_channel_interest_reminder: NotificationChannel | None = Field(default=None)
     notify_channel_seat_alert: NotificationChannel | None = Field(default=None)
     notify_channel_sold_out: NotificationChannel | None = Field(default=None)
-    notify_channel_tickets_available: NotificationChannel | None = Field(
-        default=None
-    )
+    notify_channel_tickets_available: NotificationChannel | None = Field(default=None)
     notify_channel_showtime_reminder: NotificationChannel | None = Field(default=None)
     notify_watchlist_digest_enabled: bool | None = Field(default=None)
     use_letterboxd_avatar: bool | None = Field(default=None)

@@ -61,11 +61,13 @@ const formatShare = (share: number | null | undefined) =>
 const formatStamp = (value: string | null) =>
   value ? value.replace("T", " ").slice(0, 16) : "—"
 
-const Heatmap = ({ grid, unit }: { grid: number[][]; unit: Unit }) => {
+const Heatmap = ({ grid, unit }: { grid: number[][]; unit: string }) => {
   const [hovered, setHovered] = useState<[number, number] | null>(null)
   const max = Math.max(1, ...grid.flat())
   const total = grid.flat().reduce((sum, value) => sum + value, 0)
-  const rowTotals = grid.map((row) => row.reduce((sum, value) => sum + value, 0))
+  const rowTotals = grid.map((row) =>
+    row.reduce((sum, value) => sum + value, 0),
+  )
   const columnTotals = HOURS.map((hour) =>
     grid.reduce((sum, row) => sum + row[hour], 0),
   )
@@ -93,12 +95,7 @@ const Heatmap = ({ grid, unit }: { grid: number[][]; unit: Unit }) => {
         >
           <Box />
           {HOURS.map((hour) => (
-            <Text
-              key={hour}
-              fontSize="2xs"
-              color="fg.muted"
-              textAlign="center"
-            >
+            <Text key={hour} fontSize="2xs" color="fg.muted" textAlign="center">
               {hour % 3 === 0 ? pad(hour) : ""}
             </Text>
           ))}
@@ -112,8 +109,7 @@ const Heatmap = ({ grid, unit }: { grid: number[][]; unit: Unit }) => {
               </Text>
               {row.map((value, hour) => {
                 const strength = value > 0 ? 8 + (value / max) * 92 : 0
-                const isHovered =
-                  hovered?.[0] === day && hovered?.[1] === hour
+                const isHovered = hovered?.[0] === day && hovered?.[1] === hour
                 return (
                   <Box
                     key={hour}
@@ -197,7 +193,9 @@ const CinemaTable = ({ data }: { data: PublishTimingResponse }) => {
       <Table.Root size="sm" stickyHeader>
         <Table.Header>
           <Table.Row>
-            <Table.ColumnHeader>{isSites ? "Cinema" : "Venue"}</Table.ColumnHeader>
+            <Table.ColumnHeader>
+              {isSites ? "Cinema" : "Venue"}
+            </Table.ColumnHeader>
             <Table.ColumnHeader textAlign="end">Screenings</Table.ColumnHeader>
             <Table.ColumnHeader>Busiest day</Table.ColumnHeader>
             <Table.ColumnHeader>Busiest hour</Table.ColumnHeader>
@@ -278,7 +276,9 @@ const RecentTable = ({ data }: { data: PublishTimingResponse }) => (
           <Table.ColumnHeader>Film</Table.ColumnHeader>
           <Table.ColumnHeader>Screening</Table.ColumnHeader>
           {data.source === "cineville" && (
-            <Table.ColumnHeader textAlign="end">We had it after</Table.ColumnHeader>
+            <Table.ColumnHeader textAlign="end">
+              We had it after
+            </Table.ColumnHeader>
           )}
         </Table.Row>
       </Table.Header>
@@ -370,7 +370,9 @@ const PublishTiming = () => {
           <NativeSelect.Field
             value={cinemaId ?? ""}
             onChange={(event) =>
-              setCinemaId(event.target.value ? Number(event.target.value) : null)
+              setCinemaId(
+                event.target.value ? Number(event.target.value) : null,
+              )
             }
           >
             <option value="">
@@ -449,7 +451,9 @@ const PublishTiming = () => {
           <Box mb={6}>
             <Heatmap
               grid={
-                unit === "listings" ? data.heatmap_listings : data.heatmap_batches
+                unit === "listings"
+                  ? data.heatmap_listings
+                  : data.heatmap_batches
               }
               unit={unit === "listings" ? "screenings" : "publish moments"}
             />

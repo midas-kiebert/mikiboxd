@@ -90,7 +90,9 @@ def mark_failed(*, session: Session, request_id: int) -> None:
 
 
 def delete_by_id(*, session: Session, request_id: int) -> None:
-    session.execute(delete(SeatCheckRequest).where(col(SeatCheckRequest.id) == request_id))
+    session.execute(
+        delete(SeatCheckRequest).where(col(SeatCheckRequest.id) == request_id)
+    )
 
 
 def delete_older_than(*, session: Session, before: datetime) -> None:

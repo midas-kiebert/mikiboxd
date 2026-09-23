@@ -195,9 +195,7 @@ async def _get_venue_names_async(session: aiohttp.ClientSession) -> dict[str, st
     async with session.get(url, timeout=aiohttp.ClientTimeout(total=20)) as response:
         response.raise_for_status()
         payload = await response.json()
-    return {
-        venue["id"]: venue["name"] for venue in payload["_embedded"]["venues"]
-    }
+    return {venue["id"]: venue["name"] for venue in payload["_embedded"]["venues"]}
 
 
 def _bulk_event_record(
@@ -251,7 +249,9 @@ async def get_all_events_async(
     if end is not None:
         start_filter["lt"] = end.isoformat()
     payload = {"startDate": start_filter, "sort": {"startDate": "asc"}}
-    url: str | None = f"{CINEVILLE_API_BASE}/events/search?page[limit]={EVENTS_PAGE_LIMIT}"
+    url: str | None = (
+        f"{CINEVILLE_API_BASE}/events/search?page[limit]={EVENTS_PAGE_LIMIT}"
+    )
     records: list[CinevilleEventRecord] = []
     for page in range(1, EVENTS_MAX_PAGES + 1):
         if url is None:

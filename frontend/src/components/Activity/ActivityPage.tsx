@@ -319,7 +319,9 @@ const ActivityPage = () => {
                             key={showtime.id}
                             className={`ac-rows__item ${FEED_ITEM_CLASS}`}
                             style={
-                              delay ? { animationDelay: `${delay}ms` } : undefined
+                              delay
+                                ? { animationDelay: `${delay}ms` }
+                                : undefined
                             }
                           >
                             <Row

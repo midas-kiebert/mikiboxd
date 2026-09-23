@@ -583,7 +583,9 @@ def test_notify_user_on_showtime_ping(
     showtime = _showtime(mocker)
     showtime.id = 42
     showtime.movie_id = 77
-    showtime.datetime = now_amsterdam_naive() + timedelta(days=1)
+    showtime.datetime = (now_amsterdam_naive() + timedelta(days=1)).replace(
+        hour=20, minute=0, second=0, microsecond=0
+    )
     showtime.movie = mocker.MagicMock(title="Memories of Murder")
 
     sender = mocker.MagicMock(display_name="Alex")

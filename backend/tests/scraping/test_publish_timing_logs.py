@@ -9,6 +9,7 @@ view reads.
 """
 
 from collections.abc import Callable
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 import pytest
@@ -258,8 +259,17 @@ def _record(**overrides) -> get_showtimes.CinevilleEventRecord:
 
 
 def test_sweep_keeps_first_sighting_and_marks_dropped_events_gone(
-    *, db_transaction, cinema_factory: Callable[..., Cinema]
+    *,
+    db_transaction,
+    cinema_factory: Callable[..., Cinema],
+    monkeypatch: pytest.MonkeyPatch,
 ):
+    @contextmanager
+    def fake_get_db_context():
+        yield db_transaction
+
+    # The sweep opens its own session; without this it reaches the main database.
+    monkeypatch.setattr(cineville_events, "get_db_context", fake_get_db_context)
     cinema_factory(name="Venue", cineville=True)
     future = (datetime.utcnow() + timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
     first = now_amsterdam_naive() - timedelta(hours=2)

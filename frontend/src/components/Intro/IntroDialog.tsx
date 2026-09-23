@@ -30,10 +30,10 @@ import useLetterboxdAvatarPreference from "shared/hooks/useLetterboxdAvatarPrefe
 
 import { CinemaChecklist } from "@/components/Feed/CinemaChecklist"
 import InviteCard from "@/components/Friends/InviteCard"
+import { LetterboxdNotFoundWarning } from "@/components/Settings/LetterboxdNotFoundWarning"
 import { PersonAvatar } from "@/components/Showtimes/detail/PersonAvatar"
 import ShowtimeStatusControl from "@/components/Showtimes/detail/ShowtimeStatusControl"
 import { PanelIcon } from "@/components/Showtimes/detail/panel-icons"
-import { LetterboxdNotFoundWarning } from "@/components/Settings/LetterboxdNotFoundWarning"
 import {
   DialogBackdrop,
   DialogBody,
@@ -269,9 +269,7 @@ const LetterboxdPage = ({ onDone }: { onDone: () => void }) => {
   // Set once the username is saved: the account the picture question is about.
   const [savedUser, setSavedUser] = useState<UserMe | null>(null)
   // The saved name Letterboxd answered 404 for; the page stays up to fix it.
-  const [notFoundUsername, setNotFoundUsername] = useState<string | null>(
-    null,
-  )
+  const [notFoundUsername, setNotFoundUsername] = useState<string | null>(null)
 
   const save = useMutation({
     mutationFn: (value: string) =>

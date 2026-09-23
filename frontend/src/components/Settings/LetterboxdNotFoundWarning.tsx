@@ -19,8 +19,8 @@ export const LetterboxdNotFoundWarning = ({
         There is no Letterboxd account called "{username}"
       </strong>
       <span className="lb-warning__body">
-        Check the spelling and save it again. Your watchlist and profile
-        picture can't be loaded until it matches your account.
+        Check the spelling and save it again. Your watchlist and profile picture
+        can't be loaded until it matches your account.
       </span>
     </div>
   </div>

@@ -599,9 +599,9 @@ async def scrape_cineville_async() -> ScrapeExecutionSummary:
             sweep = cineville_events_service.CinevilleSweep(
                 started_at=default_started_at, events=events, films=movies_data
             )
-            showtimes_by_production: dict[
-                str, list[get_showtimes.ShowtimeResponse]
-            ] = defaultdict(list)
+            showtimes_by_production: dict[str, list[get_showtimes.ShowtimeResponse]] = (
+                defaultdict(list)
+            )
             for event in events:
                 if event.productionId is not None:
                     showtimes_by_production[event.productionId].append(

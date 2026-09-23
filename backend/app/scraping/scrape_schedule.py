@@ -59,7 +59,11 @@ def _every(first: str, last: str, step_minutes: int) -> tuple[timedelta, ...]:
     return tuple(slots)
 
 
-MONDAY = (*_every("08:00", "08:00", 60), *_every("09:00", "17:30", 30), *_every("18:00", "23:00", 60))
+MONDAY = (
+    *_every("08:00", "08:00", 60),
+    *_every("09:00", "17:30", 30),
+    *_every("18:00", "23:00", 60),
+)
 THURSDAY = (*_every("08:00", "11:30", 30), *_every("12:00", "23:00", 60))
 QUIET_WEEKDAY = _every("08:00", "22:00", 120)
 WEEKEND = _every("10:00", "22:00", 240)
@@ -102,9 +106,7 @@ _last_started_at: datetime | None = None
 
 def slot_due_at(slot_start: datetime, jitter: timedelta = SLOT_JITTER) -> datetime:
     """When the slot starting at `slot_start` is due: the slot plus its offset."""
-    offset = random.Random(slot_start.isoformat()).uniform(
-        0, jitter.total_seconds()
-    )
+    offset = random.Random(slot_start.isoformat()).uniform(0, jitter.total_seconds())
     return slot_start + timedelta(seconds=int(offset))
 
 
@@ -134,12 +136,8 @@ def latest_due_at(now: datetime) -> datetime:
 def _last_run_started_at() -> datetime | None:
     with get_db_context() as session:
         from_runs = session.exec(select(func.max(col(ScrapeRun.started_at)))).one()
-        from_recaps = session.exec(
-            select(func.max(col(ScrapeRecap.started_at)))
-        ).one()
-    stamps = [
-        stamp for stamp in (from_runs, from_recaps, _last_started_at) if stamp
-    ]
+        from_recaps = session.exec(select(func.max(col(ScrapeRecap.started_at)))).one()
+    stamps = [stamp for stamp in (from_runs, from_recaps, _last_started_at) if stamp]
     return max(stamps, default=None)
 
 
@@ -156,9 +154,7 @@ def run_if_due() -> bool:
         return False
     due_at = latest_due_at(now)
     if now - due_at > timedelta(minutes=5):
-        logger.warning(
-            "Starting the scrape due at %s %s late.", due_at, now - due_at
-        )
+        logger.warning("Starting the scrape due at %s %s late.", due_at, now - due_at)
     _last_started_at = now
 
     from app.scraping.runner import run

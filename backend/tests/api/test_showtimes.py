@@ -2555,6 +2555,8 @@ def test_opening_a_showtime_re_arms_its_tickets_available_notice(
     )
 
     assert response.status_code == 200
+    # The request closes the shared session on its way out, detaching `selection`.
+    db_transaction.add(selection)
     db_transaction.refresh(selection)
     assert selection.tickets_available_alert_sent_at is None
     assert selection.sold_out_alert_sent_at == stamped

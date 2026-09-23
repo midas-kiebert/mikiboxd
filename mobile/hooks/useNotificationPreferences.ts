@@ -65,6 +65,7 @@ export type NotificationToggleDescriptor = {
     | "person-add"
     | "local-fire-department"
     | "event-busy"
+    | "confirmation-number"
     | "notifications-active";
   delivery: NotificationDelivery;
 };

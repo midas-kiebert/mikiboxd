@@ -78,11 +78,14 @@ def _observe(showtime: Showtime) -> ObservedPresence:
 def test_showtime_survives_two_misses_and_is_deleted_on_the_third(
     *,
     db_transaction,
+    monkeypatch: pytest.MonkeyPatch,
     cinema_factory: Callable[..., Cinema],
     movie_factory: Callable[..., Movie],
     showtime_factory: Callable[..., Showtime],
 ):
     """A showtime is only orphan-deleted after 3 consecutive misses."""
+    # The runs here are back to back; the absence floor has its own test.
+    monkeypatch.setattr(scrape_sync_service, "MISSING_MIN_ABSENCE", timedelta(0))
 
     now = now_amsterdam_naive()
     cinema = cinema_factory()

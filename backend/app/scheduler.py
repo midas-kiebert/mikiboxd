@@ -11,6 +11,9 @@ import logging
 from logging import getLogger
 from zoneinfo import ZoneInfo
 
+from apscheduler.executors.pool import (  # type: ignore[import-untyped]
+    ThreadPoolExecutor,
+)
 from apscheduler.schedulers.background import (  # type: ignore[import-untyped]
     BlockingScheduler,
 )
@@ -22,16 +25,25 @@ logger = getLogger(__name__)
 _TIMEZONE = ZoneInfo("Europe/Amsterdam")
 
 
-def _scrape_data() -> None:
-    """Run a scrape — fetches showtimes for all cinemas and syncs them to the DB.
+# The scrape runs on an executor of its own. Everything else here is on
+# `default`, and those jobs do work users set in motion — seat reads against slow
+# ticket shops, sold-out watches, reminders — none of which may ever hold up or
+# drop a scrape.
+_SCRAPE_EXECUTOR = "scrape"
 
-    Runs every 6 hours. Each run stores its recap; ``_send_daily_scrape_recap``
+
+def _scrape_data() -> None:
+    """Run a full scrape if one is due — see app/scraping/scrape_schedule.py.
+
+    Ticks every minute; the slots themselves (shaped by weekday after when
+    cinemas publish, none at night, each at a random offset) and the catch-up
+    after a missed slot live in `scrape_schedule`. Each run stores its recap; ``_send_daily_scrape_recap``
     emails them together once a day.
     """
-    from app.scraping.runner import run
+    from app.scraping.scrape_schedule import run_if_due
 
     try:
-        run()
+        run_if_due()
     except Exception:
         logger.exception("Failed to run scrape job")
 
@@ -208,11 +220,21 @@ def _send_watchlist_digests() -> None:
 
 
 if __name__ == "__main__":
-    scheduler = BlockingScheduler()
+    scheduler = BlockingScheduler(
+        executors={
+            "default": ThreadPoolExecutor(10),
+            _SCRAPE_EXECUTOR: ThreadPoolExecutor(1),
+        }
+    )
     scheduler.add_job(
         func=_scrape_data,
-        trigger=CronTrigger(hour="0,6,12,18", minute=0, timezone=_TIMEZONE),
+        trigger=CronTrigger(minute="*", timezone=_TIMEZONE),
         id="scrape_data",
+        executor=_SCRAPE_EXECUTOR,
+        # A tick is only a check; a late one should still run, and ticks that
+        # pile up while a scrape is running collapse into one.
+        misfire_grace_time=None,
+        coalesce=True,
     )
     scheduler.add_job(
         func=_send_daily_scrape_recap,

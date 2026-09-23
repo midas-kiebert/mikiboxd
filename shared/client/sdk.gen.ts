@@ -4,6 +4,8 @@ import type { CancelablePromise } from "./core/CancelablePromise"
 import { OpenAPI } from "./core/OpenAPI"
 import { request as __request } from "./core/request"
 import type {
+  AdminGetPublishTimingData,
+  AdminGetPublishTimingResponse,
   AdminSimulateSeatAvailabilityData,
   AdminSimulateSeatAvailabilityResponse,
   AdminGetAnalyticsOverviewData,
@@ -610,6 +612,33 @@ export class AdminService {
       url: "/api/v1/admin/scrape/recaps",
       query: {
         limit: data.limit,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Publish Timing
+   * When cinemas publish new screenings, per weekday/hour, and how late we saw them.
+   * @param data The data for the request.
+   * @param data.source
+   * @param data.days
+   * @param data.cinemaId
+   * @returns PublishTimingResponse Successful Response
+   * @throws ApiError
+   */
+  public static getPublishTiming(
+    data: AdminGetPublishTimingData = {},
+  ): CancelablePromise<AdminGetPublishTimingResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/admin/scrape/publish-timing",
+      query: {
+        source: data.source,
+        days: data.days,
+        cinema_id: data.cinemaId,
       },
       errors: {
         422: "Validation Error",

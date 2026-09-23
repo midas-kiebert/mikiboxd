@@ -11,7 +11,10 @@ from app.api.deps import get_db_context
 from app.crud import cinema as cinema_crud
 from app.models.movie import MovieCreate
 from app.models.showtime import ShowtimeCreate
-from app.scraping.base_cinema_scraper import BaseCinemaScraper
+from app.scraping.base_cinema_scraper import (
+    PER_FILM_SCRAPER_INTERVAL,
+    BaseCinemaScraper,
+)
 from app.scraping.date_conversion import get_closest_exact_date
 from app.scraping.logger import logger
 from app.scraping.subtitles import parse_subtitle_label
@@ -92,6 +95,8 @@ class ShowSlot:
 
 
 class StudioKScraper(BaseCinemaScraper):
+    min_run_interval = PER_FILM_SCRAPER_INTERVAL
+
     def __init__(self) -> None:
         self.cinema_key = CINEMA_KEY
         with get_db_context() as session:

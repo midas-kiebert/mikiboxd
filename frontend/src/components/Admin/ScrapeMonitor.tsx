@@ -4,7 +4,8 @@
  * suddenly finds far fewer showtimes, a degraded run, or deletions is easy to
  * trace. The same data is available as raw JSON at the API paths shown below,
  * for scripts/LLMs to parse. TMDB lookups that tied between several films are
- * listed first, since each one needs a human to check the match.
+ * listed first, since each one needs a human to check the match, then when
+ * cinemas publish new screenings (`PublishTiming`).
  */
 import {
   Badge,
@@ -25,6 +26,7 @@ import { useState } from "react"
 import { AdminService } from "shared"
 
 import type { ScrapeRunView } from "shared"
+import PublishTiming from "./PublishTiming"
 import TmdbAmbiguities from "./TmdbAmbiguities"
 
 const AdminNav = () => (
@@ -47,7 +49,10 @@ const AdminNav = () => (
   </Stack>
 )
 
+// The scrape runs up to every half hour, and each run writes ~100 stream rows;
+// the short window keeps the table readable.
 const WINDOW_OPTIONS: { label: string; hours: number }[] = [
+  { label: "6h", hours: 6 },
   { label: "24h", hours: 24 },
   { label: "48h", hours: 48 },
   { label: "7d", hours: 24 * 7 },
@@ -150,7 +155,7 @@ const RecapViewer = ({ recapId }: { recapId: number }) => {
 }
 
 const ScrapeMonitor = () => {
-  const [hours, setHours] = useState(48)
+  const [hours, setHours] = useState(6)
   const [openRecapId, setOpenRecapId] = useState<number | null>(null)
 
   const { data, isLoading } = useQuery({
@@ -175,6 +180,12 @@ const ScrapeMonitor = () => {
       </Text>
 
       <TmdbAmbiguities />
+
+      <PublishTiming />
+
+      <Heading size="md" mb={2}>
+        Runs
+      </Heading>
 
       <Stack direction="row" gap={2} mb={4}>
         {WINDOW_OPTIONS.map((option) => (

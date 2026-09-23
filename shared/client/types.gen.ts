@@ -545,6 +545,70 @@ export type OpensByDayUser = {
   count: number
 }
 
+export type PublishTimingBucket = {
+  label: string
+  count: number
+}
+
+export type PublishTimingCinemaOption = {
+  cinema_id: number
+  name: string
+  cineville: boolean
+  own_scraper: boolean
+}
+
+export type PublishTimingCinemaRow = {
+  cinema_id: number | null
+  name: string
+  listings: number
+  top_weekday: number | null
+  top_hour: number | null
+  top_weekday_share: number | null
+  median_delay_minutes: number | null
+  both_sources_count?: number | null
+  site_first_share?: number | null
+  median_site_lead_minutes?: number | null
+}
+
+/**
+ * How long after Cineville published a screening we first had it.
+ */
+export type PublishTimingDelay = {
+  count: number
+  median_minutes: number | null
+  p90_minutes: number | null
+  buckets: Array<PublishTimingBucket>
+}
+
+export type PublishTimingRecentListing = {
+  cinema_name: string
+  title: string | null
+  screening_at: string
+  published_at: string
+  first_seen_at: string | null
+  delay_minutes: number | null
+}
+
+export type PublishTimingResponse = {
+  source: PublishTimingSource
+  days: number
+  cinema_id: number | null
+  window_start: string
+  logging_started_at: string | null
+  listings: number
+  batches: number
+  heatmap_listings: Array<Array<number>>
+  heatmap_batches: Array<Array<number>>
+  lead_time: Array<PublishTimingBucket>
+  delay: PublishTimingDelay | null
+  median_window_minutes: number | null
+  per_cinema: Array<PublishTimingCinemaRow>
+  recent: Array<PublishTimingRecentListing>
+  cinemas: Array<PublishTimingCinemaOption>
+}
+
+export type PublishTimingSource = "cineville" | "sites"
+
 export type PushTokenDelete = {
   token: string
 }
@@ -1481,6 +1545,14 @@ export type AdminListScrapeRecapsData = {
 }
 
 export type AdminListScrapeRecapsResponse = Array<ScrapeRecapView>
+
+export type AdminGetPublishTimingData = {
+  cinemaId?: number | null
+  days?: number
+  source?: PublishTimingSource
+}
+
+export type AdminGetPublishTimingResponse = PublishTimingResponse
 
 export type AdminGetScrapeRecapData = {
   recapId: number

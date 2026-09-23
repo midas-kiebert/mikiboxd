@@ -141,6 +141,7 @@ const ActivityRow = ({ showtime, isSelected, onSelect }: ActivityRowProps) => {
   return (
     <div
       className={`ac-row${palette ? ` ac-row--toned ${paletteClass(palette)}` : ""}`}
+      // biome-ignore lint/a11y/useSemanticElements: a row of block content, which a <button> may not hold
       role="button"
       tabIndex={0}
       aria-pressed={isSelected}

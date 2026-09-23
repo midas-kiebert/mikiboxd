@@ -35,7 +35,7 @@ const ColumnsGlyph = ({ columns }: { columns: number }) => {
       width={GLYPH_WIDTH}
       height={GLYPH_HEIGHT}
       viewBox={`0 0 ${GLYPH_WIDTH} ${GLYPH_HEIGHT}`}
-      aria-hidden
+      aria-hidden="true"
       style={{ flexShrink: 0 }}
     >
       {Array.from({ length: columns }, (_, index) => (
@@ -67,6 +67,7 @@ const WallColumnsControl = ({ compact = false }: { compact?: boolean }) => {
       <SegmentButton
         type="button"
         key={option}
+        // biome-ignore lint/a11y/useSemanticElements: ARIA radio pattern on a styled button; a native radio input cannot take this styling
         role="radio"
         aria-checked={isOn}
         aria-label={`${option} tickets per row`}

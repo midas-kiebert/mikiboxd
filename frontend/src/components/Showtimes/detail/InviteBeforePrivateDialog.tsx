@@ -137,6 +137,7 @@ const InviteBeforePrivateDialog = ({
                   <PanelPressable
                     type="button"
                     key={friend.id}
+                    // biome-ignore lint/a11y/useSemanticElements: ARIA checkbox pattern on a styled button; a native checkbox cannot take this styling
                     role="checkbox"
                     aria-checked={isOn}
                     onClick={() => toggle(friend.id)}

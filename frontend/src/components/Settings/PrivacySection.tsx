@@ -121,6 +121,7 @@ export const PrivacySection = () => {
             <button
               key={mode}
               type="button"
+              // biome-ignore lint/a11y/useSemanticElements: ARIA radio pattern on a styled button; a native radio input cannot take this styling
               role="radio"
               aria-checked={isOn}
               className="st-option"

@@ -42,6 +42,7 @@ const CinemaChip = memo(function CinemaChip({
   return (
     <ChipButton
       type="button"
+      // biome-ignore lint/a11y/useSemanticElements: ARIA checkbox pattern on a styled button; a native checkbox cannot take this styling
       role="checkbox"
       aria-checked={isSelected}
       aria-label={cinema.name}

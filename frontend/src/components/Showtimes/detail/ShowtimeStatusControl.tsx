@@ -88,6 +88,7 @@ const ShowtimeStatusControl = ({
 }: ShowtimeStatusControlProps) => (
   <Flex
     gap="6px"
+    // biome-ignore lint/a11y/useSemanticElements: a plain flex row of buttons; <fieldset> brings UA borders, padding and min-width
     role="group"
     aria-label="Your status"
     opacity={locked ? 0.45 : 1}

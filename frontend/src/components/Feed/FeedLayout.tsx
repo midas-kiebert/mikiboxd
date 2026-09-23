@@ -412,6 +412,7 @@ const FeedLayout = ({
   const [isRailFloating, setIsRailFloating] = useState(false)
   const isRailFolded = isRailFoldedByReader || isRailTight
   const measuresRailRoom = showRail && minListWidth > 0
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the detail column is a ref read live at measure time; it is not a trigger
   useLayoutEffect(() => {
     const row = rowRef.current
     const ruler = railRulerRef.current

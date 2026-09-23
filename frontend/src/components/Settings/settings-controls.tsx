@@ -156,6 +156,7 @@ export const Segmented = <T extends string>({
         <button
           key={option.value}
           type="button"
+          // biome-ignore lint/a11y/useSemanticElements: ARIA radio pattern on a styled button; a native radio input cannot take this styling
           role="radio"
           aria-checked={isOn}
           disabled={disabled}

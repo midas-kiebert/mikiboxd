@@ -41,7 +41,14 @@ const TmdbAmbiguityNotice = () => {
   })
   if (!ambiguities || ambiguities.length === 0) return null
   return (
-    <Box borderWidth="1px" borderColor="orange.muted" bg="orange.subtle" borderRadius="md" p={3} mb={6}>
+    <Box
+      borderWidth="1px"
+      borderColor="orange.muted"
+      bg="orange.subtle"
+      borderRadius="md"
+      p={3}
+      mb={6}
+    >
       <Text>
         {ambiguities.length === 1
           ? "1 TMDB lookup matched several films equally well."

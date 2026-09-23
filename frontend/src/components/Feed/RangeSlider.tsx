@@ -158,6 +158,7 @@ export const RangeSlider = ({
   const [active, setActive] = useState<Boundary | null>(null)
 
   const valueKey = value[0] ?? ""
+  // biome-ignore lint/correctness/useExhaustiveDependencies: valueKey is the trigger: the feed's own value arrived, so the pending write is done
   useEffect(() => {
     setPending(null)
   }, [valueKey])

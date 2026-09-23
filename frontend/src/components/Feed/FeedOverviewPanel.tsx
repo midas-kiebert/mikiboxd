@@ -420,6 +420,7 @@ const OverviewRow = ({
   return (
     <div
       className="mk-overview__row"
+      // biome-ignore lint/a11y/useSemanticElements: a row of block content, which a <button> may not hold
       role="button"
       tabIndex={0}
       onClick={() => onSelect(showtime)}

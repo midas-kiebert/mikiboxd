@@ -1,11 +1,16 @@
 """The once-per-showtime "nearly sold out" and "sold out" notices."""
 
+from datetime import timedelta
 from uuid import uuid4
 
 from pytest_mock import MockerFixture
 
 from app.core.enums import GoingStatus, NotificationChannel, SeatAlertKind
 from app.services import push_notifications
+from app.utils import now_amsterdam_naive
+
+# Far enough out that no title carries a day word ("tonight", "on Friday").
+FAR_OFF = timedelta(days=10)
 
 
 def _selection(mocker, *, user_id, going_status=GoingStatus.INTERESTED):
@@ -46,7 +51,9 @@ def test_alerting_stamps_seat_alert_sent_at_so_it_cannot_repeat(
 ) -> None:
     session = mocker.MagicMock()
     user_id = uuid4()
-    showtime = mocker.MagicMock(id=1, movie_id=2)
+    showtime = mocker.MagicMock(
+        id=1, movie_id=2, datetime=now_amsterdam_naive() + FAR_OFF
+    )
     showtime.movie.title = "In the Mood for Love"
     showtime.cinema.name = "LAB111"
     selection = _selection(mocker, user_id=user_id)
@@ -100,7 +107,9 @@ def test_opted_out_recipients_receive_nothing(
     happens once per showtime by construction (the level floor never falls)."""
     session = mocker.MagicMock()
     user_id = uuid4()
-    showtime = mocker.MagicMock(id=1, movie_id=2)
+    showtime = mocker.MagicMock(
+        id=1, movie_id=2, datetime=now_amsterdam_naive() + FAR_OFF
+    )
     showtime.movie.title = "Movie"
     showtime.cinema.name = "Cinema"
     selection = _selection(mocker, user_id=user_id)
@@ -135,7 +144,9 @@ def test_sold_out_kind_uses_its_own_preference_stamp_and_wording(
     `sold_out_alert_sent_at`, and says "sold out" rather than "nearly"."""
     session = mocker.MagicMock()
     user_id = uuid4()
-    showtime = mocker.MagicMock(id=1, movie_id=2)
+    showtime = mocker.MagicMock(
+        id=1, movie_id=2, datetime=now_amsterdam_naive() + FAR_OFF
+    )
     showtime.movie.title = "Perfect Days"
     showtime.cinema.name = "Eye"
     selection = _selection(mocker, user_id=user_id)

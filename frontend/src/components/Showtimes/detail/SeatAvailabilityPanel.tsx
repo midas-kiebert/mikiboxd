@@ -198,6 +198,7 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
   const [numberDraft, setNumberDraft] = useState("")
 
   // A seat editor left open over one screening has nothing to do with the next.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: showtimeId is the trigger: close the seat editor when the screening changes
   useEffect(() => {
     setIsEditingSeat(false)
   }, [showtimeId])

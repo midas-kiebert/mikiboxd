@@ -78,6 +78,7 @@ const ShowtimeInvitePanel = ({ showtime }: ShowtimeInvitePanelProps) => {
   // A picker left open over one screening has nothing to do with the next one,
   // and a half-made selection carried across would send invites to the wrong
   // showtime on the next press.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: showtimeId is the trigger: drop the half-made selection when the screening changes
   useEffect(() => {
     setIsPicking(false)
     setSearch("")

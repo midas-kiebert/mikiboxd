@@ -1,7 +1,14 @@
 import os
+import sys
 from collections.abc import Generator
+from contextlib import contextmanager
 
-import pytest
+# Before anything imports `app.core.config`: settings read TESTING once, at
+# import, and `emails_enabled`/`push_notifications_enabled` hinge on it.
+# scripts/tests-start.sh exports it too; this covers a plain `pytest` run.
+os.environ.setdefault("TESTING", "true")
+
+import pytest  # noqa: E402
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
@@ -14,7 +21,7 @@ from sqlalchemy_utils import (  # type: ignore[import-untyped]
 )
 from sqlmodel import Session
 
-from app.api.deps import get_db
+from app.api.deps import get_db, get_db_context
 from app.core.config import settings
 from app.core.db import init_db
 from app.main import app
@@ -26,8 +33,6 @@ from .fixtures.letterboxd import *
 
 TEST_DATABASE_URL = str(settings.SQLALCHEMY_DATABASE_URI_TEST)
 ALEMBIC_CFG_PATH = os.path.join(os.path.dirname(__file__), "..", "alembic.ini")
-
-os.environ.setdefault("TESTING", "true")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -52,7 +57,9 @@ def create_test_database() -> Generator[Engine, None, None]:
 
 
 @pytest.fixture(scope="function", autouse=True)
-def db_transaction(create_test_database: Engine) -> Generator[Session, None, None]:
+def db_transaction(
+    create_test_database: Engine, monkeypatch: pytest.MonkeyPatch
+) -> Generator[Session, None, None]:
     connection = create_test_database.connect()
     transaction = connection.begin()
 
@@ -65,6 +72,17 @@ def db_transaction(create_test_database: Engine) -> Generator[Session, None, Non
             session.close()
 
     app.dependency_overrides[get_db] = override_get_db
+
+    # Background tasks and scrapers open their own session with
+    # `get_db_context`, outside FastAPI's DI. Left alone that is the *main*
+    # database — the developer's local data — rather than this transaction.
+    @contextmanager
+    def override_get_db_context() -> Generator[Session, None, None]:
+        yield session
+
+    for module in list(sys.modules.values()):
+        if getattr(module, "get_db_context", None) is get_db_context:
+            monkeypatch.setattr(module, "get_db_context", override_get_db_context)
 
     yield session
 

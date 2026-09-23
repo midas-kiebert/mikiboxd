@@ -824,6 +824,7 @@ export const CinemaSheet = ({
       >
         <Box
           ref={sheetRef}
+          // biome-ignore lint/a11y/useSemanticElements: a non-modal floating panel; <dialog> brings top-layer and UA styles this positioning fights
           role="dialog"
           aria-label="Cinemas"
           {...surface}
@@ -883,6 +884,7 @@ export const CinemaSheet = ({
 
         {panel.shown ? (
           <Box
+            // biome-ignore lint/a11y/useSemanticElements: a non-modal floating panel; <dialog> brings top-layer and UA styles this positioning fights
             role="dialog"
             aria-label={
               panel.shown === "save" ? "Save as preset" : "Manage presets"

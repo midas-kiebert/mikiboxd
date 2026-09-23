@@ -17,7 +17,8 @@ import type { CinemaPublic } from "shared/client"
 /** The characters the server strips before comparing — `_SEPARATOR_CHARS_REGEX`. */
 const SEPARATORS = /[-'./ ]/g
 /** Combining marks left behind by NFD, which is what `unaccent` removes. */
-const COMBINING_MARKS = /[̀-ͯ]/g
+// biome-ignore lint/suspicious/noMisleadingCharacterClass: the class is only combining marks, with no base character to misread
+const COMBINING_MARKS = /[\u0300-\u036f]/g
 
 export const normaliseForCinemaSearch = (value: string): string =>
   value

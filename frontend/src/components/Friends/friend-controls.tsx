@@ -247,6 +247,7 @@ export const FriendVisibilityChoice = ({
             <chakra.button
               key={option.label}
               type="button"
+              // biome-ignore lint/a11y/useSemanticElements: ARIA radio pattern on a styled button; a native radio input cannot take this styling
               role="radio"
               aria-checked={isOn}
               aria-label={`${option.label} — ${option.hint}`}

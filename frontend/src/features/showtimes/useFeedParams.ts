@@ -75,12 +75,16 @@ export const useFeedParams = ({ pinned }: UseFeedParamsOptions = {}) => {
   const rawSearch = useSearch({ strict: false }) as Record<string, unknown>
   const [snapshotTime, setSnapshotTime] = useState(buildSnapshotTime)
 
-  // `pinned` is a literal at every call site, so compare its content rather
-  // than its identity or the feed refetches on every render.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: pinned's identity changes every render but JSON.stringify(pinned) is what actually varies
+  // `pinned` is a literal at every call site, so everything below keys on its
+  // content rather than its identity, or the feed refetches on every render.
+  const pinnedKey = JSON.stringify(pinned ?? {})
+  const stablePinned = useMemo(
+    () => JSON.parse(pinnedKey) as Partial<FeedParams>,
+    [pinnedKey],
+  )
   const committedParams = useMemo(
-    () => ({ ...parseFeedParams(rawSearch), ...pinned }),
-    [rawSearch, JSON.stringify(pinned)],
+    () => ({ ...parseFeedParams(rawSearch), ...stablePinned }),
+    [rawSearch, stablePinned],
   )
 
   // Your own cinemas (the account's, or a guest's in this browser), so that
@@ -125,14 +129,13 @@ export const useFeedParams = ({ pinned }: UseFeedParamsOptions = {}) => {
 
   // Pinned dimensions are the page, not a filter the visitor applied, so they
   // do not count towards "clear filters".
-  // biome-ignore lint/correctness/useExhaustiveDependencies: pinned's identity changes every render but JSON.stringify(pinned) is what actually varies
   const activeFilterCount = useMemo(
     () =>
       countActiveFilters(
-        { ...params, ...defaultsForPinned(pinned) },
+        { ...params, ...defaultsForPinned(stablePinned) },
         preferredCinemaIds,
       ),
-    [params, preferredCinemaIds, JSON.stringify(pinned)],
+    [params, preferredCinemaIds, stablePinned],
   )
 
   /**
@@ -181,9 +184,8 @@ export const useFeedParams = ({ pinned }: UseFeedParamsOptions = {}) => {
   const isSearchOnlyLoad = filtersBeforeRef.current === filtersKey
 
   const resetParams = useCallback(() => {
-    setParams({ ...defaultFeedParams, ...pinned })
-    // biome-ignore lint/correctness/useExhaustiveDependencies: pinned's identity changes every render but its content is what matters
-  }, [setParams, JSON.stringify(pinned)])
+    setParams({ ...defaultFeedParams, ...stablePinned })
+  }, [setParams, stablePinned])
 
   /**
    * Put a whole set of filters on at once, the way a quick filter does:
@@ -192,10 +194,9 @@ export const useFeedParams = ({ pinned }: UseFeedParamsOptions = {}) => {
    */
   const applyParams = useCallback(
     (next: FeedParams) => {
-      setParams({ ...next, ...pinned })
+      setParams({ ...next, ...stablePinned })
     },
-    // biome-ignore lint/correctness/useExhaustiveDependencies: pinned's identity changes every render but its content is what matters
-    [setParams, JSON.stringify(pinned)],
+    [setParams, stablePinned],
   )
 
   /**

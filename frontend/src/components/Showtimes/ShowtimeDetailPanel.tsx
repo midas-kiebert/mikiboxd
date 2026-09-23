@@ -73,6 +73,7 @@ const ShowtimeDetailPanel = ({
   // Back to the top on each new screening. The panel is docked and the rows it
   // serves look alike, so a card that swapped its contents while staying
   // scrolled to the seat map read as "nothing happened".
+  // biome-ignore lint/correctness/useExhaustiveDependencies: showtimeId is the trigger: scroll back to the top for each new screening
   useEffect(() => {
     rootRef.current
       ?.closest(`[${SIDE_PANEL_SCROLLER_ATTRIBUTE}]`)

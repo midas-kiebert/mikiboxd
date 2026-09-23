@@ -94,6 +94,7 @@ const ShowtimeVisibilityPanel = ({
   const hasAnsweredRef = useRef(true)
 
   // An open popup belongs to the screening it was opened on.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: showtimeId is the trigger: close the popup when the screening changes
   useEffect(() => {
     setIsOpen(false)
   }, [showtimeId])
@@ -310,6 +311,7 @@ const ShowtimeVisibilityPanel = ({
                     <PanelPressable
                       type="button"
                       key={mode}
+                      // biome-ignore lint/a11y/useSemanticElements: ARIA radio pattern on a styled button; a native radio input cannot take this styling
                       role="radio"
                       aria-checked={isOn}
                       onClick={() => handleChange(mode)}

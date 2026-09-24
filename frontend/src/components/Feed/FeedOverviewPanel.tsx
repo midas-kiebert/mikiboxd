@@ -38,8 +38,8 @@ import {
   Poster,
   SeatMark,
   TONE_PALETTE,
-  Tag,
   nameOf,
+  paletteClass,
   viewerTone,
   when,
 } from "@/components/Showtimes/cards/card-parts"
@@ -67,12 +67,6 @@ import {
 } from "@/features/showtimes/useFeedOverview"
 
 import "./FeedOverviewPanel.css"
-
-const TONE_LABEL = {
-  going: "Going",
-  interested: "Interested",
-  invited: "Invited",
-} as const
 
 const SECTION_TITLE: Record<
   Exclude<FeedOverviewSectionKind, "custom">,
@@ -267,14 +261,6 @@ const Accessory = ({
   switch (kind) {
     case "selling_fast":
       return <SeatMark showtime={showtime} withCount />
-    case "plans": {
-      const tone = viewerTone(showtime)
-      return tone === "none" ? null : (
-        <Tag palette={TONE_PALETTE[tone]} size="xs">
-          {TONE_LABEL[tone]}
-        </Tag>
-      )
-    }
     // An invite still shows who is interested or going, like every other
     // list: the inviter's name in this slot used to crowd those out. Who
     // invited you goes on its own line under the screening (`InvitedByNote`).
@@ -427,6 +413,10 @@ const OverviewRow = ({
   // See `PortraitTicketCard`: whoever prints a day holds the day.
   useDayClock()
   const time = when(showtime)
+  // Going or interested reads the same in every list: the row takes that
+  // status's face colour, as its ticket does, never a badge.
+  const tone = viewerTone(showtime)
+  const toned = tone === "going" || tone === "interested"
   // A `div` acting as the button, as `TicketRoot` does: a real `<button>`
   // cannot hold the cinema tag's link.
   const handleKeyDown = (event: KeyboardEvent) => {
@@ -438,7 +428,9 @@ const OverviewRow = ({
   }
   return (
     <div
-      className="mk-overview__row"
+      className={`mk-overview__row${
+        toned ? ` mk-overview__row--toned ${paletteClass(TONE_PALETTE[tone])}` : ""
+      }`}
       // biome-ignore lint/a11y/useSemanticElements: a row of block content, which a <button> may not hold
       role="button"
       tabIndex={0}

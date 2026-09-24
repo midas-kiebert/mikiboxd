@@ -27,7 +27,7 @@ class AwayEventsPublic(BaseModel):
     upcoming_invites: list[AwayInvite]
     # Invites received in the window whose screening has already started
     # without the user having looked at their invites in between (app or
-    # website) — the ones they actually missed. Most recent screening first.
+    # website) — the ones they actually missed. Earliest screening first.
     missed_invites: list[AwayInvite]
     # Friend requests received in the window and still pending.
     friend_requests: int

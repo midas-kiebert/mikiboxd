@@ -64,6 +64,19 @@
   background: var(--chakra-colors-bg-subtle);
 }
 
+/* Going or interested: the status's ticket face, in every list. */
+.mk-overview__row--toned {
+  background: var(--p-primary);
+}
+
+.mk-overview__row--toned:hover {
+  background: color-mix(in srgb, var(--p-primary) 80%, var(--p-border));
+}
+
+.mk-overview__row--toned + .mk-overview__row--toned {
+  margin-top: 2px;
+}
+
 .mk-overview__row:focus-visible {
   outline: 2px solid var(--chakra-colors-app-tint);
   outline-offset: -2px;

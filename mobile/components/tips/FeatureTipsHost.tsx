@@ -127,10 +127,12 @@ export default function FeatureTipsHost() {
     key: Parameters<typeof isNotificationDeliverable>[1]
   ): boolean => !isNotificationDeliverable(currentUser, key, canPush === true);
   const soldOutScreening = awayEvents?.sold_out[0] ?? null;
-  // An invite that can still be answered beats one that is already lost.
-  const upcomingInvite = awayEvents?.upcoming_invites[0] ?? null;
+  // A missed invite beats one that can still be answered: it is the proof
+  // that notifications matter. Within each kind, the earliest screening (the
+  // lists come back sorted by screening date).
   const missedInvite = awayEvents?.missed_invites[0] ?? null;
-  const tipInvite = upcomingInvite ?? missedInvite;
+  const upcomingInvite = awayEvents?.upcoming_invites[0] ?? null;
+  const tipInvite = missedInvite ?? upcomingInvite;
   const shouldSuggestInvites =
     tipInvite !== null && missesNotification("notify_on_showtime_ping");
   const shouldSuggestSeatAlerts =
@@ -235,7 +237,7 @@ export default function FeatureTipsHost() {
   if (visibleTipId === "cinema-presets") return <CinemaPresetTip />;
   if (visibleTipId === "add-friends") return <AddFriendsTip />;
   if (visibleTipId === "invite" && tipInvite) {
-    return <InviteTip invite={tipInvite} isMissed={upcomingInvite === null} />;
+    return <InviteTip invite={tipInvite} isMissed={missedInvite !== null} />;
   }
   if (visibleTipId === "sold-out" && soldOutScreening) {
     return <SoldOutTip screening={soldOutScreening} />;

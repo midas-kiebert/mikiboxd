@@ -64,7 +64,7 @@ def get_away_events(
                 col(ShowtimePing.seen_at) > col(Showtime.datetime),
             ),
         )
-        .order_by(col(Showtime.datetime).desc())
+        .order_by(col(Showtime.datetime))
         .limit(_ROW_LIMIT)
     ).all()
 

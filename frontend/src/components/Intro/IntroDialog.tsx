@@ -1,12 +1,14 @@
 /**
  * The first-run intro on the website — the app's `IntroFlow`, as a dialog.
  *
- * Same pages and the same words, minus two that have no web counterpart:
- * the spotlight tour over a live showtime sheet becomes one page that shows
- * the three status buttons and says what each is for, and the notifications
- * page is dropped (the website sends no push notifications).
+ * Same pages and the same words, where they have a web counterpart: the
+ * spotlight tour over a live showtime sheet becomes one page that shows the
+ * three status buttons and says what each is for, and the notifications page
+ * is a plain yes/no about email, since the website sends no push
+ * notifications. Saying no changes nothing: the app asks its own push-or-email
+ * question the first time the account signs in there.
  *
- *   cinemas → Letterboxd → your status → friends
+ *   cinemas → Letterboxd → your status → email notifications → friends
  *
  * The cinemas page is skipped when the visitor had saved preferred cinemas as
  * a guest: the signup carried them over (see `routes/signup.tsx`), and asking
@@ -19,7 +21,7 @@ import { Portal } from "@chakra-ui/react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
 import { type ReactNode, useMemo, useState } from "react"
-import { MeService, type UserMe } from "shared/client"
+import { MeService, type UserMe, type UserUpdate } from "shared/client"
 import {
   invalidateCinemaPresets,
   saveSelectionAsPreferred,
@@ -27,6 +29,7 @@ import {
 import { useFetchCinemas } from "shared/hooks/useFetchCinemas"
 import { selectedCinemasQueryKey } from "shared/hooks/useFetchSelectedCinemas"
 import useLetterboxdAvatarPreference from "shared/hooks/useLetterboxdAvatarPreference"
+import { buildChannelForAllUpdate } from "shared/notifications/preferences"
 
 import { CinemaChecklist } from "@/components/Feed/CinemaChecklist"
 import InviteCard from "@/components/Friends/InviteCard"
@@ -48,12 +51,19 @@ import "@/components/Auth/auth.css"
 import "@/components/Friends/friends.css"
 import "./intro.css"
 
-type IntroPageId = "cinemas" | "letterboxd" | "status" | "friends"
+type IntroPageId =
+  | "cinemas"
+  | "letterboxd"
+  | "status"
+  | "notifications"
+  | "friends"
 
 const ALL_PAGES: readonly IntroPageId[] = [
   "cinemas",
   "letterboxd",
   "status",
+  // Before friends: that page's buttons leave the intro for another page.
+  "notifications",
   "friends",
 ]
 
@@ -111,6 +121,9 @@ const IntroDialog = ({ skipCinemas }: { skipCinemas: boolean }) => {
                 <LetterboxdPage onDone={next} />
               ) : null}
               {pageId === "status" ? <StatusPage onDone={next} /> : null}
+              {pageId === "notifications" ? (
+                <NotificationsPage onDone={next} />
+              ) : null}
               {pageId === "friends" ? <FriendsPage onDone={next} /> : null}
             </div>
           </DialogBody>
@@ -497,6 +510,40 @@ const StatusPage = ({ onDone }: { onDone: () => void }) => {
         ))}
       </ul>
     </PageShell>
+  )
+}
+
+/**
+ * Email notifications, yes or no. Yes routes every notification that is on to
+ * email; it can be chosen before the address is confirmed, and nothing is sent
+ * until it is.
+ */
+const NotificationsPage = ({ onDone }: { onDone: () => void }) => {
+  const queryClient = useQueryClient()
+  const { showErrorToast } = useCustomToast()
+  const save = useMutation({
+    mutationFn: () =>
+      MeService.updateUserMe({
+        requestBody: buildChannelForAllUpdate("email") as UserUpdate,
+      }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["currentUser"], updated)
+      onDone()
+    },
+    onError: () =>
+      showErrorToast("Email notifications were not turned on. Please try again."),
+  })
+
+  return (
+    <PageShell
+      title="Get notifications by email?"
+      message="Hear by email when a friend invites you to a screening, sends you a friend request, or when a screening you want is selling out. You can change this any time in Settings."
+      primaryLabel={save.isPending ? "Saving…" : "Yes, email me"}
+      primaryBusy={save.isPending}
+      onPrimary={() => save.mutate()}
+      secondaryLabel="No thanks"
+      onSecondary={onDone}
+    />
   )
 }
 

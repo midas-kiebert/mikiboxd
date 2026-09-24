@@ -123,6 +123,9 @@ export type SegmentedOption<T extends string> = {
   icon?: IconComponent
   /** The selected thumb stays neutral: for the choice that means "off". */
   neutral?: boolean
+  /** Shown but not choosable; `title` says why. */
+  disabled?: boolean
+  title?: string
 }
 
 /** One exclusive choice, the app's `SegmentedControl`. */
@@ -159,7 +162,8 @@ export const Segmented = <T extends string>({
           // biome-ignore lint/a11y/useSemanticElements: ARIA radio pattern on a styled button; a native radio input cannot take this styling
           role="radio"
           aria-checked={isOn}
-          disabled={disabled}
+          disabled={disabled || option.disabled}
+          title={option.title}
           className={`st-segmented__option${option.neutral ? " st-segmented__option--neutral" : ""}`}
           onClick={() => {
             if (!isOn) onChange(option.value)

@@ -6,13 +6,11 @@ import React, { useEffect, useRef } from 'react';
 import { AppState, StyleSheet, Text, View } from 'react-native';
 
 import { useQueryClient } from '@tanstack/react-query';
-import { Notifications } from '@/utils/notifications-module';
 import { ApiError, MeService } from 'shared';
 import { useFetchReceivedRequests } from 'shared/hooks/useFetchReceivedRequests';
 import { useFetchUnseenShowtimePingCount } from 'shared/hooks/useFetchUnseenShowtimePingCount';
 import { useFetchLetterboxdLists } from 'shared/hooks/useLetterboxdLists';
 import useAuth from 'shared/hooks/useAuth';
-import { storage } from 'shared/storage';
 import { DateTime } from 'luxon';
 
 import { HapticTab, TabIcon, TabLabel } from '@/components/tab-bar';
@@ -24,10 +22,7 @@ import {
 } from '@/utils/push-notifications';
 import { FiltersModalProvider } from '@/components/filters/FiltersModalProvider';
 import { useAppIconBadge } from '@/hooks/useAppIconBadge';
-import { useIsIntroOwed } from '@/utils/intro';
 
-const NOTIFICATION_PERMISSION_PROMPTED_KEY = 'mobile.notifications.permission_prompted_v3';
-const NOTIFICATION_PREFS_INITIALIZED_KEY = 'mobile.notifications.preferences_initialized_v1';
 const NOTIFICATION_PROMPT_DELAY_MS = 700;
 
 
@@ -74,10 +69,6 @@ export default function TabLayout() {
   useAppIconBadge(!!user);
   const isSyncingWatchlistRef = useRef(false);
   const lastRegisteredUserIdRef = useRef<string | null>(null);
-  // A brand-new account still owes the intro, including the final filters
-  // highlight; the OS permission prompt this effect can trigger waits for
-  // both to be done, so a first run isn't interrupted by it.
-  const isIntroOwed = useIsIntroOwed();
 
   // Keep server watchlist state in sync when entering or returning to the app.
   useEffect(() => {
@@ -167,100 +158,31 @@ export default function TabLayout() {
     void syncStaleLists();
   }, [queryClient, user, letterboxdLists]);
 
-  // Ask for notification permission once the user is known and the intro (if
-  // any is owed) has fully finished, filters highlight included.
-  useEffect(() => {
-    if (!user || isIntroOwed) return;
-
-    const maybePromptForNotificationPermission = async () => {
-      const currentUserId = String(user.id);
-      const hasSwitchedAccount = lastRegisteredUserIdRef.current !== currentUserId;
-      const storageKey = `${NOTIFICATION_PERMISSION_PROMPTED_KEY}.${user.id}`;
-      try {
-        const prefsStorageKey = `${NOTIFICATION_PREFS_INITIALIZED_KEY}.${user.id}`;
-
-        if (hasSwitchedAccount) {
-          await storage.removeItem(storageKey);
-          await storage.removeItem(prefsStorageKey);
-          clearPushTokenRegistrationState();
-          lastRegisteredUserIdRef.current = currentUserId;
-        }
-
-        // Registration prompts when permission is missing, so a refusal is
-        // taken as an answer rather than asked again here: the intro's
-        // notifications page and the notification-permission tip are where
-        // the user gets asked a second time, both on purpose and with an
-        // explanation attached. Without this, denying on the intro's last
-        // page was followed by a bare system prompt seconds later.
-        const permissionsBefore = await Notifications.getPermissionsAsync();
-        if (permissionsBefore.status === 'denied') {
-          await storage.setItem(storageKey, '1');
-          return;
-        }
-
-        // Always attempt registration once user context exists.
-        // This handles fresh installs, account switches, and OS-level permission changes.
-        await registerPushTokenForCurrentDevice({ userId: currentUserId, force: true });
-        const currentPermissions = await Notifications.getPermissionsAsync();
-        if (currentPermissions.status !== 'undetermined') {
-          await storage.setItem(storageKey, '1');
-        }
-      } catch (error) {
-        console.error('Error running notification permission onboarding:', error);
-      }
-    };
-
-    // Delay slightly so the OS permission sheet is requested after initial tab mount/render.
-    const timeout = setTimeout(() => {
-      void maybePromptForNotificationPermission();
-    }, NOTIFICATION_PROMPT_DELAY_MS);
-
-    return () => {
-      clearTimeout(timeout);
-    };
-  }, [user, isIntroOwed]);
-
-  // Initialize default notification toggles once per user after profile data is loaded.
+  // Keep this device registered for the signed-in account. Silent: it never
+  // raises the OS prompt. Asking is left to the screens that explain it first —
+  // the intro's notifications page, the notification tips and Settings —
+  // because a cold system dialog is the one people deny out of habit.
   useEffect(() => {
     if (!user) return;
-
-    const maybeInitializeNotificationPreferences = async () => {
-      const storageKey = `${NOTIFICATION_PREFS_INITIALIZED_KEY}.${user.id}`;
-      try {
-        const alreadyInitialized = await storage.getItem(storageKey);
-        if (alreadyInitialized === '1') return;
-
-        const hasAnyNotificationPreferenceEnabled =
-          user.notify_on_friend_showtime_match ||
-          user.notify_on_friend_requests ||
-          user.notify_on_showtime_ping ||
-          user.notify_on_interest_reminder ||
-          user.notify_on_seat_alert ||
-          user.notify_on_sold_out ||
-          user.notify_on_tickets_available;
-
-        if (!hasAnyNotificationPreferenceEnabled) {
-          await MeService.updateUserMe({
-            requestBody: {
-              notify_on_friend_showtime_match: true,
-              notify_on_friend_requests: true,
-              notify_on_showtime_ping: true,
-              notify_on_interest_reminder: true,
-              notify_on_seat_alert: true,
-              notify_on_sold_out: true,
-              notify_on_tickets_available: true,
-            },
-          });
-          queryClient.invalidateQueries({ queryKey: ['currentUser'] });
-        }
-
-        await storage.setItem(storageKey, '1');
-      } catch (error) {
-        console.error('Error initializing notification preferences:', error);
-      }
-    };
-
-    void maybeInitializeNotificationPreferences();
+    const currentUserId = String(user.id);
+    if (lastRegisteredUserIdRef.current !== currentUserId) {
+      clearPushTokenRegistrationState();
+      lastRegisteredUserIdRef.current = currentUserId;
+    }
+    const timeout = setTimeout(() => {
+      registerPushTokenForCurrentDevice({ userId: currentUserId, force: true, prompt: false })
+        .then((token) => {
+          // The account's `has_push_token` decides whether push is offered at
+          // all, so a first registration has to reach the cached user.
+          if (token && !user.has_push_token) {
+            void queryClient.invalidateQueries({ queryKey: ['currentUser'] });
+          }
+        })
+        .catch((error: unknown) => {
+          console.error('Error registering this device for push notifications:', error);
+        });
+    }, NOTIFICATION_PROMPT_DELAY_MS);
+    return () => clearTimeout(timeout);
   }, [queryClient, user]);
 
   // Render/output using the state and derived values prepared above.

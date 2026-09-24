@@ -34,7 +34,7 @@ import type { SpotlightRect } from "@/components/intro/SpotlightOverlay";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { closeAllBlockingOverlays } from "@/utils/blocking-overlays";
-import { completeIntroPages, endIntro, INTRO_PAGE_ORDER } from "@/utils/intro";
+import { completeIntroPages, endIntro, useIntroPageOrder } from "@/utils/intro";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
@@ -78,7 +78,12 @@ export default function IntroFlow() {
   const isLeavingRef = useRef(false);
   const [isLeaving, setIsLeaving] = useState(false);
 
-  const pageId = INTRO_PAGE_ORDER[pageIndex];
+  const pageOrder = useIntroPageOrder();
+  const pageId = pageOrder[pageIndex];
+  // The notifications question is never skipped past: it has its own, more
+  // deliberate way to say no (see `IntroNotificationsPage`).
+  const isNotificationsPage = pageId === "notifications";
+  const notificationsPageIndex = pageOrder.indexOf("notifications");
   const isTourPage = pageId === "showtime-tour";
 
   useEffect(() => {
@@ -176,18 +181,25 @@ export default function IntroFlow() {
   );
 
   const handleNextPage = useCallback(() => {
-    if (pageIndex >= INTRO_PAGE_ORDER.length - 1) {
+    if (pageIndex >= pageOrder.length - 1) {
       // Last page done: the showtimes screen owes the filters highlight.
       leaveIntro(completeIntroPages);
       return;
     }
     transitionToPage(() => setPageIndex(pageIndex + 1));
-  }, [leaveIntro, pageIndex, transitionToPage]);
+  }, [leaveIntro, pageIndex, pageOrder.length, transitionToPage]);
 
+  // Skipping the tour skips to its last question rather than past it: most
+  // people want to hear when a friend invites them, and "Skip tutorial" is not
+  // an answer to that.
   const handleSkip = useCallback(() => {
     triggerSelectionHaptic();
+    if (notificationsPageIndex > pageIndex) {
+      transitionToPage(() => setPageIndex(notificationsPageIndex));
+      return;
+    }
     leaveIntro(endIntro);
-  }, [leaveIntro]);
+  }, [leaveIntro, notificationsPageIndex, pageIndex, transitionToPage]);
 
   const handleNextTourStep = useCallback(() => {
     if (tourStepIndex >= SHOWTIME_TOUR_STEPS.length - 1) {
@@ -212,7 +224,14 @@ export default function IntroFlow() {
       {/* Outside the Modal below, which is a window above it. */}
       <IntroShowtimeSheet visible={isTourPage && !isLeaving} tour={tour} />
 
-      <Modal transparent statusBarTranslucent visible animationType="none" onRequestClose={handleSkip}>
+      <Modal
+        transparent
+        statusBarTranslucent
+        visible
+        animationType="none"
+        // Back on the notifications page does nothing: it is answered, not left.
+        onRequestClose={isNotificationsPage ? () => {} : handleSkip}
+      >
         {/* No padding of its own: the spotlight below is positioned from
             window coordinates, so its coordinate space has to be the window. */}
         <Animated.View
@@ -241,7 +260,7 @@ export default function IntroFlow() {
             ]}
           >
             <View style={styles.progress}>
-              {INTRO_PAGE_ORDER.map((id, index) => (
+              {pageOrder.length > 1 ? pageOrder.map((id, index) => (
                 <View
                   key={id}
                   style={[
@@ -250,8 +269,9 @@ export default function IntroFlow() {
                     index <= pageIndex && styles.progressDotActive,
                   ]}
                 />
-              ))}
+              )) : null}
             </View>
+            {isNotificationsPage ? null : (
             <TouchableOpacity
               style={styles.skipButton}
               onPress={handleSkip}
@@ -263,6 +283,7 @@ export default function IntroFlow() {
                 Skip tutorial
               </ThemedText>
             </TouchableOpacity>
+            )}
           </Animated.View>
 
           {!isTourPage ? (

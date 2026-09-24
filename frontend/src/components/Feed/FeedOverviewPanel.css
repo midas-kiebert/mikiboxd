@@ -131,12 +131,21 @@
 }
 
 /* "Priya +2", at the end of an invite's row. */
-.mk-overview__by {
-  max-width: 96px;
-  overflow: hidden;
-  color: var(--chakra-colors-fg-muted);
-  font-size: 12px;
+/* "You were invited by …" under an invited row, the inviter's face first. */
+.mk-overview__note {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--chakra-colors-app-blue\.secondary);
+  font-size: 11px;
   font-weight: 600;
+}
+
+.mk-overview__note-text {
+  position: relative;
+  top: 1px;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

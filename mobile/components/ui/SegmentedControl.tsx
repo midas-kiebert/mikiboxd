@@ -207,6 +207,7 @@ function Segment<T extends string>({
   onPress,
 }: SegmentProps<T>) {
   const selectedCopyStyle = useSelectedCopyStyle(thumb, index);
+  const selectedForeground = option.activeForeground ?? colors.pillActiveText;
 
   const renderContent = (color: string) => (
     <>
@@ -242,12 +243,21 @@ function Segment<T extends string>({
           un-repainted on Android — the selected label reading as the
           resting, unselected colour even though `selectedCopyStyle` was
           already computing opacity 1 underneath. */}
+      {/* Keyed on its colour, so a theme switch gets a fresh native view rather
+          than repainting this one. The label colour was still reported wrong
+          after a switch once the thumb and the crossfade were proven to agree
+          (see use-sliding-thumb.ts): this copy changes colour at the same
+          moment its opacity is being animated on the UI thread, inside a cached
+          hardware texture, which is exactly the combination that already had
+          to be forced to repaint once. Switches are rare and happen under the
+          theme curtain, so remounting two small views costs nothing. */}
       <Animated.View
+        key={selectedForeground}
         style={[styles.selectedCopy, isLarge && styles.selectedCopyLarge, selectedCopyStyle]}
         pointerEvents="none"
         renderToHardwareTextureAndroid
       >
-        {renderContent(option.activeForeground ?? colors.pillActiveText)}
+        {renderContent(selectedForeground)}
       </Animated.View>
     </TouchableOpacity>
   );

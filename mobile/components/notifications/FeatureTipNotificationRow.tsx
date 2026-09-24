@@ -54,10 +54,30 @@ const TIP_PRESENTATION: Record<FeatureTipId, Presentation> = {
     title: "Save your filters as a quick filter",
     subtitle: "Reuse the filters you set most often",
   },
-  "notification-permission": {
-    icon: "notifications-active",
-    title: "Allow notifications",
-    subtitle: "Hear when friends pick a screening",
+  invite: {
+    icon: "mail",
+    title: "Turn on invite notifications",
+    subtitle: "So you don't miss the next invite from a friend",
+  },
+  "sold-out": {
+    icon: "event-busy",
+    title: "Turn on seat availability notifications",
+    subtitle: "Hear before a screening you want sells out",
+  },
+  "friend-request": {
+    icon: "person-add",
+    title: "Turn on friend request notifications",
+    subtitle: "Hear when someone adds you",
+  },
+  "interest-reminders": {
+    icon: "alarm",
+    title: "Turn on interest reminders",
+    subtitle: "A nudge before screenings you're interested in",
+  },
+  "cineville-pass": {
+    icon: "badge",
+    title: "Add your Cineville pass",
+    subtitle: "Keep your pass barcode one tap away",
   },
 };
 

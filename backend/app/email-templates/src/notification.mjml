@@ -35,7 +35,7 @@
     <mj-raw>{% endif %}</mj-raw>
     <mj-section background-color="#ffffff" padding="24px 20px 24px">
       <mj-column>
-        <mj-text font-size="12px" line-height="18px" color="#8a8a8a"><a href="{{ settings_link }}" style="color:#8a8a8a;text-decoration:underline;">Manage notification preferences</a>.</mj-text>
+        <mj-text font-size="12px" line-height="18px" color="#8a8a8a">{% if unsubscribe_link %}<a href="{{ unsubscribe_link }}" style="color:#8a8a8a;text-decoration:underline;">{{ unsubscribe_label }}</a> &middot; {% endif %}<a href="{{ settings_link }}" style="color:#8a8a8a;text-decoration:underline;">Manage notification preferences</a></mj-text>
       </mj-column>
     </mj-section>
   </mj-body>

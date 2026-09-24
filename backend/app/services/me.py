@@ -103,13 +103,14 @@ _EMAIL_DELIVERY_FIELDS: tuple[str, ...] = (
 
 
 def _wants_email_delivery(user_data: dict[str, Any]) -> bool:
-    """Whether this update opts *into* email for anything."""
-    if user_data.get("notify_watchlist_digest_enabled") is True:
-        return True
-    return any(
-        user_data.get(field) == NotificationChannel.EMAIL
-        for field in _EMAIL_DELIVERY_FIELDS
-    )
+    """Whether this update opts *into* the watchlist digest.
+
+    Notification channels are deliberately not checked: choosing email for a
+    notification is allowed before the address is confirmed, because nothing is
+    actually mailed until it is (see `push_notifications._send_templated_email`).
+    That lets the intro offer email as a real choice on a brand-new account.
+    """
+    return user_data.get("notify_watchlist_digest_enabled") is True
 
 
 # Legacy compat only — see `UserUpdate.notify_watchlist_digest_frequency` in
@@ -225,12 +226,16 @@ def update_me(
         )
 
     # Nothing may route mail to an address nobody has proven belongs to this
-    # account — not a notification channel, not the digest. An unconfirmed
-    # address is quite possibly a stranger's, and mail they never asked for is
-    # how a sender ends up in spam folders. Switching *away* from email is
-    # always allowed; only opting in waits for the confirmation link.
+    # account. An unconfirmed address is quite possibly a stranger's, and mail
+    # they never asked for is how a sender ends up in spam folders. The digest
+    # waits for the confirmation link; a notification channel may be set to
+    # email already, but nothing is sent through it until the address is
+    # confirmed.
     if not current_user.email_verified and _wants_email_delivery(user_data):
         raise EmailNotVerified()
+
+    if user_data.pop("app_notifications_prompted", None) is True:
+        current_user.app_notifications_prompted_at = now_amsterdam_naive()
 
     # A saved username is looked up now: it tells the user straight away
     # whether the account exists, and gives them their picture to preview

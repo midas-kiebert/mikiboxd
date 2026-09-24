@@ -39,6 +39,7 @@ import {
   WATCH_KIND_ICON,
 } from "@/components/Showtimes/detail/panel-icons"
 import { useDayClock } from "@/features/showtimes/day-clock"
+import { useUnfilteredLinks } from "@/features/showtimes/unfiltered-links"
 import "@/components/Showtimes/cards/PortraitTicketCard.css"
 
 import { Plate } from "./FilmPlate"
@@ -195,6 +196,8 @@ const FilmRow = ({
   useDayClock()
 
   const [copied, setCopied] = useState(false)
+  // Carries the feed's screening filters onto the film's page.
+  const links = useUnfilteredLinks()
   useEffect(() => {
     if (!copied) return
     const timer = setTimeout(() => setCopied(false), COPIED_MS)
@@ -241,6 +244,7 @@ const FilmRow = ({
       <Link
         to="/movie/$movieId"
         params={{ movieId: `${movie.id}` }}
+        search={links.filmSearch() as never}
         className="fr-film__poster"
       >
         <FilmPoster movie={movie} width="100%" radius="6px" />
@@ -291,6 +295,7 @@ const FilmRow = ({
               <Link
                 to="/movie/$movieId"
                 params={{ movieId: `${movie.id}` }}
+                search={links.filmSearch() as never}
                 className="fc-plate fc-plate--more"
                 title={`${hiddenCount} more screening${hiddenCount === 1 ? "" : "s"} on the film's page`}
               >
@@ -336,6 +341,7 @@ const FilmRow = ({
             <Link
               to="/movie/$movieId"
               params={{ movieId: `${movie.id}` }}
+              search={links.filmSearch() as never}
               className="fr-act"
               title="Every screening of this film"
             >

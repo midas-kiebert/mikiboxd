@@ -41,6 +41,11 @@ def get_push_tokens_for_users(
     return list(session.exec(stmt).all())
 
 
+def user_has_push_token(*, session: Session, user_id: UUID) -> bool:
+    stmt = select(PushToken.token).where(col(PushToken.user_id) == user_id).limit(1)
+    return session.exec(stmt).first() is not None
+
+
 def delete_push_token(
     *,
     session: Session,

@@ -23,6 +23,7 @@ from app.models.auth_schemas import Message, UpdatePassword
 from app.models.user import UserUpdate
 from app.schemas.activity import ActivitySummaryPublic
 from app.schemas.analytics_event import AnalyticsEventCreate
+from app.schemas.away_events import AwayEventsPublic
 from app.schemas.cinema_preset import (
     CinemaPresetCreate,
     CinemaPresetPublic,
@@ -46,6 +47,7 @@ from app.schemas.watchlist_digest_source import (
     WatchlistDigestSourceUpdate,
 )
 from app.services import activity as activity_service
+from app.services import away_events as away_events_service
 from app.services import feed_overview as feed_overview_service
 from app.services import letterboxd_lists as letterboxd_lists_service
 from app.services import me as me_service
@@ -510,6 +512,22 @@ def get_activity_summary(
         user_id=current_user.id,
         mode=mode,
         snapshot_time=snapshot_time or now_amsterdam_naive(),
+    )
+
+
+@router.get("/away-events", response_model=AwayEventsPublic)
+def get_away_events(
+    session: SessionDep,
+    current_user: CurrentUser,
+    since: datetime = Query(..., description="When the app was last in use"),
+) -> AwayEventsPublic:
+    """Invites, friend requests and sold-out screenings since `since`.
+
+    Read by the app when it comes to the foreground, to decide whether to offer
+    the notification that would have told the user about them.
+    """
+    return away_events_service.get_away_events(
+        session=session, user_id=current_user.id, since=since
     )
 
 

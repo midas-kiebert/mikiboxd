@@ -254,7 +254,7 @@ def test_notify_friends_uses_email_channel_when_selected(
 
     get_tokens.assert_not_called()
     send_email.assert_called_once()
-    assert send_email.call_args.kwargs["email_to"] == "friend@example.com"
+    assert send_email.call_args.kwargs["recipient"].email == "friend@example.com"
     assert send_email.call_args.kwargs["email_data"].subject == "Alex is going to Movie"
 
 
@@ -517,7 +517,7 @@ def test_notify_user_on_friend_request_uses_email_channel(
 
     get_tokens.assert_not_called()
     send_email.assert_called_once()
-    assert send_email.call_args.kwargs["email_to"] == "friend@example.com"
+    assert send_email.call_args.kwargs["recipient"].email == "friend@example.com"
     assert (
         send_email.call_args.kwargs["email_data"].subject
         == "Alex sent you a friend request"
@@ -727,7 +727,7 @@ def test_notify_user_on_showtime_ping_uses_email_channel(
     get_tokens.assert_not_called()
     send_email.assert_called_once()
     email_call = send_email.call_args.kwargs
-    assert email_call["email_to"] == "friend@example.com"
+    assert email_call["recipient"].email == "friend@example.com"
     assert email_call["email_data"].subject.startswith(
         "Alex invited you to Memories of Murder"
     )

@@ -2,12 +2,9 @@
  * The notification-preference model: which preferences exist, what they are
  * called, what order they appear in, and how a row maps onto backend fields.
  *
- * "Returned tickets" (`notify_on_tickets_available`) is its own row: a sold-out
- * screening you are interested in has seats again.
- *
- * Shared because a row is not always one field. "Seat availability" drives both
- * `notify_on_seat_alert` and `notify_on_sold_out`, and `notify_on_sold_out` has
- * no row of its own — so a client that implemented the list from the field names
+ * Shared because a row is not always one field. "Seat availability" drives
+ * `notify_on_seat_alert`, `notify_on_sold_out` and `notify_on_tickets_available`
+ * (returned tickets), and the latter two have no row of their own — so a client that implemented the list from the field names
  * alone would silently mean something different by the same label. Only the
  * icons are platform-specific, and those stay in
  * `mobile/hooks/useNotificationPreferences.ts`.
@@ -58,14 +55,15 @@ export const preferenceToChannelKey: Record<
 };
 
 /**
- * "Almost sold out" and "Sold out" are two backend fields (and two push kinds)
- * but one decision for the user, so `notify_on_seat_alert`'s row also drives
- * `notify_on_sold_out` and neither is shown separately in `TOGGLE_ORDER`.
+ * "Almost sold out", "Sold out" and "Returned tickets" are three backend fields
+ * (and three push kinds) but one decision for the user, so
+ * `notify_on_seat_alert`'s row also drives the other two and neither is shown
+ * separately in `TOGGLE_ORDER`.
  */
 export const LINKED_PREFERENCE_KEYS: Partial<
   Record<NotificationPreferenceKey, NotificationPreferenceKey[]>
 > = {
-  notify_on_seat_alert: ["notify_on_sold_out"],
+  notify_on_seat_alert: ["notify_on_sold_out", "notify_on_tickets_available"],
 };
 
 /**
@@ -84,8 +82,9 @@ export const NOTIFICATION_LABELS: Record<NotificationPreferenceKey, string> = {
 
 /**
  * Fixed display order, which is not the declaration order above.
- * `notify_on_sold_out` is deliberately absent: it rides along with
- * `notify_on_seat_alert` via `LINKED_PREFERENCE_KEYS` instead of its own row.
+ * `notify_on_sold_out` and `notify_on_tickets_available` are deliberately
+ * absent: they ride along with `notify_on_seat_alert` via
+ * `LINKED_PREFERENCE_KEYS` instead of having rows of their own.
  */
 export const TOGGLE_ORDER: readonly NotificationPreferenceKey[] = [
   "notify_on_friend_showtime_match",
@@ -93,7 +92,6 @@ export const TOGGLE_ORDER: readonly NotificationPreferenceKey[] = [
   "notify_on_showtime_reminder",
   "notify_on_interest_reminder",
   "notify_on_seat_alert",
-  "notify_on_tickets_available",
   "notify_on_friend_requests",
 ];
 
@@ -108,13 +106,49 @@ type PreferenceSource =
   | null
   | undefined;
 
-/** The three-way value a row should show, read off the current user. */
+/**
+ * The three-way value a row should show, read off the current user.
+ *
+ * `canPush` is whether a push could actually be delivered: without a registered
+ * device a row set to push reaches nobody, so it is shown as off rather than
+ * claiming a delivery that will never happen.
+ */
 export const getDelivery = (
   source: PreferenceSource,
-  key: NotificationPreferenceKey
+  key: NotificationPreferenceKey,
+  canPush = true
 ): NotificationDelivery => {
   if (!source?.[key]) return "off";
-  return normalizeChannel(source[preferenceToChannelKey[key]]);
+  const channel = normalizeChannel(source[preferenceToChannelKey[key]]);
+  if (channel === "push" && !canPush) return "off";
+  return channel;
+};
+
+/** Every channel field, including ones with no row of their own. */
+const ALL_CHANNEL_KEYS: readonly string[] = [
+  ...Object.values(preferenceToChannelKey),
+  "notify_channel_invite_response",
+];
+
+/**
+ * The patch for "this is how I want to be notified": every notification that is
+ * on moves to `channel`, and invites — the one the question is about — are
+ * switched on. Anything the user has turned off stays off.
+ */
+export const buildChannelForAllUpdate = (
+  channel: NotificationChannel
+): Record<string, boolean | NotificationChannel> => {
+  const patch: Record<string, boolean | NotificationChannel> = {};
+  for (const key of ALL_CHANNEL_KEYS) patch[key] = channel;
+  patch.notify_on_showtime_ping = true;
+  return patch;
+};
+
+/** The patch for "no notifications at all". */
+export const buildAllOffUpdate = (): Record<string, boolean> => {
+  const patch: Record<string, boolean> = { notify_on_invite_response: false };
+  for (const key of Object.keys(preferenceToChannelKey)) patch[key] = false;
+  return patch;
 };
 
 /**

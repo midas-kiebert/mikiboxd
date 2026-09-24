@@ -295,26 +295,28 @@ function FriendsScreen() {
   );
 
   // Refresh the current dataset and reset any stale pagination state.
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
-      if (isDiscovering) {
-        if (hasUserSearch) {
-          await resetInfiniteQuery(queryClient, ['users', userFilters]);
-        }
-        return;
+  const refreshCurrentMode = async () => {
+    if (isDiscovering) {
+      if (hasUserSearch) {
+        await resetInfiniteQuery(queryClient, ['users', userFilters]);
       }
-      // One mode, one scroll, so all three of its lists refresh together —
-      // refreshing only the section in view would leave the ones above and
-      // below it stale on the same screen.
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['users', 'receivedRequests'] }),
-        queryClient.invalidateQueries({ queryKey: ['users', 'friends'] }),
-        queryClient.invalidateQueries({ queryKey: ['users', 'sentRequests'] }),
-      ]);
-    } finally {
-      setRefreshing(false);
+      return;
     }
+    // One mode, one scroll, so all three of its lists refresh together —
+    // refreshing only the section in view would leave the ones above and
+    // below it stale on the same screen.
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['users', 'receivedRequests'] }),
+      queryClient.invalidateQueries({ queryKey: ['users', 'friends'] }),
+      queryClient.invalidateQueries({ queryKey: ['users', 'sentRequests'] }),
+    ]);
+  };
+  // `.finally()` rather than try/finally: the React Compiler cannot lower a
+  // `try` without a `catch`, and skipped this whole screen (and its swipe
+  // pager's pages) over it.
+  const handleRefresh = () => {
+    setRefreshing(true);
+    return refreshCurrentMode().finally(() => setRefreshing(false));
   };
 
   // Request the next page when the list nears the end.

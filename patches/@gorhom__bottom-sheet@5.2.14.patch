@@ -1,0 +1,54 @@
+diff --git a/lib/commonjs/components/bottomSheetModal/BottomSheetModal.js b/lib/commonjs/components/bottomSheetModal/BottomSheetModal.js
+index ee51e76824b2ac36661a1dc2eb41d90726fd22d4..7befc6ae22c55b8bd83f1041fad476336df2e88f 100644
+--- a/lib/commonjs/components/bottomSheetModal/BottomSheetModal.js
++++ b/lib/commonjs/components/bottomSheetModal/BottomSheetModal.js
+@@ -315,7 +315,7 @@ function BottomSheetModalComponent(props, ref) {
+     }
+     currentIndexRef.current = _index;
+     nextIndexRef.current = null;
+-    statusRef.current = _index === -1 ? _constants.MODAL_STATUS.MINIMIZED : _constants.MODAL_STATUS.PRESENTED;
++    if (_index === -1) { if (statusRef.current === _constants.MODAL_STATUS.MINIMIZING) { statusRef.current = _constants.MODAL_STATUS.MINIMIZED; } else if (statusRef.current !== _constants.MODAL_STATUS.DISMISSING) { statusRef.current = _constants.MODAL_STATUS.CLOSED; } } else { statusRef.current = _constants.MODAL_STATUS.PRESENTED; }
+     if (_providedOnChange) {
+       _providedOnChange(_index, _position, _type);
+     }
+diff --git a/lib/module/components/bottomSheetModal/BottomSheetModal.js b/lib/module/components/bottomSheetModal/BottomSheetModal.js
+index 94fabdb5fd49cbd7deb0e971f9bf6b3ca3639010..6b69fbf701cf552fd51094ac83cdfe307207b6cf 100644
+--- a/lib/module/components/bottomSheetModal/BottomSheetModal.js
++++ b/lib/module/components/bottomSheetModal/BottomSheetModal.js
+@@ -308,7 +308,7 @@ function BottomSheetModalComponent(props, ref) {
+     }
+     currentIndexRef.current = _index;
+     nextIndexRef.current = null;
+-    statusRef.current = _index === -1 ? MODAL_STATUS.MINIMIZED : MODAL_STATUS.PRESENTED;
++    if (_index === -1) { if (statusRef.current === MODAL_STATUS.MINIMIZING) { statusRef.current = MODAL_STATUS.MINIMIZED; } else if (statusRef.current !== MODAL_STATUS.DISMISSING) { statusRef.current = MODAL_STATUS.CLOSED; } } else { statusRef.current = MODAL_STATUS.PRESENTED; }
+     if (_providedOnChange) {
+       _providedOnChange(_index, _position, _type);
+     }
+diff --git a/src/components/bottomSheetModal/BottomSheetModal.tsx b/src/components/bottomSheetModal/BottomSheetModal.tsx
+index 2954b3f4282e28c1973ab88f479eb2d7889913c5..698068036cad7bfae8776b3b57829c9a96087669 100644
+--- a/src/components/bottomSheetModal/BottomSheetModal.tsx
++++ b/src/components/bottomSheetModal/BottomSheetModal.tsx
+@@ -432,8 +432,21 @@ function BottomSheetModalComponent<T = never>(
+       currentIndexRef.current = _index;
+       nextIndexRef.current = null;
+
+-      statusRef.current =
+-        _index === -1 ? MODAL_STATUS.MINIMIZED : MODAL_STATUS.PRESENTED;
++      // Patched (mikino): only a sheet that was being minimized is MINIMIZED
++      // when it reaches -1. Upstream marked every closed sheet MINIMIZED, and
++      // the provider "restores" (re-opens) a MINIMIZED sheet whenever the sheet
++      // above it in its queue unmounts — so a sheet the user had simply closed
++      // popped back open on its own (e.g. the notification centre on logout).
++      // A dismissal in progress keeps its own status for onClose to finish.
++      if (_index === -1) {
++        if (statusRef.current === MODAL_STATUS.MINIMIZING) {
++          statusRef.current = MODAL_STATUS.MINIMIZED;
++        } else if (statusRef.current !== MODAL_STATUS.DISMISSING) {
++          statusRef.current = MODAL_STATUS.CLOSED;
++        }
++      } else {
++        statusRef.current = MODAL_STATUS.PRESENTED;
++      }
+
+       if (_providedOnChange) {
+         _providedOnChange(_index, _position, _type);

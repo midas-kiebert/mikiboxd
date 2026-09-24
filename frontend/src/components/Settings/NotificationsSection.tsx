@@ -9,9 +9,10 @@
  * paints at once and goes back if the save fails.
  *
  * "Push" is an account setting: it goes to the app on your phone, which the
- * section says, since a browser cannot receive it. Routing anything to an
- * unconfirmed email is refused by the backend, so it is refused here first,
- * with the dialog that can resend the link.
+ * section says, since a browser cannot receive it. Without a phone registered
+ * for pushes (`has_push_token`) it cannot be chosen, and a row stored as push
+ * shows as off — it reaches nobody. Email can be chosen before the address is
+ * confirmed; the section says nothing is sent until it is.
  */
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { type ComponentType, useState } from "react"
@@ -65,9 +66,18 @@ const ROW_ICONS: Record<
   notify_on_showtime_reminder: MdNotificationsActive,
 }
 
-const DELIVERY_OPTIONS: readonly SegmentedOption<NotificationDelivery>[] = [
+const deliveryOptions = (
+  canPush: boolean,
+): readonly SegmentedOption<NotificationDelivery>[] => [
   { value: "off", label: "Off", neutral: true },
-  { value: "push", label: "Push" },
+  {
+    value: "push",
+    label: "Push",
+    disabled: !canPush,
+    title: canPush
+      ? undefined
+      : "Install the MiKiNO app and allow notifications to get push notifications",
+  },
   { value: "email", label: "Email" },
 ]
 
@@ -100,10 +110,6 @@ const NotificationsSection = ({
     key: NotificationPreferenceKey,
     delivery: NotificationDelivery,
   ) => {
-    if (delivery === "email" && !user?.email_verified) {
-      setIsVerificationOpen(true)
-      return
-    }
     setPainted((previous) => ({ ...previous, [key]: delivery }))
     setPendingKey(key)
     save(buildDeliveryUpdate(key, delivery) as UserUpdate, {
@@ -118,6 +124,9 @@ const NotificationsSection = ({
       },
     })
   }
+
+  const canPush = Boolean(user?.has_push_token)
+  const options = deliveryOptions(canPush)
 
   const digestEnabled =
     paintedDigest ?? Boolean(user?.notify_watchlist_digest_enabled)
@@ -146,9 +155,22 @@ const NotificationsSection = ({
       icon={meta.icon}
       description="Choose what you hear about and how. Push notifications arrive in the MiKiNO app on your phone; email arrives wherever you read your mail."
     >
+      {!canPush || (user && !user.email_verified) ? (
+        <div className="st-notice">
+          <MdWarningAmber aria-hidden />
+          <p>
+            {!canPush
+              ? "Push notifications need the MiKiNO app on your phone, with notifications allowed. "
+              : ""}
+            {user && !user.email_verified
+              ? "Emails start once you've confirmed your email address."
+              : ""}
+          </p>
+        </div>
+      ) : null}
       <div className="st-card">
         {TOGGLE_ORDER.map((key) => {
-          const delivery = painted[key] ?? getDelivery(user, key)
+          const delivery = painted[key] ?? getDelivery(user, key, canPush)
           return (
             <SettingsRow
               key={key}
@@ -158,7 +180,7 @@ const NotificationsSection = ({
               isBusy={pendingKey === key}
             >
               <Segmented
-                options={DELIVERY_OPTIONS}
+                options={options}
                 value={delivery}
                 onChange={(next) => setDelivery(key, next)}
                 label={NOTIFICATION_LABELS[key]}

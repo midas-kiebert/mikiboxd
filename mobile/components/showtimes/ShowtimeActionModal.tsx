@@ -550,8 +550,10 @@ export default function ShowtimeActionModal({
     true
   );
   const isWarmingUpRef = useRef(isWarmingUp);
+  const visibleRef = useRef(visible);
   useEffect(() => {
     isWarmingUpRef.current = isWarmingUp;
+    visibleRef.current = visible;
   });
 
   // Held in a ref so re-measuring depends on which target the tour is on, not
@@ -571,6 +573,13 @@ export default function ShowtimeActionModal({
       // neither `onClose` nor the blocking-overlay registration.
       if (isWarmingUpRef.current) {
         onWarmUpSheetChange(index);
+        return;
+      }
+      // Open while nothing asked for it: a warm-up's present that arrived
+      // after the warm-up had finished. Put it straight back (as AppBottomSheet
+      // does) rather than show a sheet nobody opened.
+      if (index >= 0 && !visibleRef.current) {
+        requestAnimationFrame(() => bottomSheetModalRef.current?.close());
         return;
       }
       if (index === -1) {
@@ -1998,6 +2007,12 @@ export default function ShowtimeActionModal({
       enablePanDownToClose={!isTour}
       enableDismissOnClose={false}
       enableDynamicSizing={false}
+      // No rubber-band past the top snap point. With it, pulling up on a sheet
+      // whose content is too short to scroll (a guest's showtime sheet, the
+      // filters with the list at its top) lifted the whole sheet off the bottom
+      // of the screen on iOS, leaving a gap under it, and on the filters it
+      // fought the list's own scroll and bounced it back to the top.
+      enableOverDrag={false}
       animationConfigs={isWarmingUp ? INSTANT_ANIMATION_CONFIG : SHEET_ANIMATION_CONFIG}
       // `containerStyle`, not `style`: gorhom composes its own animated style
       // *after* the `style` prop and hard-sets `opacity: 1` on it whenever the

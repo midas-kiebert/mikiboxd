@@ -64,6 +64,7 @@ import {
   stripDefaultFeedParams,
 } from "@/features/showtimes/feed-params"
 import { useShowtimePanelSlot } from "@/features/showtimes/showtime-panel-slot"
+import { FeedLinkParamsContext } from "@/features/showtimes/unfiltered-links"
 import {
   effectiveWallColumns,
   useWallColumns,
@@ -448,35 +449,38 @@ const ShowtimeFeedPage = ({
 
   // Render/output using the state and derived values prepared above.
   return (
-    <FeedPageShell
-      feed={feed}
-      header={header}
-      emptyText={emptyText}
-      filteredEmptyText={filteredEmptyText}
-      emptyState={emptyState}
-      hasNav={hasNav}
-      showRail={showRail}
-      showPresets={showPresets}
-      showGroupToggle={showGroupToggle}
-      loadMoreRef={loadMoreRef}
-      grid
-      minListWidth={PORTRAIT_MIN_COLUMN_WIDTH}
-      railFooter={renderWallColumnsControl}
-      detail={isMobile ? null : (panel ?? overviewPanel)}
-      isLoadingMore={feed.isFetchingNextPage || isDrawingRows}
-      isLoadingRows={isLoadingRows}
-    >
-      <TicketWall>{cards}</TicketWall>
+    // Film links in the list and the panel carry these filters with them.
+    <FeedLinkParamsContext.Provider value={feed.params}>
+      <FeedPageShell
+        feed={feed}
+        header={header}
+        emptyText={emptyText}
+        filteredEmptyText={filteredEmptyText}
+        emptyState={emptyState}
+        hasNav={hasNav}
+        showRail={showRail}
+        showPresets={showPresets}
+        showGroupToggle={showGroupToggle}
+        loadMoreRef={loadMoreRef}
+        grid
+        minListWidth={PORTRAIT_MIN_COLUMN_WIDTH}
+        railFooter={renderWallColumnsControl}
+        detail={isMobile ? null : (panel ?? overviewPanel)}
+        isLoadingMore={feed.isFetchingNextPage || isDrawingRows}
+        isLoadingRows={isLoadingRows}
+      >
+        <TicketWall>{cards}</TicketWall>
 
-      {/* On a phone there is no room for a docked panel, so the selection opens
-          under the list until it becomes a drawer. The panel paints its own
-          card, so this only insets it from the screen edges. */}
-      {isMobile && selected ? (
-        <Box px={2} py={3}>
-          <ShowtimeDetailPanel showtime={selected} onClose={handleClose} />
-        </Box>
-      ) : null}
-    </FeedPageShell>
+        {/* On a phone there is no room for a docked panel, so the selection opens
+            under the list until it becomes a drawer. The panel paints its own
+            card, so this only insets it from the screen edges. */}
+        {isMobile && selected ? (
+          <Box px={2} py={3}>
+            <ShowtimeDetailPanel showtime={selected} onClose={handleClose} />
+          </Box>
+        ) : null}
+      </FeedPageShell>
+    </FeedLinkParamsContext.Provider>
   )
 }
 

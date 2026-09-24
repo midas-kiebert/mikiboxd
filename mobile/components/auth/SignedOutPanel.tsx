@@ -144,10 +144,14 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       color: colors.textSecondary,
       maxWidth: 320,
     },
-    bullets: { gap: 6, marginTop: 10, alignSelf: "stretch", maxWidth: 320 },
+    // `alignSelf: "center"` with a full width capped at 320, not `stretch`:
+    // stretch plus a maxWidth pins the capped box to the *left* edge on any
+    // screen wider than 320 + padding, which is what put these buttons (and
+    // the bullets) off-centre on the signed-out Activity and Friends tabs.
+    bullets: { gap: 6, marginTop: 10, alignSelf: "center", width: "100%", maxWidth: 320 },
     bulletRow: { flexDirection: "row", alignItems: "center", gap: 8 },
     bulletText: { fontSize: 13, lineHeight: 18, color: colors.textSecondary, flexShrink: 1 },
-    actions: { alignSelf: "stretch", gap: 8, marginTop: 18, maxWidth: 320, width: "100%" },
+    actions: { alignSelf: "center", gap: 8, marginTop: 18, maxWidth: 320, width: "100%" },
     button: {
       minHeight: 46,
       borderRadius: 12,

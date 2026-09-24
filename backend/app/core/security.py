@@ -212,6 +212,36 @@ def verify_watchlist_digest_unsubscribe_token(token: str) -> str | None:
     return str(sub) if sub is not None else None
 
 
+def generate_notification_unsubscribe_token(*, user_id: str, preference: str) -> str:
+    """Generate a JWT for the "unsubscribe" link in a notification email.
+
+    Scoped to one user and one preference (`notify_on_*` field name), so the
+    link turns off exactly the kind of email it arrived in and nothing else.
+    No expiry, like the digest's: the link must keep working however long the
+    email sits unread.
+    """
+    return jwt.encode(
+        {"sub": user_id, "pref": preference, "type": "notification_unsubscribe"},
+        settings.SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+
+
+def verify_notification_unsubscribe_token(token: str) -> tuple[str, str] | None:
+    """Decode an unsubscribe token into (user id, preference field name)."""
+    try:
+        decoded = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+    except jwt.exceptions.InvalidTokenError:
+        return None
+    if decoded.get("type") != "notification_unsubscribe":
+        return None
+    sub = decoded.get("sub")
+    preference = decoded.get("pref")
+    if not isinstance(sub, str) or not isinstance(preference, str):
+        return None
+    return sub, preference
+
+
 # -----------------------------------------------------------------------------
 # Social sign-in (Sign in with Apple / Google) token verification
 # -----------------------------------------------------------------------------

@@ -7,6 +7,7 @@ from sqlmodel import Session
 from app.converters import showtime as showtime_converters
 from app.core.config import settings
 from app.crud import friendship as friendship_crud
+from app.crud import push_token as push_token_crud
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud import user as user_crud
 from app.crud import watched as watched_crud
@@ -177,6 +178,10 @@ def to_me(user: User, *, session: Session) -> UserMe:
         can_report=not is_report_banned(user),
         can_watch_sold_out=user.is_pro,
         has_password=user.hashed_password is not None,
+        has_push_token=push_token_crud.user_has_push_token(
+            session=session, user_id=user.id
+        ),
+        app_notifications_prompted=user.app_notifications_prompted_at is not None,
     )
 
 

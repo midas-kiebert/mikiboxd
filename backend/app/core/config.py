@@ -286,7 +286,9 @@ class Settings(BaseSettings):
     # alert and digest it produced would reach a real person. Comma-separated;
     # an entry starting with "@" allows a whole domain. Everything else is
     # logged and dropped in `send_email`. Ignored in production.
-    NON_PROD_EMAIL_ALLOWLIST: Annotated[list[str] | str, BeforeValidator(_parse_cors)] = []
+    NON_PROD_EMAIL_ALLOWLIST: Annotated[
+        list[str] | str, BeforeValidator(_parse_cors)
+    ] = []
 
     @model_validator(mode="after")
     def _set_default_emails_from(self) -> Self:

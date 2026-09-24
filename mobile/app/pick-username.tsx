@@ -15,6 +15,7 @@ import AuthTextField from '@/components/auth/AuthTextField'
 import { currentUserQueryKey } from '@/hooks/useCurrentUser'
 import { completeLogin } from '@/utils/complete-login'
 import { markUsernameResolved } from '@/utils/username-gate'
+import { shouldValidateUsernameWhileTyping } from '@/utils/username-live-validation'
 
 type PickUsernameForm = {
     display_name: string
@@ -46,8 +47,12 @@ export default function PickUsernameScreen() {
         control,
         handleSubmit,
         setError,
+        trigger,
         formState: { errors, isSubmitting },
     } = useForm<PickUsernameForm>({
+        // Checked as it is typed and when the field is left, as on the
+        // website, rather than only once "Continue" is pressed.
+        mode: 'onTouched',
         defaultValues: { display_name: suggestUsername(suggestion) },
     })
 
@@ -97,6 +102,10 @@ export default function PickUsernameScreen() {
                     rules={{
                         required: 'Username is required',
                         pattern: usernamePattern,
+                        maxLength: {
+                            value: usernameMaxLength,
+                            message: `Username must be at most ${usernameMaxLength} characters`,
+                        },
                     }}
                     render={({ field: { onChange, onBlur, value } }) => (
                         <AuthTextField
@@ -106,7 +115,12 @@ export default function PickUsernameScreen() {
                             error={errors.display_name?.message}
                             hint="4-15 characters. Letters, numbers, and underscores only."
                             onBlur={onBlur}
-                            onChangeText={onChange}
+                            onChangeText={(text) => {
+                                onChange(text)
+                                if (errors.display_name || shouldValidateUsernameWhileTyping(text)) {
+                                    void trigger('display_name')
+                                }
+                            }}
                             value={value}
                             autoCapitalize="none"
                             autoComplete="off"

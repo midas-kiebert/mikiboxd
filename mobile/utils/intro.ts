@@ -10,11 +10,17 @@
  * retire the tips it makes redundant as it goes (see `IntroLetterboxdPage` and
  * `retireCinemaPresetTip`), so the user is never told twice.
  *
- * Who sees it: only an account created on this device. `markIntroPending` is
- * called the moment an account is created (email signup, or a social sign-in
- * the backend reports as new), and the flag survives the trip through the login
- * screen in SecureStore. Existing users updating the app therefore never get an
- * intro for an app they already know.
+ * Who sees it: only an account created on this device — except for its last
+ * page. An account the app has never asked how it wants to be notified (one
+ * made on the website, typically; see `UserMe.app_notifications_prompted`)
+ * gets that one page on its own, as the notifications-only intro, the first
+ * time it is signed in here.
+ *
+ * The full intro: `markIntroPending` is called the moment an account is
+ * created (email signup, or a social sign-in the backend reports as new), and
+ * the flag survives the trip through the login screen in SecureStore. Existing
+ * users updating the app therefore never get an intro for an app they already
+ * know.
  *
  * The pending flag is cleared when the walkthrough is skipped or reaches its
  * last page, not when it starts: an app killed halfway through has not actually
@@ -44,6 +50,12 @@ export const INTRO_PAGE_ORDER: readonly IntroPageId[] = [
   // landing over the middle of the walkthrough would interrupt it.
   'notifications',
 ];
+
+/** The notifications-only intro: just the question, nothing else. */
+const NOTIFICATIONS_ONLY_PAGE_ORDER: readonly IntroPageId[] = ['notifications'];
+
+/** Which walkthrough is running: the whole tour, or only its last page. */
+export type IntroMode = 'full' | 'notifications';
 
 /**
  * Where the intro is right now.
@@ -82,6 +94,13 @@ const clearSpotlightDeadline = (): void => {
 
 type IntroState = {
   phase: IntroPhase;
+  mode: IntroMode;
+  /**
+   * The notifications question was answered this session. The account records
+   * it too, but a refetch can lag the answer, and the notifications-only intro
+   * must not start again in that gap.
+   */
+  notificationsAnswered: boolean;
   /** An account was created on this device and has not been introduced yet. */
   isPending: boolean;
   /** Nothing starts until the stored flag is in, so the intro never flashes. */
@@ -90,6 +109,8 @@ type IntroState = {
 
 let state: IntroState = {
   phase: 'idle',
+  mode: 'full',
+  notificationsAnswered: false,
   isPending: false,
   isLoaded: false,
 };
@@ -133,8 +154,25 @@ export const markIntroPending = (): void => {
  */
 export const startIntroIfPending = (): boolean => {
   if (!state.isLoaded || !state.isPending || state.phase !== 'idle') return false;
-  update({ phase: 'pages' });
+  update({ phase: 'pages', mode: 'full' });
   return true;
+};
+
+/**
+ * Start the notifications-only intro for an account the app has never asked.
+ * Never while the full intro is owed: its own last page asks the same thing.
+ */
+export const startNotificationsIntro = (): boolean => {
+  if (!state.isLoaded || state.isPending || state.phase !== 'idle') return false;
+  if (state.notificationsAnswered) return false;
+  update({ phase: 'pages', mode: 'notifications' });
+  return true;
+};
+
+/** The notifications page was answered, one way or another. */
+export const markNotificationsAnswered = (): void => {
+  if (state.notificationsAnswered) return;
+  update({ notificationsAnswered: true });
 };
 
 /** Developer override: replay the intro from the Settings screen. */
@@ -142,7 +180,7 @@ export const startIntro = (): void => {
   // A replay started while a previous run's spotlight deadline is still
   // pending would otherwise be cut short by it.
   clearSpotlightDeadline();
-  update({ phase: 'pages' });
+  update({ phase: 'pages', mode: 'full' });
 };
 
 /**
@@ -199,6 +237,12 @@ const useIntroState = (): IntroState => {
 };
 
 export const useIntroPhase = (): IntroPhase => useIntroState().phase;
+
+/** The pages of the walkthrough that is running, in order. */
+export const useIntroPageOrder = (): readonly IntroPageId[] =>
+  useIntroState().mode === 'notifications' ? NOTIFICATIONS_ONLY_PAGE_ORDER : INTRO_PAGE_ORDER;
+
+export const useIntroMode = (): IntroMode => useIntroState().mode;
 
 /** False until the stored pending flag is in, so nothing starts too early. */
 export const useIsIntroLoaded = (): boolean => useIntroState().isLoaded;

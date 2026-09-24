@@ -44,6 +44,7 @@ import {
   when,
 } from "@/components/Showtimes/cards/card-parts"
 import { PanelActionButton } from "@/components/Showtimes/detail/PanelChrome"
+import { PersonAvatar } from "@/components/Showtimes/detail/PersonAvatar"
 import { PanelIcon } from "@/components/Showtimes/detail/panel-icons"
 import {
   MenuContent,
@@ -244,6 +245,11 @@ const OverviewSection = ({
           showtime={showtime}
           onSelect={onSelect}
           accessory={<Accessory kind={section.kind} showtime={showtime} />}
+          note={
+            section.kind === "invited" ? (
+              <InvitedByNote showtime={showtime} />
+            ) : null
+          }
         />
       ))}
     </Section>
@@ -269,16 +275,9 @@ const Accessory = ({
         </Tag>
       )
     }
-    case "invited": {
-      const inviters = showtime.viewer?.invited_by ?? []
-      if (!inviters.length) return null
-      const first = nameOf(inviters[0])
-      return (
-        <span className="mk-overview__by">
-          {inviters.length === 1 ? first : `${first} +${inviters.length - 1}`}
-        </span>
-      )
-    }
+    // An invite still shows who is interested or going, like every other
+    // list: the inviter's name in this slot used to crowd those out. Who
+    // invited you goes on its own line under the screening (`InvitedByNote`).
     default:
       return <AvatarStack showtime={showtime} size={28} max={5} align="end" />
   }
@@ -395,15 +394,35 @@ const Section = ({
   </section>
 )
 
+/** "You were invited by Anna", with Anna's avatar, under an invited row. */
+const InvitedByNote = ({ showtime }: { showtime: ShowtimePublic }) => {
+  const inviters = showtime.viewer?.invited_by ?? []
+  if (!inviters.length) return null
+  const first = nameOf(inviters[0])
+  return (
+    <span className="mk-overview__note">
+      <PersonAvatar user={inviters[0]} size={16} />
+      <span className="mk-overview__note-text">
+        {inviters.length === 1
+          ? `You were invited by ${first}`
+          : `You were invited by ${first} and ${inviters.length - 1} more`}
+      </span>
+    </span>
+  )
+}
+
 /** One screening: poster, title, when and where, and what the list is about. */
 const OverviewRow = ({
   showtime,
   onSelect,
   accessory,
+  note,
 }: {
   showtime: ShowtimePublic
   onSelect: (showtime: ShowtimePublic) => void
   accessory: ReactNode
+  /** A line under when and where, about this row in particular. */
+  note?: ReactNode
 }) => {
   // See `PortraitTicketCard`: whoever prints a day holds the day.
   useDayClock()
@@ -435,6 +454,7 @@ const OverviewRow = ({
           </span>
           <CinemaTagLink showtime={showtime} size="xs" />
         </span>
+        {note}
       </span>
       <span className="mk-overview__accessory">{accessory}</span>
     </div>

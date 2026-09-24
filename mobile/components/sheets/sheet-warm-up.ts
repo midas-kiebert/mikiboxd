@@ -48,7 +48,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 
-import { SHEET_OPEN_DURATION_MS } from "@/components/sheets/sheet-timing";
 
 /** Warm-ups waiting to run, in the order they were asked for. */
 const queue: ((release: () => void) => void)[] = [];
@@ -133,6 +132,13 @@ type WarmUpPhase = "presenting" | "closing" | "done";
 const WARM_UP_TIMEOUT_MS = 3000;
 
 /**
+ * After a timeout, how long the sheet stays hidden waiting to hear that it is
+ * closed before it is given up on and handed back anyway. Only reached when the
+ * sheet never mounted at all, so there is nothing that could appear.
+ */
+const LATE_CLOSE_BACKSTOP_MS = 10000;
+
+/**
  * Present-and-close the sheet once, returning whether that is still happening
  * — the caller must keep it invisible and its animations instant until this
  * goes false, and route the sheet's `onChange` into `onSheetChange`.
@@ -190,13 +196,19 @@ export function useSheetWarmUp(
       timersRef.current.push(
         setTimeout(() => {
           if (isCancelled) return;
-          // Put the sheet away before giving up on it. Un-hiding a sheet that
-          // never reported back could otherwise reveal one sitting wide open.
+          // Put the sheet away before giving up on it, and keep it hidden until
+          // it says it is closed (`onSheetChange` below). This used to un-hide
+          // it after a fixed beat — but on a slow start (sign-up, the intro and
+          // the first feed load all at once) the present had not landed yet,
+          // so the close was a no-op, the sheet was un-hidden, and the late
+          // present then slid it up on screen: the Cineville pass or an empty
+          // cinemas sheet appearing by itself right after the intro.
+          advance("closing");
           sheetRef.current?.close();
           timersRef.current.push(
             setTimeout(() => {
               if (!isCancelled) finish();
-            }, SHEET_OPEN_DURATION_MS + 60)
+            }, LATE_CLOSE_BACKSTOP_MS)
           );
         }, WARM_UP_TIMEOUT_MS)
       );
@@ -221,6 +233,12 @@ export function useSheetWarmUp(
       }
       if (phaseRef.current === "closing" && index === -1) {
         finish();
+        return;
+      }
+      // Still closing and yet open: a present that arrived after the timeout
+      // above gave up on it. Close it again, still hidden.
+      if (phaseRef.current === "closing" && index >= 0) {
+        requestAnimationFrame(() => sheetRef.current?.close());
       }
     },
     [sheetRef, finish, advance]

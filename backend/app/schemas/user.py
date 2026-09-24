@@ -97,6 +97,12 @@ class UserMe(UserPublic):
     # backend about who is one.
     can_watch_sold_out: bool
     has_password: bool
+    # Whether any device is registered to receive this account's pushes. A
+    # preference set to push without one reaches nobody, so the clients show it
+    # as off and do not offer push until a device registers.
+    has_push_token: bool
+    # Whether the app has asked this account how it wants to be notified.
+    app_notifications_prompted: bool
 
 
 class UserWithFriendStatus(UserPublic):

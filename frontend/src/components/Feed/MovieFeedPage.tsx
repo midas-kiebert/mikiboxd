@@ -27,6 +27,7 @@ import FilmRow, { FILM_ROW_LAYOUT } from "@/components/Movies/cards/FilmRow"
 import type { FilmTime } from "@/components/Movies/cards/film-card-kit"
 import ShowtimeDetailPanel from "@/components/Showtimes/ShowtimeDetailPanel"
 import { useShowtimePanelSlot } from "@/features/showtimes/showtime-panel-slot"
+import { FeedLinkParamsContext } from "@/features/showtimes/unfiltered-links"
 import { useFeedOverview } from "@/features/showtimes/useFeedOverview"
 import useInfiniteScroll from "@/hooks/useInfiniteScroll"
 
@@ -181,40 +182,43 @@ const MovieFeedPage = ({
     isSwitchingLayout || feed.isLoading || feed.isReplacingRows
 
   return (
-    <FeedPageShell
-      feed={feed}
-      header={header}
-      emptyText={emptyText}
-      filteredEmptyText={filteredEmptyText}
-      emptyState={emptyState}
-      showPresets={showPresets}
-      showGroupToggle={showGroupToggle}
-      searchPlaceholder="Search films…"
-      loadMoreRef={loadMoreRef}
-      grid
-      minListWidth={FILM_ROW_LAYOUT.minWidth}
-      detail={detail}
-      isLoadingRows={isLoadingRows}
-    >
-      <div style={ROW_STYLE}>
-        {(isLoadingRows ? [] : feed.movies).map((movie) => {
-          const delay = entranceDelays.get(movie.id) ?? 0
-          return (
-            <div
-              key={movie.id}
-              className={FEED_ITEM_CLASS}
-              style={delay ? { animationDelay: `${delay}ms` } : undefined}
-            >
-              <FilmRow
-                movie={movie}
-                selectedTimeId={selected?.id ?? null}
-                onSelectTime={(time) => handleSelectTime(movie, time)}
-              />
-            </div>
-          )
-        })}
-      </div>
-    </FeedPageShell>
+    // Film links in the list and the panel carry these filters with them.
+    <FeedLinkParamsContext.Provider value={feed.params}>
+      <FeedPageShell
+        feed={feed}
+        header={header}
+        emptyText={emptyText}
+        filteredEmptyText={filteredEmptyText}
+        emptyState={emptyState}
+        showPresets={showPresets}
+        showGroupToggle={showGroupToggle}
+        searchPlaceholder="Search films…"
+        loadMoreRef={loadMoreRef}
+        grid
+        minListWidth={FILM_ROW_LAYOUT.minWidth}
+        detail={detail}
+        isLoadingRows={isLoadingRows}
+      >
+        <div style={ROW_STYLE}>
+          {(isLoadingRows ? [] : feed.movies).map((movie) => {
+            const delay = entranceDelays.get(movie.id) ?? 0
+            return (
+              <div
+                key={movie.id}
+                className={FEED_ITEM_CLASS}
+                style={delay ? { animationDelay: `${delay}ms` } : undefined}
+              >
+                <FilmRow
+                  movie={movie}
+                  selectedTimeId={selected?.id ?? null}
+                  onSelectTime={(time) => handleSelectTime(movie, time)}
+                />
+              </div>
+            )
+          })}
+        </div>
+      </FeedPageShell>
+    </FeedLinkParamsContext.Provider>
   )
 }
 

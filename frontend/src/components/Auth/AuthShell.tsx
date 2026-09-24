@@ -87,13 +87,10 @@ export const AuthField = forwardRef<HTMLInputElement, AuthFieldProps>(
     const [isShown, setIsShown] = useState(false)
 
     return (
-      <div className="au-field">
-        <div className="au-field__row">
-          <label className="au-label" htmlFor={id}>
-            {label}
-          </label>
-          {aside}
-        </div>
+      <div className={aside ? "au-field au-field--with-aside" : "au-field"}>
+        <label className="au-label" htmlFor={id}>
+          {label}
+        </label>
         <div className="au-input-wrap">
           <input
             ref={ref}
@@ -124,6 +121,11 @@ export const AuthField = forwardRef<HTMLInputElement, AuthFieldProps>(
             </button>
           ) : null}
         </div>
+        {/* After the input in the DOM, beside the label on screen (grid), so
+            Tab goes from this field's label straight into its input and on to
+            the next field — "Forgot password?" used to sit between the email
+            and password inputs in the tab order. */}
+        {aside ? <div className="au-field__aside">{aside}</div> : null}
         {error ? (
           <p className="au-error" id={`${id}-error`}>
             {error}

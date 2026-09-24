@@ -848,7 +848,7 @@ function RootLayourContent() {
     if (!isRemotePushAvailable) return;
 
     const pushTokenListener = Notifications.addPushTokenListener(() => {
-      void registerPushTokenForCurrentDevice({ userId }).catch((error) => {
+      void registerPushTokenForCurrentDevice({ userId, prompt: false }).catch((error) => {
         reportError('Error refreshing push token after token update', error)
       })
     })

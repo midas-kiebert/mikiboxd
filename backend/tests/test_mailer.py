@@ -373,3 +373,23 @@ def test_runs_of_blank_lines_collapse_to_one():
     text = _html_to_plain_text("<p>A</p><div></div><div></div><p>B</p>")
 
     assert text == "A\n\nB"
+
+
+def test_notification_email_carries_a_per_recipient_unsubscribe_link():
+    from app.mailer import (
+        UNSUBSCRIBE_LINK_PLACEHOLDER,
+        generate_friend_request_email,
+    )
+
+    email = generate_friend_request_email(heading="Sam sent you a friend request")
+    assert UNSUBSCRIBE_LINK_PLACEHOLDER in email.html_content
+
+    personal = email.with_unsubscribe(
+        link="https://api.example/unsub?token=abc",
+        label="Unsubscribe from friend request emails",
+    )
+
+    assert UNSUBSCRIBE_LINK_PLACEHOLDER not in personal.html_content
+    assert "https://api.example/unsub?token=abc" in personal.html_content
+    assert "Unsubscribe from friend request emails" in personal.html_content
+    assert "Manage notification preferences" in personal.html_content

@@ -70,11 +70,30 @@
   gap: 6px;
 }
 
-.au-field__row {
-  display: flex;
+/* A field with something beside its label ("Forgot password?"): the aside
+   comes after the input in the DOM, for tab order, and is placed back beside
+   the label here. */
+.au-field--with-aside {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 8px;
+  row-gap: 6px;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
+}
+
+.au-field--with-aside > .au-label {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.au-field--with-aside > .au-field__aside {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.au-field--with-aside > .au-input-wrap,
+.au-field--with-aside > .au-error {
+  grid-column: 1 / -1;
 }
 
 .au-label {
@@ -152,6 +171,22 @@
   border-radius: 10px;
   background: var(--chakra-colors-app-red\.primary);
   font-size: 13px;
+}
+
+/* A plain-language heads-up inside a form card, e.g. "you're signed in as…". */
+.au-note {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--chakra-colors-bg-muted);
+  color: var(--chakra-colors-fg-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.au-note strong {
+  color: var(--chakra-colors-fg);
+  overflow-wrap: anywhere;
 }
 
 .au-link {

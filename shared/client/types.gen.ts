@@ -117,6 +117,19 @@ export type AnalyticsOverview = {
   notifications_clicked: number
 }
 
+export type AwayEventsPublic = {
+  upcoming_invites: Array<AwayInvite>
+  missed_invites: Array<AwayInvite>
+  friend_requests: number
+  sold_out: Array<ScreeningSummary>
+}
+
+export type AwayInvite = {
+  sender_id: string
+  sender_name: string | null
+  screening: ScreeningSummary
+}
+
 /**
  * One row of the "Blocked accounts" list.
  *
@@ -720,6 +733,15 @@ export type ScrapeRunView = {
   readonly is_anomaly: boolean
 }
 
+export type ScreeningSummary = {
+  showtime_id: number
+  movie_id: number
+  movie_title: string
+  poster_link: string | null
+  cinema_name: string
+  datetime: string
+}
+
 /**
  * Which end of a room's stored seat geometry the screen sits at.
  *
@@ -1263,6 +1285,8 @@ export type UserMe = {
   can_report: boolean
   can_watch_sold_out: boolean
   has_password: boolean
+  has_push_token: boolean
+  app_notifications_prompted: boolean
 }
 
 export type UserPublic = {
@@ -1361,6 +1385,7 @@ export type UserUpdate = {
   notify_channel_showtime_reminder?: NotificationChannel | null
   notify_watchlist_digest_enabled?: boolean | null
   use_letterboxd_avatar?: boolean | null
+  app_notifications_prompted?: boolean | null
   notify_watchlist_digest_frequency?: DigestFrequency | null
   notify_watchlist_digest_list_id?: string | null
   notify_watchlist_digest_cinema_preset_id?: string | null
@@ -1546,14 +1571,6 @@ export type AdminListScrapeRecapsData = {
 
 export type AdminListScrapeRecapsResponse = Array<ScrapeRecapView>
 
-export type AdminGetPublishTimingData = {
-  cinemaId?: number | null
-  days?: number
-  source?: PublishTimingSource
-}
-
-export type AdminGetPublishTimingResponse = PublishTimingResponse
-
 export type AdminGetScrapeRecapData = {
   recapId: number
 }
@@ -1566,6 +1583,14 @@ export type AdminGetScrapeRecapAttachmentData = {
 }
 
 export type AdminGetScrapeRecapAttachmentResponse = unknown
+
+export type AdminGetPublishTimingData = {
+  cinemaId?: number | null
+  days?: number
+  source?: PublishTimingSource
+}
+
+export type AdminGetPublishTimingResponse = PublishTimingResponse
 
 export type AdminListTmdbAmbiguitiesData = {
   includeReviewed?: boolean
@@ -1996,6 +2021,15 @@ export type MeGetActivitySummaryData = {
 }
 
 export type MeGetActivitySummaryResponse = ActivitySummaryPublic
+
+export type MeGetAwayEventsData = {
+  /**
+   * When the app was last in use
+   */
+  since: string
+}
+
+export type MeGetAwayEventsResponse = AwayEventsPublic
 
 export type MeGetMyShowtimePingsData = {
   limit?: number

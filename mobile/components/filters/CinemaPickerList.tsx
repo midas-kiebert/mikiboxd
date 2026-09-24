@@ -3,9 +3,10 @@
  * dialog rather than a full sheet. Cities with enough cinemas get their own
  * section and a select-all shortcut; the rest share an "Other cinemas" bucket.
  *
- * Per-city deselecting is opt-in (`onDeselectCinemas`): in a dialog one global
- * clear is easier to find than a row of per-section clear links, but the full
- * cinema sheet is long enough that walking back up to it is a chore.
+ * Per-city deselecting is opt-in (`onDeselectCinemas`), but every picker in the
+ * app now passes it: a city's link flipping from "Select all" to nothing once
+ * the city is selected read as a missing control, next to the website's
+ * "Deselect all" (`frontend/src/components/Feed/CinemaChecklist.tsx`).
  *
  * Long-press a cinema to select only that one — the app's take on the web's
  * double-click (`frontend/src/components/Feed/CinemaChecklist.tsx`). A long

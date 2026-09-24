@@ -34,8 +34,7 @@ import {
 } from "shared/hooks/useLetterboxdLists";
 
 import { FilterSubLabel } from "@/components/filters/FilterSection";
-import LetterboxdUsernamePrompt from "@/components/filters/LetterboxdUsernamePrompt";
-import SignedOutPanel from "@/components/auth/SignedOutPanel";
+import LetterboxdConnectCard from "@/components/filters/LetterboxdConnectCard";
 import { useIsSignedIn } from "@/utils/auth-session";
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
@@ -54,6 +53,8 @@ type WatchProps = {
   hideWatched: boolean;
   setHideWatched: (v: boolean) => void;
   setWatchedOnly: (v: boolean) => void;
+  /** Closes the sheet, for the connect card's log-in and sign-up buttons. */
+  onLeave?: () => void;
 };
 
 type ListProps = {
@@ -93,8 +94,9 @@ function invalidateWatchData(queryClient: ReturnType<typeof useQueryClient>) {
 }
 
 /**
- * The Letterboxd section: watchlist and watched. Without a username linked, a
- * prompt for one takes their place; a guest gets the sign-in card instead.
+ * The Letterboxd section: watchlist and watched. Without a username linked, or
+ * without an account, a collapsed card offering the missing piece takes their
+ * place (`LetterboxdConnectCard`).
  */
 export function LetterboxdWatchFilters({
   colors,
@@ -105,6 +107,7 @@ export function LetterboxdWatchFilters({
   hideWatched,
   setHideWatched,
   setWatchedOnly,
+  onLeave,
 }: WatchProps) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -141,12 +144,10 @@ export function LetterboxdWatchFilters({
       });
   };
 
-  if (!isSignedIn) {
-    // Connecting Letterboxd writes a username onto an account, so there is
-    // nothing to offer a guest here but the account itself.
-    return <SignedOutPanel variant="card" feature="letterboxd" />;
-  }
-  if (!canUseWatchlistFilter) return <LetterboxdUsernamePrompt />;
+  // Connecting Letterboxd writes a username onto an account, so a guest is
+  // offered the account itself — in the same collapsed card, not the full-size
+  // sign-in panel, which was taller than the filters it stood in for.
+  if (!isSignedIn || !canUseWatchlistFilter) return <LetterboxdConnectCard onLeave={onLeave} />;
 
   return (
     <>

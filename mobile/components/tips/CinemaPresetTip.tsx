@@ -116,6 +116,14 @@ export default function CinemaPresetTip() {
     });
   }, []);
 
+  const handleDeselectCinemas = useCallback((cinemaIds: readonly number[]) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      cinemaIds.forEach((id) => next.delete(id));
+      return next;
+    });
+  }, []);
+
   const handleClearAll = useCallback(() => {
     triggerSelectionHaptic();
     setSelectedIds(new Set());
@@ -185,6 +193,7 @@ export default function CinemaPresetTip() {
           onToggleCinema={handleToggleCinema}
           onOnlyCinema={handleOnlyCinema}
           onSelectCinemas={handleSelectCinemas}
+          onDeselectCinemas={handleDeselectCinemas}
         />
       </ScrollView>
     </FeatureTipModal>

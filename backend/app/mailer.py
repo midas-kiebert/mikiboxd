@@ -61,6 +61,14 @@ class DigestSource:
     cinemas_label: str
 
 
+# Stand-ins for the per-recipient unsubscribe link in the notification emails.
+# Those are rendered once and sent to everyone the event concerns, but the link
+# is signed for one user, so it is filled in per recipient at send time — see
+# `EmailData.with_unsubscribe`.
+UNSUBSCRIBE_LINK_PLACEHOLDER = "__MIKINO_UNSUBSCRIBE_LINK__"
+UNSUBSCRIBE_LABEL_PLACEHOLDER = "__MIKINO_UNSUBSCRIBE_LABEL__"
+
+
 @dataclass
 class EmailData:
     html_content: str
@@ -68,6 +76,20 @@ class EmailData:
     # Hand-written text/plain alternative. Generators that care about the
     # wording set it; the rest fall back to _html_to_plain_text().
     text_content: str = ""
+
+    def with_unsubscribe(self, *, link: str, label: str) -> "EmailData":
+        """This email with its unsubscribe placeholders filled in for one user."""
+
+        def fill(content: str) -> str:
+            return content.replace(
+                UNSUBSCRIBE_LINK_PLACEHOLDER, html.escape(link)
+            ).replace(UNSUBSCRIBE_LABEL_PLACEHOLDER, html.escape(label))
+
+        return EmailData(
+            html_content=fill(self.html_content),
+            subject=self.subject,
+            text_content=fill(self.text_content),
+        )
 
 
 class EmailDeliveryError(Exception):
@@ -181,7 +203,9 @@ def send_email(
     if not is_deliverable_address(email_to):
         # Treated as sent, so callers record it exactly as they would in
         # production and the rest of the flow can still be tested.
-        logger.info("Suppressed email to %s outside production: not allowlisted", email_to)
+        logger.info(
+            "Suppressed email to %s outside production: not allowlisted", email_to
+        )
         return
     message = emails.Message(
         subject=subject,
@@ -508,6 +532,8 @@ def _generate_activity_notification_email(
             "cta_label": cta_label,
             "cta_link": cta_link,
             "settings_link": f"{settings.FRONTEND_HOST}/settings",
+            "unsubscribe_link": UNSUBSCRIBE_LINK_PLACEHOLDER,
+            "unsubscribe_label": UNSUBSCRIBE_LABEL_PLACEHOLDER,
         },
     )
     return EmailData(html_content=html_content, subject=subject)

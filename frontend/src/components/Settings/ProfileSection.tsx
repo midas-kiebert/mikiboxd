@@ -26,11 +26,7 @@ import useCustomToast from "@/hooks/useCustomToast"
 import { emailPattern, usernameMaxLength, usernamePattern } from "@/utils"
 
 import EmailVerificationDialog from "./EmailVerificationDialog"
-import {
-  ConfirmDialog,
-  SettingsField,
-  SettingsSection,
-} from "./settings-controls"
+import { SettingsField, SettingsSection } from "./settings-controls"
 import { sectionMeta } from "./settings-sections"
 
 /** Long enough that the spinner reads as a check rather than a flicker. */
@@ -49,9 +45,6 @@ const ProfileSection = ({ onGoToPassword }: { onGoToPassword: () => void }) => {
   const [currentPassword, setCurrentPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [isVerificationOpen, setIsVerificationOpen] = useState(false)
-  const [verificationSentTo, setVerificationSentTo] = useState<string | null>(
-    null,
-  )
   const [isChecking, setIsChecking] = useState(false)
 
   // The fields follow the account whenever it changes, and start from it.
@@ -73,11 +66,14 @@ const ProfileSection = ({ onGoToPassword }: { onGoToPassword: () => void }) => {
       queryClient.setQueryData(["currentUser"], updated)
       const before = (user?.email ?? "").trim().toLowerCase()
       const after = variables.email?.trim() ?? ""
-      if (after && after.toLowerCase() !== before) {
-        setVerificationSentTo(after)
-        return
-      }
-      showSuccessToast("Profile updated.")
+      // A new address is now unconfirmed, which brings up the "Confirm your
+      // email" tip (`Tips/VerifyEmailTip`) with its "Send the link again". It
+      // used to be joined by a second, plainer dialog from here saying the same.
+      showSuccessToast(
+        after && after.toLowerCase() !== before
+          ? `Profile updated. We sent a confirmation link to ${after}.`
+          : "Profile updated.",
+      )
     },
     // The server's own words: "that username is taken" is something to act on.
     onError: (err) => setError(handleError(err as ApiError)),
@@ -252,15 +248,6 @@ const ProfileSection = ({ onGoToPassword }: { onGoToPassword: () => void }) => {
       <EmailVerificationDialog
         open={isVerificationOpen}
         onClose={() => setIsVerificationOpen(false)}
-      />
-      <ConfirmDialog
-        open={verificationSentTo !== null}
-        title="Confirm your new email"
-        message={`Your profile is saved. We sent a confirmation link to ${verificationSentTo ?? ""} — open it to confirm the address is yours. Until then nothing can be emailed to you.`}
-        cancelLabel={null}
-        confirmLabel="Got it"
-        onConfirm={() => {}}
-        onClose={() => setVerificationSentTo(null)}
       />
     </SettingsSection>
   )

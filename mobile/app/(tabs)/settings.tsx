@@ -157,7 +157,7 @@ function SettingsScreen() {
     confirm_password: '',
   });
   // The notification preferences, their delivery channels and the OS permission
-  // state, shared with the notification-permission tip.
+  // state.
   const notificationPreferences = useNotificationPreferences();
   // Local state for the watchlist new-showtime email digest master switch.
   // Per-source settings (frequency, list, cinemas) live in
@@ -692,6 +692,63 @@ function SettingsScreen() {
         </View>
         ) : null}
 
+        {/* Straight after the profile, as on the website's Settings page. */}
+        {isSignedIn ? (
+        <View style={styles.section}>
+          <ThemedText style={styles.sectionTitle}>{hasPassword ? 'Password' : 'Add password'}</ThemedText>
+          <View style={styles.card}>
+            {hasPassword ? (
+              <>
+                <ThemedText style={styles.label}>Current password</ThemedText>
+                <TextInput
+                  style={styles.input}
+                  value={passwords.current_password}
+                  onChangeText={(value) => setPasswords((prev) => ({ ...prev, current_password: value }))}
+                  placeholder="Current password"
+                  placeholderTextColor={colors.textSecondary}
+                  secureTextEntry
+                />
+              </>
+            ) : (
+              <ThemedText style={styles.helperText}>
+                Your account signed in with Apple or Google and has no password yet. Add
+                one to also be able to log in with your email.
+              </ThemedText>
+            )}
+            <ThemedText style={styles.label}>New password</ThemedText>
+            <TextInput
+              style={styles.input}
+              value={passwords.new_password}
+              onChangeText={(value) => setPasswords((prev) => ({ ...prev, new_password: value }))}
+              placeholder="New password"
+              placeholderTextColor={colors.textSecondary}
+              secureTextEntry
+            />
+            <ThemedText style={styles.label}>Confirm password</ThemedText>
+            <TextInput
+              style={styles.input}
+              value={passwords.confirm_password}
+              onChangeText={(value) => setPasswords((prev) => ({ ...prev, confirm_password: value }))}
+              placeholder="Confirm password"
+              placeholderTextColor={colors.textSecondary}
+              secureTextEntry
+            />
+            <TouchableOpacity
+              style={[
+                styles.primaryButton,
+                (isPasswordSaving || isPasswordFormIncomplete) && styles.buttonDisabled,
+              ]}
+              onPress={handlePasswordSave}
+              disabled={isPasswordSaving || isPasswordFormIncomplete}
+            >
+              <ThemedText style={styles.primaryButtonText}>
+                {isPasswordSaving ? 'Saving...' : hasPassword ? 'Update password' : 'Add password'}
+              </ThemedText>
+            </TouchableOpacity>
+          </View>
+        </View>
+        ) : null}
+
         {isSignedIn ? (
         <View style={styles.section} onLayout={handleLetterboxdSectionLayout}>
           <ThemedText style={styles.sectionTitle}>Letterboxd</ThemedText>
@@ -948,62 +1005,6 @@ function SettingsScreen() {
                 onValueChange={setRemoveInterestedReminderEnabled}
               />
             </View>
-          </View>
-        </View>
-        ) : null}
-
-        {isSignedIn ? (
-        <View style={styles.section}>
-          <ThemedText style={styles.sectionTitle}>{hasPassword ? 'Password' : 'Add password'}</ThemedText>
-          <View style={styles.card}>
-            {hasPassword ? (
-              <>
-                <ThemedText style={styles.label}>Current password</ThemedText>
-                <TextInput
-                  style={styles.input}
-                  value={passwords.current_password}
-                  onChangeText={(value) => setPasswords((prev) => ({ ...prev, current_password: value }))}
-                  placeholder="Current password"
-                  placeholderTextColor={colors.textSecondary}
-                  secureTextEntry
-                />
-              </>
-            ) : (
-              <ThemedText style={styles.helperText}>
-                Your account signed in with Apple or Google and has no password yet. Add
-                one to also be able to log in with your email.
-              </ThemedText>
-            )}
-            <ThemedText style={styles.label}>New password</ThemedText>
-            <TextInput
-              style={styles.input}
-              value={passwords.new_password}
-              onChangeText={(value) => setPasswords((prev) => ({ ...prev, new_password: value }))}
-              placeholder="New password"
-              placeholderTextColor={colors.textSecondary}
-              secureTextEntry
-            />
-            <ThemedText style={styles.label}>Confirm password</ThemedText>
-            <TextInput
-              style={styles.input}
-              value={passwords.confirm_password}
-              onChangeText={(value) => setPasswords((prev) => ({ ...prev, confirm_password: value }))}
-              placeholder="Confirm password"
-              placeholderTextColor={colors.textSecondary}
-              secureTextEntry
-            />
-            <TouchableOpacity
-              style={[
-                styles.primaryButton,
-                (isPasswordSaving || isPasswordFormIncomplete) && styles.buttonDisabled,
-              ]}
-              onPress={handlePasswordSave}
-              disabled={isPasswordSaving || isPasswordFormIncomplete}
-            >
-              <ThemedText style={styles.primaryButtonText}>
-                {isPasswordSaving ? 'Saving...' : hasPassword ? 'Update password' : 'Add password'}
-              </ThemedText>
-            </TouchableOpacity>
           </View>
         </View>
         ) : null}

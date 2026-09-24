@@ -231,7 +231,7 @@
                   <tbody>
                     <tr>
                       <td align="left" style="font-size:0px;padding:0;word-break:break-word;">
-                        <div style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;line-height:18px;text-align:left;color:#8a8a8a;"><a href="{{ settings_link }}" style="color:#8a8a8a;text-decoration:underline;">Manage notification preferences</a>.</div>
+                        <div style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;font-size:12px;line-height:18px;text-align:left;color:#8a8a8a;">{% if unsubscribe_link %}<a href="{{ unsubscribe_link }}" style="color:#8a8a8a;text-decoration:underline;">{{ unsubscribe_label }}</a> &middot; {% endif %}<a href="{{ settings_link }}" style="color:#8a8a8a;text-decoration:underline;">Manage notification preferences</a></div>
                       </td>
                     </tr>
                   </tbody>

@@ -1,9 +1,10 @@
 """User Endpoints."""
 
+import html
 from urllib.parse import urlencode
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.api.deps import (
@@ -20,6 +21,7 @@ from app.schemas.showtime import ShowtimePublic
 from app.schemas.user import UserPublic, UserWithFriendStatus
 from app.schemas.user_report import UserReportCreate
 from app.services import moderation as moderation_service
+from app.services import notification_unsubscribe
 from app.services import users as users_service
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -41,6 +43,68 @@ def unsubscribe_watchlist_digest(session: SessionDep, token: str) -> HTMLRespons
         session.add(user)
         session.commit()
     return HTMLResponse("<p>You will no longer receive watchlist digest emails.</p>")
+
+
+def _unsubscribe_page(body: str, *, status_code: int = 200) -> HTMLResponse:
+    """A minimal standalone page: this is opened from an inbox, signed out."""
+    settings_link = html.escape(f"{settings.FRONTEND_HOST}/settings")
+    return HTMLResponse(
+        "<!doctype html><html><head><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<title>MiKiNO notifications</title>"
+        "<style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',"
+        "Roboto,Helvetica,Arial,sans-serif;max-width:420px;margin:64px auto;"
+        "padding:0 16px;color:#1a1a1a;line-height:1.5}"
+        "button{font:inherit;font-weight:600;padding:10px 18px;border:0;"
+        "border-radius:8px;background:#0b6e64;color:#fff;cursor:pointer}"
+        "a{color:#0b6e64}</style></head><body>"
+        f"{body}"
+        f"<p><a href='{settings_link}'>Manage all notification preferences</a></p>"
+        "</body></html>",
+        status_code=status_code,
+    )
+
+
+@router.get(
+    "/unsubscribe-notification", response_class=HTMLResponse, include_in_schema=False
+)
+def confirm_unsubscribe_notification(token: str) -> HTMLResponse:
+    """The page an email's unsubscribe link opens: one button to confirm.
+
+    Nothing changes on GET — mail scanners open links on their own, and one
+    that did would silently unsubscribe whoever the email was for.
+    """
+    label = notification_unsubscribe.describe(token)
+    if label is None:
+        return _unsubscribe_page(
+            "<p>This unsubscribe link is invalid.</p>", status_code=400
+        )
+    return _unsubscribe_page(
+        f"<p>Stop receiving {html.escape(label)} from MiKiNO?</p>"
+        "<form method='post'>"
+        f"<input type='hidden' name='token' value='{html.escape(token)}'>"
+        "<button type='submit'>Unsubscribe</button></form>"
+    )
+
+
+@router.post(
+    "/unsubscribe-notification", response_class=HTMLResponse, include_in_schema=False
+)
+def unsubscribe_notification(
+    session: SessionDep, token: str = Form(...)
+) -> HTMLResponse:
+    """Turn off one kind of notification for the user the link was sent to.
+
+    No authentication — the signed token names the user and the preference.
+    """
+    label = notification_unsubscribe.unsubscribe(session=session, token=token)
+    if label is None:
+        return _unsubscribe_page(
+            "<p>This unsubscribe link is invalid.</p>", status_code=400
+        )
+    return _unsubscribe_page(
+        f"<p>Done. You will no longer receive {html.escape(label)}.</p>"
+    )
 
 
 @router.get("/verify-email", include_in_schema=False)

@@ -5,6 +5,9 @@
  * comes back on every start until the address is confirmed, and has no "Don't
  * show this again". The website's "start" is a browser session — closing it
  * holds until the tab is closed, so it does not reappear on every navigation.
+ * Closing is remembered per address: changing the email in Settings brings it
+ * straight back for the new one (Settings has no confirmation dialog of its own
+ * any more — it used to open a second, plainer one alongside this).
  *
  * The address is spelled out because the commonest reason a link never
  * arrives is a typo in it. Waits while the first-run intro is up, like the
@@ -31,11 +34,12 @@ import "./tips.css"
 
 const CLOSED_THIS_SESSION_KEY = "mikino.verify-email.closed"
 
-const wasClosedThisSession = () => {
+/** The address the tip was last closed for in this session, if any. */
+const readClosedFor = (): string | null => {
   try {
-    return sessionStorage.getItem(CLOSED_THIS_SESSION_KEY) === "1"
+    return sessionStorage.getItem(CLOSED_THIS_SESSION_KEY)
   } catch {
-    return false
+    return null
   }
 }
 
@@ -43,20 +47,32 @@ const VerifyEmailTip = () => {
   const isSignedIn = useIsSignedIn()
   const { user } = useAuth()
   const introPending = useIntroPending()
-  const [isClosed, setIsClosed] = useState(wasClosedThisSession)
+  const [closedFor, setClosedFor] = useState(readClosedFor)
   const [hasResent, setHasResent] = useState(false)
+  // A "Link sent" for the old address never carries over to a new one.
+  const [shownFor, setShownFor] = useState(user?.email ?? null)
+  if ((user?.email ?? null) !== shownFor) {
+    setShownFor(user?.email ?? null)
+    setHasResent(false)
+  }
 
   // Only on an answer we have: `user` undefined is "not loaded", not "unconfirmed".
-  if (!isSignedIn || !user || user.email_verified || introPending || isClosed)
+  if (
+    !isSignedIn ||
+    !user ||
+    user.email_verified ||
+    introPending ||
+    closedFor === user.email
+  )
     return null
 
   const close = () => {
     try {
-      sessionStorage.setItem(CLOSED_THIS_SESSION_KEY, "1")
+      sessionStorage.setItem(CLOSED_THIS_SESSION_KEY, user.email)
     } catch {
       // Then it just comes back on the next page load.
     }
-    setIsClosed(true)
+    setClosedFor(user.email)
   }
 
   return (
@@ -78,9 +94,9 @@ const VerifyEmailTip = () => {
               </span>
               <h2 className="in-title">Confirm your email</h2>
               <p className="in-message">
-                We sent you a link when you signed up. Open it to confirm this
-                address is yours. You'll need it to get back in if you forget
-                your password, and nothing can be emailed to you until you do.
+                We sent a link to this address. Open it to confirm the address
+                is yours. You'll need it to get back in if you forget your
+                password, and nothing can be emailed to you until you do.
               </p>
               <p className="tp-address">{user.email}</p>
               <p className="in-help">

@@ -34,6 +34,8 @@ from app.mailer import (
 )
 from app.models.showtime import Showtime
 from app.models.showtime_selection import ShowtimeSelection
+from app.models.user import User
+from app.services import notification_unsubscribe
 from app.utils import now_amsterdam_naive
 
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
@@ -195,7 +197,20 @@ def _showtime_subtitle(*, cinema_name: str, dt: datetime) -> str:
     return f"{cinema_name} • {dt.strftime('%A, %b %d at %H:%M')}"
 
 
-def _send_templated_email(*, email_to: str, email_data: EmailData) -> bool:
+def _send_templated_email(
+    *, recipient: User, email_data: EmailData, preference: str
+) -> bool:
+    """Mail one notification to one user, signed with their unsubscribe link.
+
+    `preference` is the `notify_on_*` field this email answers to; its link
+    turns exactly that off. An unconfirmed address gets nothing: email can be
+    chosen as a channel before the address is confirmed, but nothing is sent
+    to it until then.
+    """
+    email_to = recipient.email
+    if not recipient.email_verified:
+        logger.info("Skipping email notification to unconfirmed %s", email_to)
+        return False
     if not settings.emails_enabled:
         logger.info(
             "Email notifications are disabled; skipping delivery to %s",
@@ -203,12 +218,16 @@ def _send_templated_email(*, email_to: str, email_data: EmailData) -> bool:
         )
         return False
 
+    link, label = notification_unsubscribe.unsubscribe_link(
+        user_id=recipient.id, preference=preference
+    )
+    personal = email_data.with_unsubscribe(link=link, label=label)
     try:
         send_email(
             email_to=email_to,
-            subject=email_data.subject,
-            html_content=email_data.html_content,
-            text_content=email_data.text_content,
+            subject=personal.subject,
+            html_content=personal.html_content,
+            text_content=personal.text_content,
         )
         return True
     except (AssertionError, EmailDeliveryError, Exception):
@@ -448,7 +467,11 @@ def notify_friends_on_showtime_selection(
             showtime_datetime_label=showtime.datetime.strftime("%a, %b %d at %H:%M"),
         )
         for recipient in email_recipients:
-            _send_templated_email(email_to=recipient.email, email_data=email_data)
+            _send_templated_email(
+                recipient=recipient,
+                email_data=email_data,
+                preference="notify_on_friend_showtime_match",
+            )
 
 
 def notify_inviters_on_response(
@@ -573,7 +596,11 @@ def notify_inviters_on_response(
             showtime_datetime_label=showtime.datetime.strftime("%a, %b %d at %H:%M"),
         )
         for recipient in email_recipients:
-            _send_templated_email(email_to=recipient.email, email_data=email_data)
+            _send_templated_email(
+                recipient=recipient,
+                email_data=email_data,
+                preference="notify_on_invite_response",
+            )
 
 
 def notify_user_on_friend_request(
@@ -594,7 +621,11 @@ def notify_user_on_friend_request(
     body = ""
     if receiver.notify_channel_friend_requests == NotificationChannel.EMAIL:
         email_data = generate_friend_request_email(heading=subject)
-        _send_templated_email(email_to=receiver.email, email_data=email_data)
+        _send_templated_email(
+            recipient=receiver,
+            email_data=email_data,
+            preference="notify_on_friend_requests",
+        )
         return
 
     push_tokens = push_token_crud.get_push_tokens_for_users(
@@ -665,7 +696,11 @@ def notify_user_on_friend_request_accepted(
     body = ""
     if requester.notify_channel_friend_requests == NotificationChannel.EMAIL:
         email_data = generate_friend_request_accepted_email(heading=subject)
-        _send_templated_email(email_to=requester.email, email_data=email_data)
+        _send_templated_email(
+            recipient=requester,
+            email_data=email_data,
+            preference="notify_on_friend_requests",
+        )
         return
 
     push_tokens = push_token_crud.get_push_tokens_for_users(
@@ -741,7 +776,11 @@ def notify_user_on_showtime_ping(
             cinema_name=showtime.cinema.name,
             showtime_datetime_label=formatted_datetime,
         )
-        _send_templated_email(email_to=receiver.email, email_data=email_data)
+        _send_templated_email(
+            recipient=receiver,
+            email_data=email_data,
+            preference="notify_on_showtime_ping",
+        )
         return
 
     push_tokens = push_token_crud.get_push_tokens_for_users(
@@ -831,7 +870,11 @@ def notify_user_on_showtime_reminder(
             cinema_name=showtime.cinema.name,
             showtime_datetime_label=formatted_datetime,
         )
-        return _send_templated_email(email_to=receiver.email, email_data=email_data)
+        return _send_templated_email(
+            recipient=receiver,
+            email_data=email_data,
+            preference="notify_on_showtime_reminder",
+        )
 
     push_tokens = push_token_crud.get_push_tokens_for_users(
         session=session,
@@ -946,9 +989,20 @@ def send_seat_alerts(
     push_message_user_ids: list[UUID] = []
     alerted_selections: list[ShowtimeSelection] = []
 
+    # Sold out is stamped even when nothing is sent: the stamp is also the
+    # record that this screening sold out while the user was interested, which
+    # the app's "one of your screenings sold out" tip reads
+    # (`GET /me/away-events`) to offer exactly the notification that was off.
+    # The other kinds stay unstamped, so switching them on later still works.
+    silenced_selections: list[ShowtimeSelection] = []
+
     for selection, showtime in candidates:
         recipient = recipients_by_id.get(selection.user_id)
-        if recipient is None or not getattr(recipient, copy.enabled_field):
+        if recipient is None:
+            continue
+        if not getattr(recipient, copy.enabled_field):
+            if kind is SeatAlertKind.SOLD_OUT:
+                silenced_selections.append(selection)
             continue
 
         title = copy.headline(showtime.movie.title)
@@ -981,7 +1035,11 @@ def send_seat_alerts(
                     "%a, %b %d at %H:%M"
                 ),
             )
-            _send_templated_email(email_to=recipient.email, email_data=email_data)
+            _send_templated_email(
+                recipient=recipient,
+                email_data=email_data,
+                preference=copy.enabled_field,
+            )
             # Stamped whether or not the mail went out: a failed send is not a
             # reason to try the same person again on the next crossing, and
             # there is no second crossing to try on anyway.
@@ -1008,7 +1066,7 @@ def send_seat_alerts(
             push_message_user_ids.append(recipient.id)
         alerted_selections.append(selection)
 
-    for selection in alerted_selections:
+    for selection in [*alerted_selections, *silenced_selections]:
         setattr(selection, sent_at_field, reference_time)
         session.add(selection)
     session.commit()
@@ -1193,8 +1251,9 @@ def send_interested_showtime_reminders(
                     showtime_datetime_label=formatted_datetime,
                 )
                 sent = _send_templated_email(
-                    email_to=recipient.email,
+                    recipient=recipient,
                     email_data=email_data,
+                    preference="notify_on_interest_reminder",
                 )
                 if sent:
                     reminded_selections.append(selection)

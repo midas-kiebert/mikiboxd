@@ -262,10 +262,12 @@ const MovieDetail = ({
     // Optimistic — the button says "Copied" on the press and the write settles
     // behind it.
     setCopied(true)
-    void navigator.clipboard
-      ?.writeText(window.location.href)
-      .catch(() => setCopied(false))
-  }, [])
+    // The film's own address, not this page's: the page carries the filters
+    // it was opened with (and a filter rail's own) in its query string, and a
+    // shared film should open plainly for whoever receives it.
+    const filmUrl = `${window.location.origin}/movie/${encodeURIComponent(String(movie.id))}`
+    void navigator.clipboard?.writeText(filmUrl).catch(() => setCopied(false))
+  }, [movie.id])
 
   const summary = useMemo(() => asFilmSummary(movie), [movie])
   const days = useMemo(() => groupByDay(timesOf(summary)), [summary])

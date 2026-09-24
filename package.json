@@ -15,6 +15,9 @@
         },
         "onlyBuiltDependencies": [
             "@sentry/cli"
-        ]
+        ],
+        "patchedDependencies": {
+            "@gorhom/bottom-sheet@5.2.14": "patches/@gorhom__bottom-sheet@5.2.14.patch"
+        }
     }
 }

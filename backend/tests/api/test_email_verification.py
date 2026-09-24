@@ -279,12 +279,14 @@ def test_unverified_account_cannot_enable_the_watchlist_digest(
     assert refreshed.notify_watchlist_digest_enabled is False
 
 
-def test_unverified_account_cannot_route_notifications_to_email(
+def test_unverified_account_can_choose_email_as_a_notification_channel(
     client: TestClient,
     normal_user_token_headers: dict[str, str],
     db_transaction: Session,
 ) -> None:
-    """The digest is not the only way to point something at an inbox."""
+    """Email is a valid choice before the address is confirmed (the intro
+    offers it to brand-new accounts); nothing is mailed until it is — see
+    `push_notifications._send_templated_email`."""
     user = db_transaction.exec(
         select(User).where(User.email == settings.EMAIL_TEST_USER)
     ).one()
@@ -299,12 +301,8 @@ def test_unverified_account_cannot_route_notifications_to_email(
         json={"notify_channel_friend_requests": "email"},
     )
 
-    assert r.status_code == 403
-    db_transaction.expire_all()
-    refreshed = db_transaction.exec(
-        select(User).where(User.email == settings.EMAIL_TEST_USER)
-    ).one()
-    assert refreshed.notify_channel_friend_requests == NotificationChannel.PUSH
+    assert r.status_code == 200
+    assert r.json()["notify_channel_friend_requests"] == "email"
 
 
 def test_unverified_account_can_still_switch_a_channel_back_to_push(

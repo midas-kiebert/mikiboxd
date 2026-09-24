@@ -37,7 +37,10 @@ class _UserBase(SQLModel):
     notify_on_friend_requests: bool = Field(default=True)
     notify_on_showtime_ping: bool = Field(default=True)
     notify_on_invite_response: bool = Field(default=True)
-    notify_on_interest_reminder: bool = Field(default=True)
+    # Off by default: the one notification that fires about something the user
+    # did themselves rather than something that happened to them, and so the
+    # one most likely to feel like noise. A feature tip offers it instead.
+    notify_on_interest_reminder: bool = Field(default=False)
     # "A showtime you're interested in is nearly sold out." Defaults on: it is
     # only ever sent once per showtime, and only for one someone already said
     # they cared about.
@@ -150,6 +153,10 @@ class UserUpdate(SQLModel):
     notify_channel_showtime_reminder: NotificationChannel | None = Field(default=None)
     notify_watchlist_digest_enabled: bool | None = Field(default=None)
     use_letterboxd_avatar: bool | None = Field(default=None)
+    # True records that the app has now asked how this account wants to be
+    # notified. Never reaches the database as-is — `me_service.update_me` turns
+    # it into `User.app_notifications_prompted_at`.
+    app_notifications_prompted: bool | None = Field(default=None)
     # Legacy compat only: these three lived on User itself before the digest
     # rework moved them onto `WatchlistDigestSource` (see
     # b4d6f8a0c2e4_add_watchlist_digest_sources). A client built against that
@@ -204,6 +211,11 @@ class User(_UserBase, table=True):
         default=None, sa_column=Column(JSONB, nullable=True)
     )
     unverified_email_saved_digest_enabled: bool = Field(default=False)
+    # When the app last asked this account how it wants to be notified (the
+    # intro's notifications page). None means the app never has — an account
+    # made on the website, say — and the app then runs that one page on its
+    # own the first time the account signs in there.
+    app_notifications_prompted_at: datetime | None = Field(default=None)
     # Moderation: blocks POST /showtimes/{id}/report. None expiry + banned=True
     # means indefinite; a past expiry is treated as no-longer-banned.
     report_banned: bool = Field(default=False)

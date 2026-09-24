@@ -101,7 +101,10 @@ const NavAccount = ({ onNavigate }: NavAccountProps) => {
           as="button"
           aria-label="Account menu"
           flexShrink={0}
-          maxW="220px"
+          // Wider once the email line shows (lg up), so an ordinary address
+          // fits rather than being cut after twenty-odd characters. The search
+          // box beside it is the part of the bar that gives way.
+          maxW={{ base: "220px", lg: "340px" }}
           align="center"
           gap={2.5}
           h="44px"

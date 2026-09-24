@@ -131,12 +131,17 @@ function ActivityScreen() {
     },
   });
 
+  // `mutate` itself, not the mutation object: react-query keeps `mutate` stable
+  // while the object changes on every status update, so this effect still runs
+  // once each time "You" gains focus. It used to list only the three flags and
+  // silence the lint rule instead — and a silenced React rule makes the React
+  // Compiler skip this whole screen, so every page switch re-rendered all
+  // three feed pages mid-slide (the Activity tab's switching jank).
+  const markInvitesSeen = markSeenMutation.mutate;
   useEffect(() => {
     if (!isFocused || !isSignedIn || !isYou) return;
-    markSeenMutation.mutate();
-    // Trigger once whenever "You" gains focus.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFocused, isSignedIn, isYou]);
+    markInvitesSeen();
+  }, [isFocused, isSignedIn, isYou, markInvitesSeen]);
 
   // `useRef` rather than a value: `handleChangeMode` is handed to the pager as
   // `onIndexChange`, so it cannot close over the pager it is being built with.
@@ -307,18 +312,17 @@ function ActivityPage({ mode, isFocused, colors, styles, registerControls }: Act
     () => (isYou ? agendaQuery.data : mainQuery.data)?.pages.flat() ?? [],
     [isYou, agendaQuery.data, mainQuery.data]
   );
-  // A query that has not been switched on yet is neither loading nor empty as
-  // far as react-query is concerned: it has no data and no fetch in flight. It
-  // is loading — the fetch is owed. Without this the page renders its "nothing
-  // lined up" copy for the beat between the tab appearing and `useSettledFocus`
-  // letting the query go, and the loading panel arrives *after* the empty
-  // state, which reads as the screen changing its mind.
+  // Loading means "no data yet" (`isPending`), not react-query's `isLoading`
+  // ("no data *and* a fetch in flight"). The two differ on exactly the frames
+  // that matter: a query that has not been switched on yet (the tab not
+  // focused), and the render in which it has just been switched on but its
+  // fetch has not started — `isLoading` is false on both, so the page drew
+  // "Nothing lined up right now" for a frame before the loading panel.
   //
-  // `data === undefined`, not an empty list: a query that has fetched and come
-  // back with nothing really is empty, and must keep saying so while the tab is
-  // in the background rather than flashing the panel on the way back to it.
-  const isAwaitingFocus = !isFocused && (isYou ? agendaQuery.data : mainQuery.data) === undefined;
-  const isLoading = (isYou ? agendaQuery.isLoading : mainQuery.isLoading) || isAwaitingFocus;
+  // A query that has fetched and come back with nothing is not pending, so a
+  // real empty feed keeps saying so, including while the tab is in the
+  // background.
+  const isLoading = isYou ? agendaQuery.isPending : mainQuery.isPending;
   const isFetching = isYou ? agendaQuery.isFetching : mainQuery.isFetching;
   const isFetchingNextPage = isYou ? agendaQuery.isFetchingNextPage : mainQuery.isFetchingNextPage;
   const hasNextPage = isYou ? agendaQuery.hasNextPage : mainQuery.hasNextPage;
@@ -355,14 +359,14 @@ function ActivityPage({ mode, isFocused, colors, styles, registerControls }: Act
   // Distinguishes "you have no friends yet" from "your friends have nothing
   // on right now" — the empty state and its CTA differ between the two. Not
   // needed for "You", which has its own, friend-independent empty state.
-  // `isLoading`, never `isFetching`: react-query only re-renders for the result
+  // `isPending`, never `isFetching`: react-query only re-renders for the result
   // fields a component actually reads, and `isFetching` moves on *every* fetch of
   // the shared friends query — including the one the showtime sheet starts when
   // it opens, which re-rendered all three pages of this pager twice per open for
-  // ~400ms of work behind a sheet nobody was looking at. `isLoading` is
-  // `isFetching && data === undefined`, which is exactly what this needed
-  // anyway, and it does not move on a background refetch.
-  const { data: friends, isLoading: isLoadingFriends } = useFetchFriends({ enabled: !isYou });
+  // ~400ms of work behind a sheet nobody was looking at. `isPending` is "no data
+  // yet", which is what this needs (see `isLoading` above for why not
+  // `isLoading`), and it does not move on a background refetch.
+  const { data: friends, isPending: isLoadingFriends } = useFetchFriends({ enabled: !isYou });
   const hasFriends = (friends?.length ?? 0) > 0;
 
   const goToAddFriends = () => {

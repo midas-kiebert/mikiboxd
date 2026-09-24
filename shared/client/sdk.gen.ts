@@ -4,8 +4,6 @@ import type { CancelablePromise } from "./core/CancelablePromise"
 import { OpenAPI } from "./core/OpenAPI"
 import { request as __request } from "./core/request"
 import type {
-  AdminGetPublishTimingData,
-  AdminGetPublishTimingResponse,
   AdminSimulateSeatAvailabilityData,
   AdminSimulateSeatAvailabilityResponse,
   AdminGetAnalyticsOverviewData,
@@ -40,6 +38,8 @@ import type {
   AdminGetScrapeRecapResponse,
   AdminGetScrapeRecapAttachmentData,
   AdminGetScrapeRecapAttachmentResponse,
+  AdminGetPublishTimingData,
+  AdminGetPublishTimingResponse,
   AdminListTmdbAmbiguitiesData,
   AdminListTmdbAmbiguitiesResponse,
   AdminUpdateTmdbAmbiguityData,
@@ -112,6 +112,8 @@ import type {
   MeGetFeedOverviewResponse,
   MeGetActivitySummaryData,
   MeGetActivitySummaryResponse,
+  MeGetAwayEventsData,
+  MeGetAwayEventsResponse,
   MeGetMyShowtimePingsData,
   MeGetMyShowtimePingsResponse,
   MeGetMyUnseenShowtimePingCountResponse,
@@ -620,33 +622,6 @@ export class AdminService {
   }
 
   /**
-   * Get Publish Timing
-   * When cinemas publish new screenings, per weekday/hour, and how late we saw them.
-   * @param data The data for the request.
-   * @param data.source
-   * @param data.days
-   * @param data.cinemaId
-   * @returns PublishTimingResponse Successful Response
-   * @throws ApiError
-   */
-  public static getPublishTiming(
-    data: AdminGetPublishTimingData = {},
-  ): CancelablePromise<AdminGetPublishTimingResponse> {
-    return __request(OpenAPI, {
-      method: "GET",
-      url: "/api/v1/admin/scrape/publish-timing",
-      query: {
-        source: data.source,
-        days: data.days,
-        cinema_id: data.cinemaId,
-      },
-      errors: {
-        422: "Validation Error",
-      },
-    })
-  }
-
-  /**
    * Get Scrape Recap
    * @param data The data for the request.
    * @param data.recapId
@@ -686,6 +661,33 @@ export class AdminService {
       path: {
         recap_id: data.recapId,
         filename: data.filename,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Publish Timing
+   * When cinemas publish new screenings, per weekday/hour, and how late we saw them.
+   * @param data The data for the request.
+   * @param data.source
+   * @param data.days
+   * @param data.cinemaId
+   * @returns PublishTimingResponse Successful Response
+   * @throws ApiError
+   */
+  public static getPublishTiming(
+    data: AdminGetPublishTimingData = {},
+  ): CancelablePromise<AdminGetPublishTimingResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/admin/scrape/publish-timing",
+      query: {
+        source: data.source,
+        days: data.days,
+        cinema_id: data.cinemaId,
       },
       errors: {
         422: "Validation Error",
@@ -1698,6 +1700,32 @@ export class MeService {
       query: {
         mode: data.mode,
         snapshot_time: data.snapshotTime,
+      },
+      errors: {
+        422: "Validation Error",
+      },
+    })
+  }
+
+  /**
+   * Get Away Events
+   * Invites, friend requests and sold-out screenings since `since`.
+   *
+   * Read by the app when it comes to the foreground, to decide whether to offer
+   * the notification that would have told the user about them.
+   * @param data The data for the request.
+   * @param data.since When the app was last in use
+   * @returns AwayEventsPublic Successful Response
+   * @throws ApiError
+   */
+  public static getAwayEvents(
+    data: MeGetAwayEventsData,
+  ): CancelablePromise<MeGetAwayEventsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/api/v1/me/away-events",
+      query: {
+        since: data.since,
       },
       errors: {
         422: "Validation Error",

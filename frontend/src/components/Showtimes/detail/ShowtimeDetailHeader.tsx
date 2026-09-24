@@ -38,7 +38,10 @@ import {
   tokenVar,
 } from "@/components/Showtimes/cards/card-parts"
 import FriendWatchPills from "@/components/Showtimes/detail/FriendWatchPills"
-import { personName } from "@/components/Showtimes/detail/PersonAvatar"
+import {
+  PersonAvatar,
+  personName,
+} from "@/components/Showtimes/detail/PersonAvatar"
 import { PanelIcon } from "@/components/Showtimes/detail/panel-icons"
 import { cinemaFeedSearch } from "@/features/showtimes/feed-params"
 import { useUnfilteredLinks } from "@/features/showtimes/unfiltered-links"
@@ -208,7 +211,7 @@ const ShowtimeDetailHeader = ({ showtime }: ShowtimeDetailHeaderProps) => {
           <RouterLink
             to="/movie/$movieId"
             params={{ movieId: `${movie.id}` }}
-            search={links.search({}) as never}
+            search={links.filmSearch() as never}
             onClick={links.onFollow}
           >
             <Box
@@ -332,7 +335,7 @@ const ShowtimeDetailHeader = ({ showtime }: ShowtimeDetailHeaderProps) => {
           <RouterLink
             to="/movie/$movieId"
             params={{ movieId: `${movie.id}` }}
-            search={links.search({}) as never}
+            search={links.filmSearch() as never}
             onClick={links.onFollow}
           >
             <Flex align="center" gap="1px" color="app.tint" mt="2px">
@@ -354,7 +357,9 @@ const ShowtimeDetailHeader = ({ showtime }: ShowtimeDetailHeaderProps) => {
       {/*
         An open invite is the one thing here that is addressed to *you* rather
         than describing the screening, so it gets its own tinted strip instead
-        of a line among the metadata. The app's wording and its mail icon.
+        of a line among the metadata. It leads with the inviter's own avatar
+        rather than a generic mail icon, so who asked is recognisable at a
+        glance; friends going or interested still show above, as on any panel.
       */}
       {invitedBy.length ? (
         <Flex
@@ -368,12 +373,9 @@ const ShowtimeDetailHeader = ({ showtime }: ShowtimeDetailHeaderProps) => {
           bg="app.blue.primary"
           color="app.blue.secondary"
         >
-          <Box
-            as={PanelIcon.mailOutline}
-            boxSize="16px"
-            flexShrink={0}
-            aria-hidden
-          />
+          <Box flexShrink={0} aria-hidden>
+            <PersonAvatar user={invitedBy[0]} size={18} />
+          </Box>
           <Text
             fontSize="12px"
             fontWeight="600"
@@ -383,8 +385,8 @@ const ShowtimeDetailHeader = ({ showtime }: ShowtimeDetailHeaderProps) => {
             top="1px"
           >
             {invitedBy.length === 1
-              ? `${personName(invitedBy[0])} invited you.`
-              : `${personName(invitedBy[0])} and ${invitedBy.length - 1} more invited you.`}
+              ? `You were invited by ${personName(invitedBy[0])}.`
+              : `You were invited by ${personName(invitedBy[0])} and ${invitedBy.length - 1} more.`}
           </Text>
         </Flex>
       ) : null}

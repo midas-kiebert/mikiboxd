@@ -94,6 +94,14 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
     });
   }, []);
 
+  const handleDeselectCinemas = useCallback((cinemaIds: readonly number[]) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      cinemaIds.forEach((id) => next.delete(id));
+      return next;
+    });
+  }, []);
+
   // A single toggle that both selects and clears everything, rather than two
   // separate "Select all" / "Clear all" controls.
   const handleToggleAll = useCallback(() => {
@@ -171,6 +179,7 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
             onToggleCinema={handleToggleCinema}
             onOnlyCinema={handleOnlyCinema}
             onSelectCinemas={handleSelectCinemas}
+            onDeselectCinemas={handleDeselectCinemas}
           />
         )}
       </ScrollView>

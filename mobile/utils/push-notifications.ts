@@ -41,6 +41,14 @@ type PushTokenRegistrationState = {
 type PushTokenRegistrationOptions = {
   force?: boolean;
   userId?: string;
+  /**
+   * Whether a missing permission may be asked for. False for the background
+   * registrations on launch and sign-in: the OS prompt is asked exactly once
+   * and only ever from a screen that has just explained it (the intro's
+   * notifications page, a notification tip, a Settings row), because a cold
+   * system dialog is the one people deny out of habit.
+   */
+  prompt?: boolean;
 };
 
 // Channel ID is versioned to recover from user-disabled/stale channel configs.
@@ -328,7 +336,7 @@ const ensureAndroidNotificationChannels = async (force: boolean): Promise<void> 
 export async function registerPushTokenForCurrentDevice(
   options: PushTokenRegistrationOptions = {}
 ): Promise<string | null> {
-  const { force = false, userId } = options;
+  const { force = false, userId, prompt = true } = options;
   const scope = getPushTokenRegistrationScope(userId);
   const now = getNow();
 
@@ -359,7 +367,7 @@ export async function registerPushTokenForCurrentDevice(
     let finalStatus = permissions.status;
 
     // Ask the user only when permission is not already granted.
-    if (finalStatus !== "granted") {
+    if (finalStatus !== "granted" && prompt) {
       const requested =
         Platform.OS === "ios"
           ? await Notifications.requestPermissionsAsync({

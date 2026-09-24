@@ -490,6 +490,7 @@ export default function FiltersModal({
                   hideWatched={hideWatched}
                   setHideWatched={setHideWatched}
                   setWatchedOnly={setWatchedOnly}
+                  onLeave={handleClose}
                 />
                 <Divider colors={colors} />
               </>

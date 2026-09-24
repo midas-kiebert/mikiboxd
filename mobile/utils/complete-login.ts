@@ -67,7 +67,7 @@ export async function completeLogin(router: ImperativeRouter) {
     // long as it took. It is redundant with tab onboarding anyway, and only
     // exists to catch the cases where that is skipped during initial mount.
     if (!isIntroOwed()) {
-        void registerPushTokenForCurrentDevice({ force: true }).catch((notificationError) => {
+        void registerPushTokenForCurrentDevice({ force: true, prompt: false }).catch((notificationError) => {
             console.error('Error initializing push notifications after login:', notificationError)
         })
     }

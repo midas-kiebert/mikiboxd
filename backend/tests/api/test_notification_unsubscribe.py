@@ -19,7 +19,9 @@ def _me(session: Session) -> User:
 
 
 def test_get_only_asks_for_confirmation(
-    client: TestClient, db_transaction: Session
+    client: TestClient,
+    db_transaction: Session,
+    normal_user_token_headers: dict[str, str],  # creates the test user
 ) -> None:
     user = _me(db_transaction)
     user.notify_on_showtime_ping = True
@@ -38,7 +40,9 @@ def test_get_only_asks_for_confirmation(
 
 
 def test_post_turns_off_exactly_that_notification(
-    client: TestClient, db_transaction: Session
+    client: TestClient,
+    db_transaction: Session,
+    normal_user_token_headers: dict[str, str],  # creates the test user
 ) -> None:
     user = _me(db_transaction)
     user.notify_on_showtime_ping = True
@@ -59,7 +63,9 @@ def test_post_turns_off_exactly_that_notification(
 
 
 def test_seat_emails_unsubscribe_from_all_seat_availability(
-    client: TestClient, db_transaction: Session
+    client: TestClient,
+    db_transaction: Session,
+    normal_user_token_headers: dict[str, str],  # creates the test user
 ) -> None:
     user = _me(db_transaction)
     user.notify_on_seat_alert = True

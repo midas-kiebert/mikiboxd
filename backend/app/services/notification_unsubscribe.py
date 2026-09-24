@@ -56,9 +56,7 @@ _GROUPS: dict[str, _UnsubscribeGroup] = {
         "reminder emails from friends", ("notify_on_showtime_reminder",)
     ),
     **{
-        field: _UnsubscribeGroup(
-            "seat availability emails", _SEAT_AVAILABILITY_FIELDS
-        )
+        field: _UnsubscribeGroup("seat availability emails", _SEAT_AVAILABILITY_FIELDS)
         for field in _SEAT_AVAILABILITY_FIELDS
     },
 }

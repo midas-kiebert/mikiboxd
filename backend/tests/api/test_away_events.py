@@ -4,7 +4,7 @@ Feeds the app's notification tips, which may only speak about events since the
 app was last in use — so the window boundary is the thing under test.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
@@ -58,13 +58,13 @@ def test_counts_only_events_after_the_window_start(
     db_transaction.commit()
 
     before_both = _get(
-        client, normal_user_token_headers, datetime.now(UTC) - timedelta(hours=5)
+        client, normal_user_token_headers, datetime.now(timezone.utc) - timedelta(hours=5)
     )
     assert len(before_both["upcoming_invites"]) == 1
     assert before_both["friend_requests"] == 1
 
     between = _get(
-        client, normal_user_token_headers, datetime.now(UTC) - timedelta(hours=1)
+        client, normal_user_token_headers, datetime.now(timezone.utc) - timedelta(hours=1)
     )
     assert between["upcoming_invites"] == []
     assert between["friend_requests"] == 1
@@ -105,7 +105,7 @@ def test_splits_invites_into_upcoming_and_missed(
     db_transaction.commit()
 
     events = _get(
-        client, normal_user_token_headers, datetime.now(UTC) - timedelta(hours=5)
+        client, normal_user_token_headers, datetime.now(timezone.utc) - timedelta(hours=5)
     )
 
     assert [i["screening"]["showtime_id"] for i in events["upcoming_invites"]] == [
@@ -141,7 +141,7 @@ def test_lists_interested_screenings_that_sold_out_in_the_window(
     db_transaction.commit()
 
     events = _get(
-        client, normal_user_token_headers, datetime.now(UTC) - timedelta(hours=1)
+        client, normal_user_token_headers, datetime.now(timezone.utc) - timedelta(hours=1)
     )
 
     assert [row["showtime_id"] for row in events["sold_out"]] == [upcoming.id]

@@ -88,9 +88,12 @@ export const RAIL_WIDTH = { base: "360px", "2xl": "400px" }
  * request, once `LIST_MAX_WIDTH` below gave the list room to give up: a
  * showtime row does not need the width of a film's whole synopsis, and the
  * panel is the thing with a poster, a floor plan and five sections in it.
+ *
+ * Narrowest at `md`, which is where a half-screen window on a desktop lands:
+ * there every pixel the panel keeps is one the list cannot have.
  */
 export const DETAIL_WIDTH = {
-  base: "340px",
+  base: "300px",
   lg: "380px",
   xl: "420px",
   "2xl": "520px",

@@ -292,20 +292,22 @@
   top: 0.07em;
 }
 
+/* Light mode's `secondary` pair — a deep green and a deep brown — are both
+   dark enough that, as a 2px ring, they read as "dark" before "green" or
+   "orange". The ring takes brighter, clearly different hues instead. */
 .mk-avatar--going {
-  --mk-status: var(--chakra-colors-app-friend-going\.secondary);
+  --mk-status: #16a34a;
 }
 
 .mk-avatar--interested {
-  --mk-status: var(--chakra-colors-app-friend-interested\.secondary);
+  --mk-status: #f97316;
 }
 
 /*
  * Dark mode's `secondary` is the same value as `border` in this pair — a pale
  * mint and a pale peach, close enough in lightness that the ring reads as
- * "light" before it reads as "green" or "orange". Light mode's `secondary` is
- * already a deep, properly saturated green/brown and is left alone; this is a
- * ring-only override; the shared palette (`shared/theme/colors.ts`, also
+ * "light" before it reads as "green" or "orange". Light mode has the mirror
+ * problem, overridden above. Both are ring-only overrides; the shared palette (`shared/theme/colors.ts`, also
  * mobile's) and every other going/interested marker on this page — a
  * `FriendBadges` pill's dot, say — still read the paler token, so this ring
  * will look a shade more vivid than those until the palette itself changes.

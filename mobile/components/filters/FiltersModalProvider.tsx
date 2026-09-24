@@ -8,7 +8,7 @@ import { DateTime } from 'luxon';
 import { useQuery } from '@tanstack/react-query';
 import useAuth from 'shared/hooks/useAuth';
 
-import { useIsSignedIn } from '@/utils/auth-session';
+import { useAuthStatus, useIsSignedIn } from '@/utils/auth-session';
 import { MoviesService, ShowtimesService } from 'shared';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 import FiltersModal from '@/components/filters/FiltersModal';
@@ -74,6 +74,17 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
   // statements about an account. Hidden for a guest here, in the one place
   // every screen opens this sheet through, rather than at each call site.
   const isSignedIn = useIsSignedIn();
+  // Whether these tabs are here to stay, fixed at mount. A signed-out cold
+  // start mounts the tabs for a moment (the launch URL is the tabs home) and
+  // then replaces them with /login. A warm-up started in that moment loses its
+  // owner before gorhom has marked the sheet presented, and gorhom's unmount
+  // path skips cleanup for a sheet still in that state, so the Filters sheet
+  // was left open, invisible, over the login screen and took every tap
+  // (Android, 1.1.4). Signing in mounts fresh tabs, which warm then.
+  const authStatus = useAuthStatus();
+  const [shouldWarmSheets] = useState(
+    () => authStatus === 'signed-in' || authStatus === 'guest'
+  );
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
   const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
   const effectiveHideWatched = hasLetterboxdUsername ? hideWatched : false;
@@ -197,6 +208,7 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
         setWatchedOnly={setWatchedOnly}
         showLists
         resultCount={resultCount}
+        warmUpOnMount={shouldWarmSheets}
       />
       <CinemaFilterModal
         visible={cinemaModalVisible}
@@ -204,6 +216,7 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
         onBack={cinemaModalBack}
         initialPage="selection"
         initialEditPresetId={cinemaEditPresetId}
+        warmUpOnMount={shouldWarmSheets}
       />
     </FiltersModalContext.Provider>
   );

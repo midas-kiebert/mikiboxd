@@ -157,6 +157,12 @@ export type FiltersModalProps = {
   setWatchedOnly?: (v: boolean) => void;
   showLists?: boolean;
   resultCount?: number;
+  /**
+   * Warm the sheet at mount (see `sheet-warm-up`). Only for an owner that is
+   * going to stay mounted: gorhom orphans a sheet whose owner unmounts before
+   * its first open reports back, leaving it on screen for good.
+   */
+  warmUpOnMount?: boolean;
 };
 
 export default function FiltersModal({
@@ -198,6 +204,7 @@ export default function FiltersModal({
   setWatchedOnly = () => {},
   showLists = false,
   resultCount,
+  warmUpOnMount = true,
 }: FiltersModalProps) {
   const colors = useThemeColors();
   const { bottom: bottomInset } = useSafeAreaInsets();
@@ -424,7 +431,7 @@ export default function FiltersModal({
           // Warmed so it never pays for its own mount on an open — and warmed
           // *before* CinemaFilterModal, which has to draw in front of it. See
           // `sheet-warm-up`; the order is the order the two components mount.
-          warmUpOnMount
+          warmUpOnMount={warmUpOnMount}
         >
           {/* @gorhom/portal (used by the bottom sheet) does not forward React
               context, so re-provide the QueryClient for hooks rendered inside. */}

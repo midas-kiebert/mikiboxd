@@ -12,7 +12,7 @@ from typing import Any
 from sqlmodel import Session, col, delete, select
 
 from app.api.deps import get_db_context
-from app.mailer import send_email
+from app.mailer import RECAP_EMAIL_TO, send_email
 from app.models.cinema import Cinema
 from app.models.movie import Movie
 from app.models.scrape_recap import ScrapeRecap
@@ -54,7 +54,6 @@ from app.services.unidentified_listings import (
 )
 from app.utils import now_amsterdam_naive
 
-RECAP_EMAIL_TO = "scraper.mikino@midaskiebert.nl"
 RECAP_AGGREGATION_WINDOW = timedelta(hours=24)
 RECAP_RETENTION_WINDOW = timedelta(days=7)
 STAGE_PATTERN = re.compile(r"(^|\s)stage=([^|]+)")

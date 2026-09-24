@@ -3053,6 +3053,9 @@ export default function ShowtimeActionModal({
   );
 }
 
+/** Far enough right of any screen that a warming sheet can't be touched. */
+const WARM_UP_OFFSCREEN_X = 100000;
+
 const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
   StyleSheet.create({
     handleContainer: {
@@ -3069,7 +3072,13 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     // The warm-up: mounted and laid out, but neither on screen nor able to take
     // a touch — it covers most of the screen while it runs, and it runs during
     // startup, which is exactly when someone is already tapping.
-    warmingUp: { opacity: 0, pointerEvents: "none" },
+    // `pointerEvents` here is not enough on its own: gorhom's hosting
+    // container sets `pointerEvents="box-none"` as a prop, which beats the
+    // style on Android, so a warm-up that stalls open (as it does under the
+    // login screen, with the tabs frozen underneath) swallowed every tap on
+    // it. Shifting it off screen takes it out of hit-testing on both
+    // platforms while leaving its layout — the point of warming — intact.
+    warmingUp: { opacity: 0, pointerEvents: "none", transform: [{ translateX: WARM_UP_OFFSCREEN_X }] },
     sheetBackground: {
       backgroundColor: colors.background,
       borderTopLeftRadius: 16,

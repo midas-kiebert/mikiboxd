@@ -20,7 +20,7 @@ from jinja2 import Template
 from markupsafe import Markup
 
 from app.core.config import settings
-from app.core.enums import DIGEST_FREQUENCY_LABELS, DigestFrequency
+from app.core.enums import DIGEST_FREQUENCY_LABELS, DigestFrequency, Environment
 from app.core.security import generate_watchlist_digest_unsubscribe_token
 
 if TYPE_CHECKING:
@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 BRAND_NAME = "MiKiNO"
 REPORT_NOTIFICATION_EMAIL = "info@mikino.nl"
+RECAP_EMAIL_TO = "scraper.mikino@midaskiebert.nl"
 
 
 @dataclass
@@ -131,6 +132,29 @@ def _html_to_plain_text(html_content: str) -> str:
     return "\n".join(lines).strip()
 
 
+# Internal inboxes, not users: always deliverable, so staging's recap and
+# report mails keep arriving without having to be allowlisted.
+_INTERNAL_RECIPIENTS = frozenset(
+    {REPORT_NOTIFICATION_EMAIL.lower(), RECAP_EMAIL_TO.lower()}
+)
+
+
+def is_deliverable_address(email_to: str) -> bool:
+    """Whether mail to this address may leave this environment.
+
+    Always in production. Elsewhere only internal inboxes and addresses in
+    NON_PROD_EMAIL_ALLOWLIST — an exact address, or "@domain" for a domain.
+    """
+    if settings.ENVIRONMENT is Environment.PRODUCTION:
+        return True
+    address = email_to.strip().lower()
+    if address in _INTERNAL_RECIPIENTS:
+        return True
+    domain = "@" + address.rpartition("@")[2]
+    allowed = {entry.strip().lower() for entry in settings.NON_PROD_EMAIL_ALLOWLIST}
+    return address in allowed or domain in allowed
+
+
 def send_email(
     *,
     email_to: str,
@@ -154,6 +178,11 @@ def send_email(
         )
     if not settings.emails_enabled:
         raise RuntimeError("no provided configuration for email variables")
+    if not is_deliverable_address(email_to):
+        # Treated as sent, so callers record it exactly as they would in
+        # production and the rest of the flow can still be tested.
+        logger.info("Suppressed email to %s outside production: not allowlisted", email_to)
+        return
     message = emails.Message(
         subject=subject,
         html=html_content,

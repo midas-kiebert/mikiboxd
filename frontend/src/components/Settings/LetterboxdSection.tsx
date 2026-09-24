@@ -205,21 +205,25 @@ const LetterboxdSection = () => {
               onSync={() => syncWatched.mutate()}
               now={now}
             />
-            <SettingsRow
-              title="Use my avatar"
-              description={
-                avatarPreference.pictureUrl
-                  ? "Show your Letterboxd avatar to friends on MiKiNO."
-                  : "Show your Letterboxd avatar to friends on MiKiNO. We'll fetch it from Letterboxd as soon as you turn this on."
-              }
-            >
-              <Switch
-                checked={avatarPreference.enabled}
-                onChange={avatarPreference.setEnabled}
-                label="Use my Letterboxd avatar"
-              />
-            </SettingsRow>
           </div>
+        ) : null}
+        {/* After the body rather than in it: a row pads itself, and inside the
+            body's own padding it sat indented from everything above it. */}
+        {hasUsername ? (
+          <SettingsRow
+            title="Use my avatar"
+            description={
+              avatarPreference.pictureUrl
+                ? "Show your Letterboxd avatar to friends on MiKiNO."
+                : "Show your Letterboxd avatar to friends on MiKiNO. We'll fetch it from Letterboxd as soon as you turn this on."
+            }
+          >
+            <Switch
+              checked={avatarPreference.enabled}
+              onChange={avatarPreference.setEnabled}
+              label="Use my Letterboxd avatar"
+            />
+          </SettingsRow>
         ) : null}
       </div>
 

@@ -64,11 +64,6 @@ const TIP_PRESENTATION: Record<FeatureTipId, Presentation> = {
     title: "Turn on seat availability notifications",
     subtitle: "Hear before a screening you want sells out",
   },
-  "friend-request": {
-    icon: "person-add",
-    title: "Turn on friend request notifications",
-    subtitle: "Hear when someone adds you",
-  },
   "interest-reminders": {
     icon: "alarm",
     title: "Turn on interest reminders",

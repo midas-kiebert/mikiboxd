@@ -56,7 +56,11 @@ const getCompactBadgeRowsForHeight = (height: number) => {
   return Math.max(1, Math.min(MAX_COMPACT_BADGE_ROWS, rows));
 };
 
-function ShowtimeCard({ showtime, onPress, onLongPress }: ShowtimeCardProps) {
+function ShowtimeCard({
+  showtime,
+  onPress,
+  onLongPress,
+}: ShowtimeCardProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const router = useRouter();
   const goToMovie = useSingleFireNavigation((movieId: number) => router.push(`/movie/${movieId}`));
@@ -227,6 +231,15 @@ function ShowtimeCard({ showtime, onPress, onLongPress }: ShowtimeCardProps) {
           </View>
         </View>
       </TouchableOpacity>
+      {/* A screening you were invited to and haven't opened yet — on every
+          feed. Outside the card, which clips: the dot sits over its corner. */}
+      {showtime.viewer?.has_unseen_invite ? (
+        <View
+          style={styles.unseenInviteDot}
+          pointerEvents="none"
+          accessibilityLabel="New invite"
+        />
+      ) : null}
     </View>
   );
 }
@@ -238,6 +251,17 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       marginBottom: CARD_GAP,
       borderRadius: 12,
       backgroundColor: colors.cardBackground,
+    },
+    unseenInviteDot: {
+      position: "absolute",
+      top: -4,
+      right: -4,
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      borderWidth: 2,
+      borderColor: colors.background,
+      backgroundColor: colors.notificationBadge,
     },
     cardGlowGoing: glowStyles.going,
     cardGlowInterested: glowStyles.interested,

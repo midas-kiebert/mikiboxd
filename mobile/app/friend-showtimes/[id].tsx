@@ -1,7 +1,7 @@
 /**
  * Expo Router screen/module for friend-showtimes / [id]. It controls navigation and screen-level state for this route.
  */
-import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { DateTime } from 'luxon';
@@ -23,6 +23,7 @@ import { useDeferredMount } from '@/utils/use-deferred-mount';
 import FiltersButton from '@/components/filters/FiltersButton';
 import FiltersModal from '@/components/filters/FiltersModal';
 import CinemaFilterModal from '@/components/filters/CinemaFilterModal';
+import { useStackAboveKey } from '@/components/sheets/use-stack-above-key';
 import type { OpenCinemaModalOptions } from '@/components/filters/CinemaFilterModal';
 import ActiveFilterChips from '@/components/filters/ActiveFilterChips';
 import SearchFieldFallback from '@/components/inputs/SearchFieldFallback';
@@ -164,10 +165,22 @@ function FriendShowtimesContent({
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
   // Set when the cinema pill's dropdown opens the sheet on a preset's pencil.
   const [cinemaEditPresetId, setCinemaEditPresetId] = useState<string | null>(null);
+  // Cinemas opens on top of Filters too, so it must draw in front of it.
+  const {
+    key: cinemaSheetKey,
+    onLowerOpen: onFiltersOpen,
+    onUpperOpen: onCinemaOpen,
+  } = useStackAboveKey();
+  const filtersModalVisibleRef = useRef(filtersModalVisible);
+  useEffect(() => {
+    filtersModalVisibleRef.current = filtersModalVisible;
+    if (filtersModalVisible) onFiltersOpen();
+  }, [filtersModalVisible, onFiltersOpen]);
   const openCinemaModal = useCallback((options?: OpenCinemaModalOptions) => {
+    onCinemaOpen(filtersModalVisibleRef.current);
     setCinemaEditPresetId(options?.editPresetId ?? null);
     setCinemaModalVisible(true);
-  }, []);
+  }, [onCinemaOpen]);
   const closeCinemaModal = useCallback(() => {
     setCinemaModalVisible(false);
     setCinemaEditPresetId(null);
@@ -490,6 +503,7 @@ function FriendShowtimesContent({
         resultCount={showtimes.length}
       />
       <CinemaFilterModal
+        key={cinemaSheetKey}
         visible={cinemaModalVisible}
         onClose={closeCinemaModal}
         initialEditPresetId={cinemaEditPresetId}

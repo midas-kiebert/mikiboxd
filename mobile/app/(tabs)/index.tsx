@@ -33,7 +33,6 @@ import FiltersButton from '@/components/filters/FiltersButton';
 import SearchFieldFallback from '@/components/inputs/SearchFieldFallback';
 import { useFiltersModal } from '@/components/filters/FiltersModalProvider';
 import ActiveFilterChips from '@/components/filters/ActiveFilterChips';
-import FeatureTipsHost from '@/components/tips/FeatureTipsHost';
 import CinevilleCardButton from '@/components/cineville/CinevilleCardButton';
 import IntroFiltersSpotlight from '@/components/intro/IntroFiltersSpotlight';
 import { ShowtimesListContent } from '@/components/showtimes/ShowtimesScreen';
@@ -715,8 +714,6 @@ function MainShowtimesScreen() {
         )}
         {/* Floats over whichever feed is on screen, so it goes after both. */}
         <CinevilleCardButton surface="showtimes" />
-        {/* Renders nothing inline: the tip, if any, is a modal over the screen. */}
-        <FeatureTipsHost />
         {isShowingIntroFiltersSpotlight ? (
           <IntroFiltersSpotlight
             targetRef={filtersButtonRef}

@@ -32,7 +32,6 @@ export type FeatureTipId =
   | 'verify-email'
   | 'invite'
   | 'sold-out'
-  | 'friend-request'
   | 'watchlist-digest'
   | 'letterboxd-username'
   | 'letterboxd-avatar'
@@ -46,7 +45,6 @@ const FEATURE_TIP_IDS: readonly FeatureTipId[] = [
   'verify-email',
   'invite',
   'sold-out',
-  'friend-request',
   'watchlist-digest',
   'letterboxd-username',
   'letterboxd-avatar',
@@ -59,7 +57,7 @@ const FEATURE_TIP_IDS: readonly FeatureTipId[] = [
 
 /**
  * Tips answering something that just happened while the app was closed — an
- * invite, a sold-out screening, a friend request — that the user never heard
+ * invite or a sold-out screening — that the user never heard
  * about because that notification is off or cannot reach them. They are only
  * ever eligible for events since the app was last in use (see
  * `utils/away-events`), so each one is offered once per thing missed.
@@ -71,7 +69,6 @@ const FEATURE_TIP_IDS: readonly FeatureTipId[] = [
 export const EVENT_TIP_IDS: ReadonlySet<FeatureTipId> = new Set<FeatureTipId>([
   'invite',
   'sold-out',
-  'friend-request',
 ]);
 
 /**
@@ -127,7 +124,6 @@ const TIP_COOLDOWN_MS: Record<FeatureTipId, number> = {
   // Never consulted either — see EVENT_TIP_IDS.
   'invite': 0,
   'sold-out': 0,
-  'friend-request': 0,
   'cinema-presets': ONE_DAY_MS,
   'add-friends': ONE_DAY_MS,
   'letterboxd-username': THREE_DAYS_MS,

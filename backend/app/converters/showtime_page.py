@@ -201,18 +201,21 @@ def _non_friends(
 def _invite_info(
     data: ShowtimePageViewerData,
     showtime_id: int,
-) -> tuple[list[UserPublic], list[int]]:
-    """Unique senders + ping ids of the viewer's active received pings."""
+) -> tuple[list[UserPublic], list[int], bool]:
+    """Unique senders + ping ids of the viewer's active received pings, and
+    whether any of them is still unseen."""
     invited_by: list[UserPublic] = []
     invite_ping_ids: list[int] = []
     seen_sender_ids: set[UUID] = set()
-    for ping, sender in data.received_pings.get(showtime_id, []):
+    pings = data.received_pings.get(showtime_id, [])
+    for ping, sender in pings:
         if ping.id is not None:
             invite_ping_ids.append(ping.id)
         if sender.id not in seen_sender_ids:
             seen_sender_ids.add(sender.id)
             invited_by.append(user_converters.to_public(sender))
-    return invited_by, invite_ping_ids
+    has_unseen_invite = any(ping.seen_at is None for ping, _ in pings)
+    return invited_by, invite_ping_ids, has_unseen_invite
 
 
 def _co_invited_friends(
@@ -330,7 +333,7 @@ def _base_viewer_state_fields(
     going, seat_row, seat_number = _status_and_seat(
         data.own_selections.get(showtime_id)
     )
-    invited_by, invite_ping_ids = _invite_info(data, showtime_id)
+    invited_by, invite_ping_ids, has_unseen_invite = _invite_info(data, showtime_id)
     responded_ids = {friend.id for friend in friends_going} | {
         friend.id for friend in friends_interested
     }
@@ -348,6 +351,7 @@ def _base_viewer_state_fields(
         "friends_interested": friends_interested,
         "invited_by": invited_by,
         "invite_ping_ids": invite_ping_ids,
+        "has_unseen_invite": has_unseen_invite,
         "co_invited_friends": _co_invited_friends(data, showtime_id),
         "pending_invited_friends": _pending_invited_friends(
             data, showtime_id, responded_ids

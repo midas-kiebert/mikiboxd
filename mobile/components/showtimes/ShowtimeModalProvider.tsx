@@ -26,6 +26,7 @@ import {
 import { prefetchShowtimeVisibility } from "shared/hooks/useShowtimeVisibility";
 import { showtimeSeatAvailabilityQueryKey } from "shared/hooks/useShowtimeSeatAvailability";
 
+import { useMarkShowtimeInvitesSeen } from "@/hooks/useMarkShowtimeInvitesSeen";
 import ShowtimeActionModal, { type ShowtimeInvite } from "@/components/showtimes/ShowtimeActionModal";
 import { useSignInGate } from "@/components/auth/SignInGateProvider";
 import { hasShowtimeStarted } from "@/utils/showtime-time";
@@ -86,6 +87,7 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
   // Guards against a slow getShowtimeById resolving after a newer open superseded it.
   const openRequestIdRef = useRef(0);
 
+  const markInvitesSeen = useMarkShowtimeInvitesSeen();
   const openShowtimeModal = useCallback(
     (showtime: ShowtimePublic, options?: OpenOptions) => {
       openRequestIdRef.current += 1;
@@ -95,8 +97,10 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
       setCurrentShowtime(showtime);
       setIsLoadingById(false);
       setVisible(true);
+      // Opening an invited screening, from anywhere, is reading its invites.
+      markInvitesSeen(showtime);
     },
-    []
+    [markInvitesSeen]
   );
 
   const openShowtimeModalById = useCallback(
@@ -130,6 +134,7 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
             return;
           }
           setCurrentShowtime(fetched);
+          markInvitesSeen(fetched);
         } catch (error) {
           if (openRequestIdRef.current !== requestId) return;
           console.error("Error loading showtime for modal:", error);
@@ -140,7 +145,7 @@ export function ShowtimeModalProvider({ children }: { children: ReactNode }) {
         }
       })();
     },
-    [queryClient]
+    [queryClient, markInvitesSeen]
   );
 
   const openShowtimeModalForInvite = useCallback(

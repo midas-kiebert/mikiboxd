@@ -34,8 +34,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { GestureDetector } from "react-native-gesture-handler";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { MeService, type ShowtimePublic } from "shared";
+import type { ShowtimePublic } from "shared";
 import { useFetchMainPageShowtimes } from "shared/hooks/useFetchMainPageShowtimes";
 import { useFetchAgenda } from "shared/hooks/useFetchAgenda";
 import { useFetchFriends } from "shared/hooks/useFetchFriends";
@@ -87,7 +86,6 @@ function ActivityScreen() {
   // Read flow: local state and data hooks first, then handlers, then the JSX screen.
   const colors = useThemeColors();
   const styles = createStyles(colors);
-  const queryClient = useQueryClient();
   const isFocused = useSettledFocus();
   const { width: pageWidth } = useWindowDimensions();
   // A feed of who's doing what is a feed about accounts, so there is nothing
@@ -115,33 +113,10 @@ function ActivityScreen() {
     0,
     MODE_OPTIONS.findIndex((option) => option.value === mode)
   );
-  const isYou = mode === "you";
 
-  // Mark received invites as seen as soon as "You" is viewed, clearing the badge.
-  const markSeenMutation = useMutation({
-    mutationFn: () => MeService.markMyShowtimePingsSeen(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["me", "showtimePings", "unseenCount"] });
-      queryClient.invalidateQueries({ queryKey: ["me", "showtimePings"] });
-      // The bell badge counts unseen invites too, so refresh it to stay linked.
-      queryClient.invalidateQueries({ queryKey: ["me", "notifications", "unseenCount"] });
-    },
-    onError: (error) => {
-      console.error("Error marking showtime invites as seen:", error);
-    },
-  });
-
-  // `mutate` itself, not the mutation object: react-query keeps `mutate` stable
-  // while the object changes on every status update, so this effect still runs
-  // once each time "You" gains focus. It used to list only the three flags and
-  // silence the lint rule instead — and a silenced React rule makes the React
-  // Compiler skip this whole screen, so every page switch re-rendered all
-  // three feed pages mid-slide (the Activity tab's switching jank).
-  const markInvitesSeen = markSeenMutation.mutate;
-  useEffect(() => {
-    if (!isFocused || !isSignedIn || !isYou) return;
-    markInvitesSeen();
-  }, [isFocused, isSignedIn, isYou, markInvitesSeen]);
+  // Invites are no longer all marked seen the moment "You" is shown: each
+  // unseen one carries a dot on its card, and opening it is what reads it
+  // (see `useMarkShowtimeInvitesSeen`), off the tab badge and the bell alike.
 
   // `useRef` rather than a value: `handleChangeMode` is handed to the pager as
   // `onIndexChange`, so it cannot close over the pager it is being built with.

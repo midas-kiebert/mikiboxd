@@ -147,8 +147,9 @@ def _invite_info_for_showtime(
     session: Session,
     showtime_id: int,
     user_id: UUID,
-) -> tuple[list[UserPublic], list[int]]:
-    """Unique senders + ping ids of the user's active received pings for a showtime."""
+) -> tuple[list[UserPublic], list[int], bool]:
+    """Unique senders + ping ids of the user's active received pings for a
+    showtime, and whether any of them is still unseen."""
     pings = showtime_ping_crud.get_received_pings_for_showtime(
         session=session,
         showtime_id=showtime_id,
@@ -163,7 +164,8 @@ def _invite_info_for_showtime(
         if sender.id not in seen_sender_ids:
             seen_sender_ids.add(sender.id)
             invited_by.append(user_converters.to_public(sender))
-    return invited_by, invite_ping_ids
+    has_unseen_invite = any(ping.seen_at is None for ping, _ in pings)
+    return invited_by, invite_ping_ids, has_unseen_invite
 
 
 def _co_invited_friends(
@@ -355,7 +357,7 @@ def _in_movie_viewer_state(
     going, seat_row, seat_number = _selection_status_and_seat(
         selection=current_selection
     )
-    invited_by, invite_ping_ids = _invite_info_for_showtime(
+    invited_by, invite_ping_ids, has_unseen_invite = _invite_info_for_showtime(
         session=session,
         showtime_id=showtime_id,
         user_id=user_id,
@@ -380,6 +382,7 @@ def _in_movie_viewer_state(
         friends_interested=friends_interested,
         invited_by=invited_by,
         invite_ping_ids=invite_ping_ids,
+        has_unseen_invite=has_unseen_invite,
         co_invited_friends=_co_invited_friends(
             session=session, showtime_id=showtime_id, user_id=user_id
         ),

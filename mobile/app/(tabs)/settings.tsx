@@ -989,6 +989,12 @@ function SettingsScreen() {
               </TouchableOpacity>
             ) : null}
           </View>
+        </View>
+        ) : null}
+
+        {isSignedIn ? (
+        <View style={styles.section}>
+          <ThemedText style={styles.sectionTitle}>Going &amp; interested</ThemedText>
           <View style={styles.card}>
             <View style={styles.notificationToggleHeader}>
               <View style={styles.notificationToggleTextContainer}>

@@ -28,8 +28,12 @@ type IntroPageShellProps = {
   message?: string;
   /** The page's own controls; takes whatever height the chrome leaves over. */
   children?: ReactNode;
-  primaryLabel: string;
-  onPrimary: () => void;
+  /**
+   * Left out when the page's own content holds the choices (equal answers to
+   * one question), so the footer keeps only the quiet way out.
+   */
+  primaryLabel?: string;
+  onPrimary?: () => void;
   isPrimaryDisabled?: boolean;
   isPrimaryBusy?: boolean;
   /**
@@ -57,6 +61,7 @@ export default function IntroPageShell({
   const styles = createStyles(colors);
 
   const handlePrimary = () => {
+    if (!onPrimary) return;
     triggerSelectionHaptic();
     onPrimary();
   };
@@ -83,19 +88,21 @@ export default function IntroPageShell({
       <View style={styles.content}>{children}</View>
 
       <View style={styles.footer}>
-        <TouchableOpacity
-          style={[styles.primaryButton, (isPrimaryDisabled || isPrimaryBusy) && styles.buttonDisabled]}
-          onPress={handlePrimary}
-          disabled={isPrimaryDisabled || isPrimaryBusy}
-          activeOpacity={0.85}
-          accessibilityRole="button"
-        >
-          {isPrimaryBusy ? (
-            <ActivityIndicator size="small" color={colors.pillActiveText} />
-          ) : (
-            <ThemedText style={styles.primaryLabel}>{primaryLabel}</ThemedText>
-          )}
-        </TouchableOpacity>
+        {primaryLabel && onPrimary ? (
+          <TouchableOpacity
+            style={[styles.primaryButton, (isPrimaryDisabled || isPrimaryBusy) && styles.buttonDisabled]}
+            onPress={handlePrimary}
+            disabled={isPrimaryDisabled || isPrimaryBusy}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+          >
+            {isPrimaryBusy ? (
+              <ActivityIndicator size="small" color={colors.pillActiveText} />
+            ) : (
+              <ThemedText style={styles.primaryLabel}>{primaryLabel}</ThemedText>
+            )}
+          </TouchableOpacity>
+        ) : null}
         {secondaryLabel && onSecondary ? (
           <TouchableOpacity
             style={styles.secondaryButton}

@@ -83,6 +83,10 @@ class ShowtimeInMovieViewerState(BaseModel):
     # this showtime, plus those pings' ids (used to dismiss the invite).
     invited_by: Sequence["UserPublic"] = []
     invite_ping_ids: Sequence[int] = []
+    # Whether any of those invites hasn't been opened yet: the app marks the
+    # card, and opening it (mark-seen for this showtime) clears the mark and
+    # takes it off both the Activity and the bell count.
+    has_unseen_invite: bool = False
     # Your friends who were also invited by someone who invited you (co-invitees),
     # excluding anyone you already invited yourself.
     co_invited_friends: Sequence["CoInvitedFriendPublic"] = []

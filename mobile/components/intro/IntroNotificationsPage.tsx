@@ -6,7 +6,7 @@
  * of them do want to hear when a friend invites them. Opting out is possible
  * but deliberately takes a few steps, each one saying what it costs:
  *
- *  - `ask`: push (recommended) or email, with "I don't want notifications"
+ *  - `ask`: push or email as two equal answers, with "I don't want notifications"
  *    as the quiet way out.
  *  - `push-refused`: they picked push, then refused the system prompt. Not
  *    taken as an answer — they can try again (with the exact steps for system
@@ -24,7 +24,7 @@
  * sign-in here. Answering it in any way records that on the account.
  */
 import { type ReactNode, useCallback, useRef, useState } from "react";
-import { StyleSheet, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useQueryClient } from "@tanstack/react-query";
 import { type NotificationChannel, MeService, type UserUpdate } from "shared/client";
@@ -46,12 +46,11 @@ type Scope = "all" | "invites";
 const NOTIFICATION_EXAMPLES: readonly {
   icon: keyof typeof MaterialIcons.glyphMap;
   label: string;
-  detail: string;
 }[] = [
-  { icon: "mail", label: "Invites", detail: "A friend asks you along to a screening." },
-  { icon: "person-add", label: "Friend requests", detail: "Someone wants to follow along." },
-  { icon: "groups", label: "Friend activity", detail: "A friend is going to a film you want to see." },
-  { icon: "event-busy", label: "Seat availability", detail: "A screening you want is nearly sold out." },
+  { icon: "mail", label: "Invites to a screening" },
+  { icon: "person-add", label: "Friend requests" },
+  { icon: "groups", label: "Friends going to films you want to see" },
+  { icon: "event-busy", label: "Screenings you want nearly selling out" },
 ];
 
 const buildPatch = (scope: Scope, channel: NotificationChannel | null): UserUpdate => {
@@ -135,23 +134,69 @@ export default function IntroNotificationsPage({ onDone }: { onDone: () => void 
     : "We'll start as soon as you've confirmed your email address.";
 
   // Render/output using the state and handlers prepared above.
-  const renderEmailButton = (label: string, forScope: Scope) => (
-    <TouchableOpacity
-      style={[styles.emailButton, isSaving && styles.disabled]}
-      onPress={() => {
-        triggerSelectionHaptic();
-        void finish("email", forScope);
-      }}
-      disabled={isSaving || push.isRequesting}
-      activeOpacity={0.85}
-      accessibilityRole="button"
-    >
-      <MaterialIcons name="mail-outline" size={18} color={colors.text} />
-      <View style={styles.emailButtonText}>
-        <ThemedText style={styles.emailButtonLabel}>{label}</ThemedText>
-        <ThemedText style={styles.emailButtonNote}>{emailNote}</ThemedText>
+  const isBusy = isSaving || push.isRequesting;
+  /**
+   * Email and push as two equal-sized answers, push on the right. With
+   * `nudgePush` email goes quiet so push is the one to press; without, both
+   * are filled — a straight choice between the two.
+   */
+  const renderChoices = (forScope: Scope, nudgePush: boolean, pushLabel?: string) => (
+    <>
+      {forScope === "invites" ? (
+        // Invites-only is the whole offer on this step, so it is spelled out
+        // right above the buttons, not left to the message.
+        <View style={styles.scopeBanner}>
+          <MaterialIcons name="mail" size={20} color={colors.tint} />
+          <View style={styles.scopeBannerText}>
+            <ThemedText style={styles.scopeBannerTitle}>Only for invites</ThemedText>
+            <ThemedText style={styles.scopeBannerDetail}>
+              Just when a friend asks you along to a screening. Everything else stays off.
+            </ThemedText>
+          </View>
+        </View>
+      ) : null}
+      <View style={[styles.choices, forScope === "all" && styles.atBottom]}>
+        <TouchableOpacity
+          style={[styles.choice, nudgePush && styles.choiceQuiet, isBusy && styles.disabled]}
+          onPress={() => {
+            triggerSelectionHaptic();
+            void finish("email", forScope);
+          }}
+          disabled={isBusy}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+        >
+          <MaterialIcons
+            name="mail-outline"
+            size={20}
+            color={nudgePush ? colors.text : colors.pillActiveText}
+          />
+          <ThemedText style={[styles.choiceLabel, nudgePush && styles.choiceQuietLabel]}>
+            {forScope === "invites" ? "Email invites" : "Email"}
+          </ThemedText>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.choice, isBusy && styles.disabled]}
+          onPress={() => {
+            triggerSelectionHaptic();
+            void choosePush(forScope);
+          }}
+          disabled={isBusy}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+        >
+          {push.isRequesting ? (
+            <ActivityIndicator size="small" color={colors.pillActiveText} />
+          ) : (
+            <MaterialIcons name="notifications-active" size={20} color={colors.pillActiveText} />
+          )}
+          <ThemedText style={styles.choiceLabel}>
+            {pushLabel ?? (forScope === "invites" ? "Push invites" : "Push")}
+          </ThemedText>
+        </TouchableOpacity>
       </View>
-    </TouchableOpacity>
+      <ThemedText style={styles.choiceNote}>{emailNote}</ThemedText>
+    </>
   );
 
   let page: ReactNode;
@@ -160,14 +205,11 @@ export default function IntroNotificationsPage({ onDone }: { onDone: () => void 
       <IntroPageShell
         icon="notifications-off"
         title="Are you sure you don't want any notifications?"
-        message="You'll miss it when a friend invites you to a screening. How about notifications for invites only?"
-        primaryLabel="Push notifications for invites"
-        onPrimary={() => void choosePush("invites")}
-        isPrimaryBusy={push.isRequesting || isSaving}
+        message="You'll miss it when a friend invites you to a screening. How about just those?"
         secondaryLabel="No, turn all notifications off"
         onSecondary={() => void finish(null, "all")}
       >
-        {renderEmailButton("Email me about invites", "invites")}
+        {renderChoices("invites", false)}
       </IntroPageShell>
     );
   } else if (step === "push-refused") {
@@ -180,16 +222,10 @@ export default function IntroNotificationsPage({ onDone }: { onDone: () => void 
             ? "You chose push notifications, but your phone is set not to show them — so invites from friends won't reach you."
             : "You chose push notifications for invites, but your phone is set not to show them."
         }
-        primaryLabel="Turn on push notifications"
-        onPrimary={() => void choosePush(scope)}
-        isPrimaryBusy={push.isRequesting || isSaving}
         secondaryLabel={scope === "all" ? "I don't want notifications" : "No, turn all notifications off"}
         onSecondary={scope === "all" ? () => goTo("confirm-none") : () => void finish(null, "all")}
       >
-        {renderEmailButton(
-          scope === "all" ? "Email me instead" : "Email me about invites instead",
-          scope
-        )}
+        {renderChoices(scope, true, "Turn on push")}
       </IntroPageShell>
     );
   } else {
@@ -197,27 +233,22 @@ export default function IntroNotificationsPage({ onDone }: { onDone: () => void 
       <IntroPageShell
         icon="notifications"
         title="How do you want to be notified when friends invite you?"
-        message="The same goes for friend requests, friends' plans and screenings selling out. You can fine-tune it all in Settings."
-        primaryLabel="Push notifications"
-        onPrimary={() => void choosePush("all")}
-        isPrimaryBusy={push.isRequesting || isSaving}
+        message="You can fine-tune it all in Settings."
         secondaryLabel="I don't want notifications"
         onSecondary={() => goTo("confirm-none")}
       >
+        {/* Plain text, not cards: this says what is covered, it isn't a
+            list of things to tap. */}
         <View style={styles.examples}>
+          <ThemedText style={styles.examplesHeading}>You'll hear about</ThemedText>
           {NOTIFICATION_EXAMPLES.map((example) => (
             <View key={example.label} style={styles.exampleRow}>
-              <View style={styles.exampleIcon}>
-                <MaterialIcons name={example.icon} size={18} color={colors.tint} />
-              </View>
-              <View style={styles.exampleText}>
-                <ThemedText style={styles.exampleLabel}>{example.label}</ThemedText>
-                <ThemedText style={styles.exampleDetail}>{example.detail}</ThemedText>
-              </View>
+              <MaterialIcons name={example.icon} size={16} color={colors.textSecondary} />
+              <ThemedText style={styles.exampleLabel}>{example.label}</ThemedText>
             </View>
           ))}
         </View>
-        {renderEmailButton("Email", "all")}
+        {renderChoices("all", true)}
       </IntroPageShell>
     );
   }
@@ -234,9 +265,40 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
   StyleSheet.create({
     examples: {
       gap: 8,
-      paddingTop: 4,
+      paddingHorizontal: 8,
+    },
+    examplesHeading: {
+      fontSize: 13,
+      lineHeight: 18,
+      fontWeight: "700",
+      color: colors.textSecondary,
     },
     exampleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+    },
+    exampleLabel: {
+      flex: 1,
+      fontSize: 14,
+      // Explicit: `ThemedText`'s default line height is 24 and survives a
+      // fontSize override.
+      lineHeight: 18,
+      // Text beside an icon sits high; nudge it down to the icon's centre.
+      paddingTop: 1,
+      color: colors.text,
+    },
+    choices: {
+      flexDirection: "row",
+      gap: 10,
+    },
+    // Pushes the buttons, or the banner above them, to the bottom.
+    atBottom: {
+      marginTop: "auto",
+    },
+    scopeBanner: {
+      marginTop: "auto",
+      marginBottom: 12,
       flexDirection: "row",
       alignItems: "center",
       gap: 12,
@@ -244,60 +306,57 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderWidth: 1,
       borderColor: colors.cardBorder,
       backgroundColor: colors.cardBackground,
-      paddingVertical: 9,
-      paddingHorizontal: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
     },
-    exampleIcon: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: colors.surfaceMuted,
-    },
-    exampleText: {
+    scopeBannerText: {
       flex: 1,
-      gap: 1,
+      gap: 2,
     },
-    exampleLabel: {
-      fontSize: 14,
-      // Explicit: `ThemedText`'s default line height is 24 and survives a
-      // fontSize override, which would leave these two lines far apart.
-      lineHeight: 18,
-      fontWeight: "700",
-      color: colors.text,
-    },
-    exampleDetail: {
-      fontSize: 13,
-      lineHeight: 18,
-      color: colors.textSecondary,
-    },
-    emailButton: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      marginTop: 14,
-      minHeight: 54,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: colors.cardBorder,
-      backgroundColor: colors.pillBackground,
-      paddingHorizontal: 16,
-      paddingVertical: 10,
-    },
-    emailButtonText: {
-      flex: 1,
-      gap: 1,
-    },
-    emailButtonLabel: {
+    scopeBannerTitle: {
       fontSize: 15,
       lineHeight: 20,
       fontWeight: "700",
       color: colors.text,
     },
-    emailButtonNote: {
+    scopeBannerDetail: {
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.textSecondary,
+    },
+    // Same shape as the intro's primary footer button, twice over.
+    choice: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      minHeight: 52,
+      borderRadius: 14,
+      backgroundColor: colors.tint,
+    },
+    // Email is the fallback; push, on the right, is the one we nudge towards.
+    choiceQuiet: {
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      backgroundColor: colors.pillBackground,
+    },
+    choiceQuietLabel: {
+      color: colors.text,
+    },
+    choiceLabel: {
+      fontSize: 16,
+      lineHeight: 20,
+      fontWeight: "700",
+      // Text beside an icon sits high.
+      paddingTop: 1.5,
+      color: colors.pillActiveText,
+    },
+    choiceNote: {
+      marginTop: 8,
       fontSize: 12,
       lineHeight: 16,
+      textAlign: "center",
       color: colors.textSecondary,
     },
     disabled: {

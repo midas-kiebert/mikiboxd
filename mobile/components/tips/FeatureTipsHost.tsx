@@ -1,7 +1,7 @@
 /**
  * Renders at most one feature tip. Candidates are listed in priority order —
- * verify email; the three "you missed something" notification tips (an invite,
- * a sold-out screening, a friend request); cinemas, friends, Letterboxd,
+ * verify email; the two "you missed something" notification tips (an invite,
+ * a sold-out screening); cinemas, friends, Letterboxd,
  * Letterboxd avatar, filter presets, watchlist digest, interest reminders and
  * the Cineville pass — and `rollForFeatureTip` applies eligibility, dismissal,
  * per-tip cooldowns and a random chance, so the user is never handed a stack of
@@ -37,7 +37,6 @@ import AddFriendsTip from "@/components/tips/AddFriendsTip";
 import CinemaPresetTip from "@/components/tips/CinemaPresetTip";
 import CinevillePassTip from "@/components/tips/CinevillePassTip";
 import FilterPresetTip from "@/components/tips/FilterPresetTip";
-import FriendRequestTip from "@/components/tips/FriendRequestTip";
 import InterestRemindersTip from "@/components/tips/InterestRemindersTip";
 import InviteTip from "@/components/tips/InviteTip";
 import LetterboxdAvatarTip from "@/components/tips/LetterboxdAvatarTip";
@@ -65,8 +64,9 @@ const TIP_ROLL_DELAY_MS = 1500;
 
 export default function FeatureTipsHost() {
   const { user } = useAuth();
-  // The host lives inside a tab screen that stays mounted when the user leaves
-  // it, and the tip is a blocking dialog, so it must not outlive the screen.
+  // The host lives in the tabs layout, which stays mounted under any screen
+  // pushed on top of it (a film page, say). The tip is a blocking dialog, so it
+  // only shows while the tabs themselves are on screen — any tab.
   const isFocused = useIsFocused();
   // A first-time user is being walked through these very features right now; a
   // tip on top of the intro would be nagging about something in progress.
@@ -137,8 +137,6 @@ export default function FeatureTipsHost() {
     tipInvite !== null && missesNotification("notify_on_showtime_ping");
   const shouldSuggestSeatAlerts =
     soldOutScreening !== null && missesNotification("notify_on_seat_alert");
-  const shouldSuggestFriendRequests =
-    (awayEvents?.friend_requests ?? 0) > 0 && missesNotification("notify_on_friend_requests");
   const shouldSuggestInterestReminders =
     currentUser !== undefined && !currentUser.notify_on_interest_reminder;
   // Null means the number is still being read from storage.
@@ -177,8 +175,9 @@ export default function FeatureTipsHost() {
   //     from the chance, the cooldown and the Settings switch (see
   //     ALWAYS_SHOW_TIP_IDS). Whenever it is eligible it wins, so nothing below
   //     it is reached until the address is confirmed.
-  //  1-3. the event tips — an invite (still to answer, or missed), a sold-out screening, a friend
-  //     request, each only for events since the app was last used. Ahead of
+  //  1-2. the event tips — an invite (still to answer, or missed) and a
+  //     sold-out screening, each only for events since the app was last used.
+  //     (No friend-request tip: that one is reasonable to have off.) Ahead of
   //     every suggestion because they come with proof of what the user is
   //     missing, and they are rare by construction.
   //  4. cinemas — an unfiltered feed makes every screen noisier, and it is
@@ -198,7 +197,6 @@ export default function FeatureTipsHost() {
     { id: "verify-email", isEligible: needsEmailVerification },
     { id: "invite", isEligible: shouldSuggestInvites },
     { id: "sold-out", isEligible: shouldSuggestSeatAlerts },
-    { id: "friend-request", isEligible: shouldSuggestFriendRequests },
     { id: "cinema-presets", isEligible: shouldSuggestCinemaPreset },
     { id: "add-friends", isEligible: shouldSuggestAddFriends },
     { id: "letterboxd-username", isEligible: !hasLetterboxdUsername },
@@ -244,7 +242,6 @@ export default function FeatureTipsHost() {
   if (visibleTipId === "sold-out" && soldOutScreening) {
     return <SoldOutTip screening={soldOutScreening} />;
   }
-  if (visibleTipId === "friend-request") return <FriendRequestTip />;
   if (visibleTipId === "interest-reminders") return <InterestRemindersTip />;
   if (visibleTipId === "cineville-pass") return <CinevillePassTip />;
   if (visibleTipId === "letterboxd-username") return <LetterboxdUsernameTip />;

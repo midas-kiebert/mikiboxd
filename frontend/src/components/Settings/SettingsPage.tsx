@@ -15,7 +15,7 @@
  * the account's would be, rather than a page that is only a sign-in prompt.
  *
  * Left out, because the website has nothing for them to control: the app's
- * feature-tip and "clear interested" switches, the Cineville shortcut-button
+ * feature-tip switches, the Cineville shortcut-button
  * switches, the intro replay, and the system notification settings link.
  */
 import { Box } from "@chakra-ui/react"
@@ -35,6 +35,7 @@ import NotificationsSection from "./NotificationsSection"
 import PasswordSection from "./PasswordSection"
 import { BlockedSection, PrivacySection } from "./PrivacySection"
 import ProfileSection from "./ProfileSection"
+import StatusesSection from "./StatusesSection"
 import { findScrollParent, scrollPageTo } from "./page-scroll"
 import { SETTINGS_SECTIONS, type SettingsSectionId } from "./settings-sections"
 
@@ -140,6 +141,7 @@ const SettingsPage = () => {
                 />
                 <PrivacySection />
                 <BlockedSection />
+                <StatusesSection />
               </>
             ) : null}
             {isSignedIn ? <AppearanceSection /> : null}

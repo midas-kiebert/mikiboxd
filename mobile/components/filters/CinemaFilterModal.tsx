@@ -91,12 +91,6 @@ type CinemaFilterModalProps = {
    * Set by the cinema pill's dropdown, whose rows each carry a pencil.
    */
   initialEditPresetId?: string | null;
-  /**
-   * Warm the sheet at mount (see `sheet-warm-up`). Only for an owner that is
-   * going to stay mounted: gorhom orphans a sheet whose owner unmounts before
-   * its first open reports back, leaving it on screen for good.
-   */
-  warmUpOnMount?: boolean;
 };
 
 /** What the cinema pill's dropdown (and anything else opening this sheet) can ask for. */
@@ -141,7 +135,6 @@ export default function CinemaFilterModal({
   onBack,
   initialPage = "selection",
   initialEditPresetId = null,
-  warmUpOnMount = true,
 }: CinemaFilterModalProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -769,12 +762,8 @@ export default function CinemaFilterModal({
         title={page === "presets" ? "Manage presets" : "Cinemas"}
         backgroundColor={colors.nestedModalBackground}
         // Opens both on its own (the cinema chip) and on top of the Filters
-        // sheet, so it has to draw in front of it. That used to mean rebuilding
-        // the sheet on every open, which cost ~400ms before it started to move;
-        // warming instead registers its portal after the Filters sheet's, once,
-        // and every open after that is a single frame. It must therefore stay
-        // *after* FiltersModal in FiltersModalProvider's JSX.
-        warmUpOnMount={warmUpOnMount}
+        // sheet, so it has to draw in front of it — FiltersModalProvider sees
+        // to that.
         // ~80 cinema chips are several hundred native views, so this sheet is
         // the reason AppBottomSheet defers content at all: it holds the chips
         // back until the sheet is up, and this keeps the panel there past that

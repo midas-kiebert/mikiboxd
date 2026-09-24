@@ -108,7 +108,6 @@ import { isRemoveInterestedReminderEnabled } from "@/utils/interested-elsewhere-
 import SeatSheets, { type SeatSheetsHandle } from "@/components/showtimes/SeatSheets";
 import { getSeatFieldMaxLength, getSeatInputConfig, validateSeatFieldValue } from "@/components/showtimes/seat-input";
 import SheetBackdrop from "@/components/sheets/SheetBackdrop";
-import { useSheetWarmUp } from "@/components/sheets/sheet-warm-up";
 import { SHEET_OPEN_DURATION_MS } from "@/components/sheets/sheet-timing";
 import {
   getFriendWatchKindMeta,
@@ -137,7 +136,8 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import PosterPlaceholder from "@/components/ui/PosterPlaceholder";
 import { formatLanguageCode } from "@/utils/language";
-import { measureForSpotlight } from "@/utils/spotlight-measure";
+import { useSharedValue } from "react-native-reanimated";
+import { measureInSheetForSpotlight, type MeasuredRect } from "@/utils/spotlight-measure";
 import * as Clipboard from "expo-clipboard";
 import { loadCinevilleCardDigits } from "@/utils/cineville-card";
 import { isCinevilleAutoCopyEnabled } from "@/utils/cineville-auto-copy";
@@ -227,9 +227,6 @@ const SEAT_WATCH_BELL_HIT_SLOP = 10;
 
 /** The app's one sheet speed, so this sheet rises exactly like every other. */
 const SHEET_ANIMATION_CONFIG = { duration: SHEET_OPEN_DURATION_MS } as const;
-
-/** The warm-up's open and close, which nobody is meant to see. */
-const INSTANT_ANIMATION_CONFIG = { duration: 1 } as const;
 
 /**
  * How long the tour waits before reading its first target's position: long
@@ -538,21 +535,8 @@ export default function ShowtimeActionModal({
   // sheet that is already on its way down.
   const presentGenerationRef = useRef(0);
 
-  // A present-and-close at startup, so this sheet's node — the largest in the
-  // app — exists before anyone taps, rather than being built inside the first
-  // open. `AppBottomSheet` does this for every other sheet; this one drives its
-  // own BottomSheetModal, so it wires the same hook up by hand. Its nested seat
-  // sheets are deliberately *not* warmed: they live inside this component, so
-  // React would run their effects first and register their portals behind this
-  // one's — see `sheet-warm-up`.
-  const { isWarmingUp, onSheetChange: onWarmUpSheetChange } = useSheetWarmUp(
-    bottomSheetModalRef,
-    true
-  );
-  const isWarmingUpRef = useRef(isWarmingUp);
   const visibleRef = useRef(visible);
   useEffect(() => {
-    isWarmingUpRef.current = isWarmingUp;
     visibleRef.current = visible;
   });
 
@@ -562,6 +546,17 @@ export default function ShowtimeActionModal({
   // Declared above the callbacks that read it: a ref written after the closure
   // that captures it reads to the React Compiler as a render-phase mutation,
   // and it skips the whole component over it.
+  // Where the sheet's top really is, from gorhom — see
+  // `measureInSheetForSpotlight` for why the tour can't just measure.
+  const sheetPosition = useSharedValue(0);
+  const sheetTopRef = useRef<View>(null);
+  const measureTourTarget = useCallback(
+    (target: View | null, callback: (rect: MeasuredRect) => void) => {
+      measureInSheetForSpotlight(target, sheetTopRef.current, sheetPosition.get(), callback);
+    },
+    [sheetPosition]
+  );
+
   const onTourTargetRectRef = useRef(onTourTargetRect);
   useEffect(() => {
     onTourTargetRectRef.current = onTourTargetRect;
@@ -569,15 +564,9 @@ export default function ShowtimeActionModal({
 
   const handleSheetChange = useCallback(
     (index: number) => {
-      // The warm-up's own open and close drive it to completion, and must reach
-      // neither `onClose` nor the blocking-overlay registration.
-      if (isWarmingUpRef.current) {
-        onWarmUpSheetChange(index);
-        return;
-      }
-      // Open while nothing asked for it: a warm-up's present that arrived
-      // after the warm-up had finished. Put it straight back (as AppBottomSheet
-      // does) rather than show a sheet nobody opened.
+      // Open while nothing asked for it (gorhom restoring a closed sheet, say).
+      // Put it straight back, as AppBottomSheet does, rather than show a sheet
+      // nobody opened.
       if (index >= 0 && !visibleRef.current) {
         requestAnimationFrame(() => bottomSheetModalRef.current?.close());
         return;
@@ -596,12 +585,12 @@ export default function ShowtimeActionModal({
       // never got a hole to highlight. Re-measuring off the real settle
       // event catches that case regardless of device speed.
       if (tourTarget) {
-        measureForSpotlight(tourTargetRefs.current[tourTarget], (rect) => {
+        measureTourTarget(tourTargetRefs.current[tourTarget], (rect) => {
           onTourTargetRectRef.current?.(rect);
         });
       }
     },
-    [onClose, tourTarget, onWarmUpSheetChange]
+    [onClose, tourTarget, measureTourTarget]
   );
 
   const presentSheet = useCallback(() => {
@@ -647,9 +636,6 @@ export default function ShowtimeActionModal({
   );
 
   useEffect(() => {
-    // A tap during the warm-up would only be closed again a frame later. The
-    // warm-up finishing re-runs this effect, which then opens it for real.
-    if (isWarmingUp) return;
     if (!visible) {
       presentGenerationRef.current += 1;
       isPresentPendingRef.current = false;
@@ -662,24 +648,21 @@ export default function ShowtimeActionModal({
       }
       return;
     }
-    // The portal already holds this showtime (re-opening the same one, or an
-    // open-by-id that has nothing to show yet either way): nothing stale to
-    // wait out, so rise now.
-    //
-    // This used to skip the wait for the first open of the session too, on the
-    // grounds that nothing had been rendered into the portal yet. The startup
-    // warm-up made that false: it presents the sheet once, invisibly, which
-    // commits a body with no showtime in it — so the first real open rose with
-    // *that* on screen for a frame or two. What is committed is the only thing
-    // that can answer this, never whether we have presented before.
-    if (committedShowtimeIdRef.current === selectedShowtimeIdRef.current) {
+    // Nothing stale to wait out, so rise now: either the sheet has never been
+    // presented (its portal does not exist yet, so the first present builds it
+    // with this showtime in it), or the portal already holds this showtime
+    // (re-opening the same one, or an open-by-id with nothing to show yet).
+    if (
+      !hasEverPresentedRef.current ||
+      committedShowtimeIdRef.current === selectedShowtimeIdRef.current
+    ) {
       presentSheet();
       return;
     }
     pendingPresentShowtimeIdRef.current = selectedShowtimeIdRef.current;
     isPresentPendingRef.current = true;
     presentTimeoutRef.current = setTimeout(presentSheet, PRESENT_CONTENT_TIMEOUT_MS);
-  }, [visible, isWarmingUp, presentSheet]);
+  }, [visible, presentSheet]);
 
   // Shared stack, so a sheet opened from this one takes the press first — see
   // `utils/android-back.ts`.
@@ -713,13 +696,13 @@ export default function ShowtimeActionModal({
       : SUBSEQUENT_TOUR_MEASURE_DELAYS_MS;
     const timers = delays.map((delay) =>
       setTimeout(() => {
-        measureForSpotlight(tourTargetRefs.current[tourTarget], (rect) => {
+        measureTourTarget(tourTargetRefs.current[tourTarget], (rect) => {
           onTourTargetRectRef.current?.(rect);
         });
       }, delay)
     );
     return () => timers.forEach(clearTimeout);
-  }, [tourTarget, visible]);
+  }, [tourTarget, visible, measureTourTarget]);
 
   // Reset transient UI when the sheet closes or switches showtime.
   useEffect(() => {
@@ -1752,8 +1735,10 @@ export default function ShowtimeActionModal({
 
   const friendsForPing = useMemo(() => {
     const availabilityRank: Record<FriendPingAvailability, number> = {
+      // Equal on purpose: inviting someone must not make their row jump away
+      // from under the finger — it stays put and turns into "Invited".
       eligible: 0,
-      pinged: 1,
+      pinged: 0,
       interested: 2,
       going: 3,
     };
@@ -1782,18 +1767,18 @@ export default function ShowtimeActionModal({
   // The list shows every friend you can still invite, including those who
   // already set a going/interested status on their own (their status shows
   // next to the button, but inviting them still works — it just won't notify
-  // them); already-pinged friends live in the summary instead.
+  // them). Already-invited friends stay in the list, showing "Invited": taking
+  // the row away was the only sign an invite had gone out, and the "Invited"
+  // section it moved to is usually scrolled out of sight.
   const filteredFriendsForPing = useMemo(() => {
-    const invitable = friendsForPing.filter((friend) => friend.availability !== "pinged");
     const query = pingSearchQuery.trim().toLowerCase();
-    if (!query) return invitable;
-    return invitable.filter((friend) => friend.label.toLowerCase().includes(query));
+    if (!query) return friendsForPing;
+    return friendsForPing.filter((friend) => friend.label.toLowerCase().includes(query));
   }, [friendsForPing, pingSearchQuery]);
 
-  // The top result is what Enter selects (and what we visually highlight) — the
-  // list already excludes already-pinged friends, so anyone left is invitable.
+  // The top invitable result is what Enter selects (and what we highlight).
   const firstEligibleFriendId = useMemo(
-    () => filteredFriendsForPing[0]?.id ?? null,
+    () => filteredFriendsForPing.find((friend) => friend.availability !== "pinged")?.id ?? null,
     [filteredFriendsForPing]
   );
 
@@ -2013,15 +1998,8 @@ export default function ShowtimeActionModal({
       // of the screen on iOS, leaving a gap under it, and on the filters it
       // fought the list's own scroll and bounced it back to the top.
       enableOverDrag={false}
-      animationConfigs={isWarmingUp ? INSTANT_ANIMATION_CONFIG : SHEET_ANIMATION_CONFIG}
-      // `containerStyle`, not `style`: gorhom composes its own animated style
-      // *after* the `style` prop and hard-sets `opacity: 1` on it whenever the
-      // sheet is not at index -1 (BottomSheetBody), so `style` cannot hide a
-      // sheet that is open — which is exactly what a warm-up is. The hosting
-      // container above it composes the provided style first and never touches
-      // opacity, so this one holds.
-      containerStyle={isWarmingUp ? styles.warmingUp : undefined}
-      backdropComponent={isWarmingUp ? undefined : renderBackdrop}
+      animationConfigs={SHEET_ANIMATION_CONFIG}
+      backdropComponent={renderBackdrop}
       handleComponent={null}
       backgroundStyle={styles.sheetBackground}
       topInset={topInset}
@@ -2029,11 +2007,13 @@ export default function ShowtimeActionModal({
       keyboardBlurBehavior="restore"
       android_keyboardInputMode="adjustResize"
       onChange={handleSheetChange}
+      animatedPosition={sheetPosition}
     >
       {/* @gorhom/portal (used by the bottom sheet) does not forward React
           context, so re-provide the QueryClient for hooks rendered inside. */}
       <QueryClientProvider client={queryClient}>
       <InheritFiltersContext.Provider value={inheritFilters}>
+      <View ref={sheetTopRef} collapsable={false} pointerEvents="none" style={styles.sheetTopMarker} />
       <CommittedShowtimeReporter
         showtimeId={selectedShowtimeId}
         onCommitted={handleContentCommitted}
@@ -2074,10 +2054,7 @@ export default function ShowtimeActionModal({
                 is no such showtime — and this body is what the *next* open
                 rises with, because @gorhom/portal commits sheet content a
                 render late and the rise does not wait past
-                `PRESENT_CONTENT_TIMEOUT_MS` for it. The warm-up at startup
-                leaves exactly this state committed, so the first sheet of the
-                session came up reading "Showtime unavailable." for a frame or
-                two before its own content landed. Closed, it says nothing. */}
+                `PRESENT_CONTENT_TIMEOUT_MS` for it. Closed, it says nothing. */}
             {!visible ? null : isLoadingShowtime ? (
               <ActivityIndicator size="large" color={colors.tint} />
             ) : (
@@ -2811,6 +2788,7 @@ export default function ShowtimeActionModal({
                               watchStatus={friend.watchStatus}
                               pingStatus={getPingRowStatus(friend.availability)}
                               mode="invite"
+                              invited={friend.availability === "pinged"}
                               highlighted={isHighlighted}
                               disabled={isPingingFriend}
                               onInvite={() => handlePingFriend(friend.id)}
@@ -3068,9 +3046,6 @@ export default function ShowtimeActionModal({
   );
 }
 
-/** Far enough right of any screen that a warming sheet can't be touched. */
-const WARM_UP_OFFSCREEN_X = 100000;
-
 const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
   StyleSheet.create({
     handleContainer: {
@@ -3084,16 +3059,8 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderRadius: 999,
       backgroundColor: colors.divider,
     },
-    // The warm-up: mounted and laid out, but neither on screen nor able to take
-    // a touch — it covers most of the screen while it runs, and it runs during
-    // startup, which is exactly when someone is already tapping.
-    // `pointerEvents` here is not enough on its own: gorhom's hosting
-    // container sets `pointerEvents="box-none"` as a prop, which beats the
-    // style on Android, so a warm-up that stalls open (as it does under the
-    // login screen, with the tabs frozen underneath) swallowed every tap on
-    // it. Shifting it off screen takes it out of hit-testing on both
-    // platforms while leaving its layout — the point of warming — intact.
-    warmingUp: { opacity: 0, pointerEvents: "none", transform: [{ translateX: WARM_UP_OFFSCREEN_X }] },
+    // Zero-size, at the top of the sheet's content: the tour measures from it.
+    sheetTopMarker: { position: "absolute", top: 0, left: 0, width: 0, height: 0 },
     sheetBackground: {
       backgroundColor: colors.background,
       borderTopLeftRadius: 16,

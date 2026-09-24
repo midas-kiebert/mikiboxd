@@ -897,6 +897,7 @@ export type ShowtimeInMovieViewerState = {
   friends_interested?: Array<UserPublic>
   invited_by?: Array<UserPublic>
   invite_ping_ids?: Array<number>
+  has_unseen_invite?: boolean
   co_invited_friends?: Array<CoInvitedFriendPublic>
   pending_invited_friends?: Array<UserPublic>
   friends_of_friends_going?: Array<UserWithFriendStatus>
@@ -1095,6 +1096,7 @@ export type ShowtimeViewerState = {
   friends_interested?: Array<UserPublic>
   invited_by?: Array<UserPublic>
   invite_ping_ids?: Array<number>
+  has_unseen_invite?: boolean
   co_invited_friends?: Array<CoInvitedFriendPublic>
   pending_invited_friends?: Array<UserPublic>
   friends_of_friends_going?: Array<UserWithFriendStatus>
@@ -2042,6 +2044,12 @@ export type MeGetMyShowtimePingsResponse = Array<ShowtimePingPublic>
 export type MeGetMyUnseenShowtimePingCountResponse = number
 
 export type MeMarkMyShowtimePingsSeenResponse = Message
+
+export type MeMarkMyShowtimePingsSeenForShowtimeData = {
+  showtimeId: number
+}
+
+export type MeMarkMyShowtimePingsSeenForShowtimeResponse = Message
 
 export type MeDeleteMyShowtimePingData = {
   pingId: number

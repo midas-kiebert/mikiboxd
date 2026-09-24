@@ -8,8 +8,8 @@
  *  - the Android hardware back button closes the sheet (or steps back when a
  *    back handler is supplied), matching the header's back button
  *  - stackBehavior="push" so nested sheets stack correctly
- *  - a node built once and kept, so every open animates in a single frame
- *    (see `./sheet-warm-up`)
+ *  - a node built on first open and kept, so every later open animates in a
+ *    single frame
  *  - the same instant answer to a tap: the sheet rises holding
  *    {@link ./SheetLoadingPanel}, and the caller's content is built once it is
  *    up (see `deferContent` and `contentReady`), so every sheet answers at the
@@ -72,7 +72,6 @@ import {
   useSheetContentReady,
   useSheetPanelReady,
 } from "@/components/sheets/use-sheet-content-ready";
-import { useSheetWarmUp } from "@/components/sheets/sheet-warm-up";
 import { SHEET_OPEN_DURATION_MS } from "@/components/sheets/sheet-timing";
 
 type ThemeColors = typeof import("@/constants/theme").Colors.light;
@@ -115,14 +114,6 @@ type AppBottomSheetProps = {
   deferContent?: boolean;
   /** The line under the loading panel's spinner, e.g. "Loading cinemas…". */
   loadingLabel?: string;
-  /**
-   * Build this sheet's node at startup instead of on its first open — see
-   * {@link ./sheet-warm-up}. Required for any sheet that must draw *in front
-   * of* another one, since warm-up order is what fixes z-order now that none of
-   * them rebuild themselves. The order is the order these components mount, so
-   * moving one in its parent's JSX moves it in the stack.
-   */
-  warmUpOnMount?: boolean;
   /** Backdrop press behavior; defaults to "close". Use "none" to lock the sheet. */
   backdropPressBehavior?: "close" | "none";
   keyboardBehavior?: BottomSheetModalProps["keyboardBehavior"];
@@ -130,9 +121,6 @@ type AppBottomSheetProps = {
 };
 
 const SHEET_ANIMATION_CONFIG = { duration: SHEET_OPEN_DURATION_MS } as const;
-
-/** The warm-up's open and close, which nobody is meant to see. */
-const INSTANT_ANIMATION_CONFIG = { duration: 1 } as const;
 
 export default function AppBottomSheet({
   visible,
@@ -147,7 +135,6 @@ export default function AppBottomSheet({
   contentReady = true,
   loadingLabel,
   deferContent = true,
-  warmUpOnMount = false,
   backdropPressBehavior = "close",
   keyboardBehavior,
   children,
@@ -158,14 +145,6 @@ export default function AppBottomSheet({
 
   const bottomSheetModalRef = useRef<BottomSheetModal>(null);
   const resolvedSnapPoints = useMemo(() => snapPoints ?? ["88%"], [snapPoints]);
-
-  // A present-and-close at startup, so the sheet's node exists before anyone
-  // taps. Everything below keeps it invisible and instantaneous while it runs,
-  // and ignores the open and close it produces.
-  const { isWarmingUp, onSheetChange: onWarmUpSheetChange } = useSheetWarmUp(
-    bottomSheetModalRef,
-    warmUpOnMount
-  );
 
   // False until the sheet has finished rising, and past that for as long as the
   // caller's own fetch is still out — the sheet moves first and is filled
@@ -183,26 +162,17 @@ export default function AppBottomSheet({
   // Drive the gorhom sheet imperatively from the controlled `visible` prop.
   const hasEverPresentedRef = useRef(false);
   const closedByGorhomRef = useRef(false);
-  // Read from `handleSheetChange`, which gorhom holds by identity — a ref so
-  // the warm-up ending does not hand it a new callback.
-  const isWarmingUpRef = useRef(isWarmingUp);
+  // Read from `handleSheetChange`, which gorhom holds by identity.
   const visibleRef = useRef(visible);
   useEffect(() => {
-    isWarmingUpRef.current = isWarmingUp;
     visibleRef.current = visible;
   });
 
   const handleSheetChange = useCallback(
     (index: number) => {
-      // The warm-up's own open and close are not the user's: they drive it to
-      // completion and must not reach `onClose`.
-      if (isWarmingUpRef.current) {
-        onWarmUpSheetChange(index);
-        return;
-      }
       // Open while its owner says it is closed: something presented it that
-      // was not the user (a warm-up's present arriving after the warm-up had
-      // finished). Put it straight back rather than leave it on screen.
+      // was not the user (gorhom restoring a closed sheet, say). Put it
+      // straight back rather than leave it on screen.
       if (index >= 0 && !visibleRef.current) {
         requestAnimationFrame(() => bottomSheetModalRef.current?.close());
         return;
@@ -212,16 +182,12 @@ export default function AppBottomSheet({
         onClose();
       }
     },
-    [onClose, onWarmUpSheetChange]
+    [onClose]
   );
 
   // `close()` rather than `dismiss()`: dismiss would unmount the node and hand
   // the next open the slow path again.
   useEffect(() => {
-    // A tap that lands during the warm-up must not race it: presenting here
-    // would only be closed again a frame later. The warm-up ending re-runs this
-    // effect, which then opens the sheet for real.
-    if (isWarmingUp) return;
     if (visible) {
       // Not yet: the panel has not been laid out, so the sheet would rise
       // showing nothing at all.
@@ -232,7 +198,7 @@ export default function AppBottomSheet({
     } else if (hasEverPresentedRef.current && !closedByGorhomRef.current) {
       bottomSheetModalRef.current?.close();
     }
-  }, [visible, isPanelReady, isWarmingUp]);
+  }, [visible, isPanelReady]);
 
   // Through the shared stack, not `BackHandler` directly: a sheet opened on top
   // of another one has to win the press, and RN's own ordering hands it to
@@ -255,9 +221,10 @@ export default function AppBottomSheet({
       ref={bottomSheetModalRef}
       snapPoints={resolvedSnapPoints}
       enablePanDownToClose={enablePanDownToClose}
-      // Never: a sheet's node is built once — at startup if it is warmed, on
-      // first open otherwise — and kept, because rebuilding it is the single
-      // biggest cost an open can carry. See `./sheet-warm-up`.
+      // Never: a sheet's node is built on its first open and kept, because
+      // rebuilding it (~325ms on a mid-range Android) is the single biggest
+      // cost an open can carry. It also keeps the sheet's stacking slot — see
+      // `FiltersModalProvider` for the one pair where that matters.
       enableDismissOnClose={false}
       enableDynamicSizing={false}
       // No rubber-band past the top snap point. With it, pulling up on a sheet
@@ -268,15 +235,8 @@ export default function AppBottomSheet({
       enableOverDrag={false}
       stackBehavior="push"
       keyboardBehavior={keyboardBehavior}
-      animationConfigs={isWarmingUp ? INSTANT_ANIMATION_CONFIG : SHEET_ANIMATION_CONFIG}
-      // `containerStyle`, not `style`: gorhom composes its own animated style
-      // *after* the `style` prop and hard-sets `opacity: 1` on it whenever the
-      // sheet is not at index -1 (BottomSheetBody), so `style` cannot hide a
-      // sheet that is open — which is exactly what a warm-up is. The hosting
-      // container above it composes the provided style first and never touches
-      // opacity, so this one holds.
-      containerStyle={isWarmingUp ? styles.warmingUp : undefined}
-      backdropComponent={isWarmingUp ? undefined : renderBackdrop}
+      animationConfigs={SHEET_ANIMATION_CONFIG}
+      backdropComponent={renderBackdrop}
       backgroundStyle={[styles.sheetBackground, backgroundColor ? { backgroundColor } : null]}
       handleIndicatorStyle={styles.handleIndicator}
       topInset={topInset}
@@ -298,9 +258,6 @@ export default function AppBottomSheet({
   );
 }
 
-/** Far enough right of any screen that a warming sheet can't be touched. */
-const WARM_UP_OFFSCREEN_X = 100000;
-
 const createStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     sheetBackground: {
@@ -311,14 +268,4 @@ const createStyles = (colors: ThemeColors) =>
       width: 36,
       height: 4,
     },
-    // The warm-up: mounted and laid out, but neither on screen nor able to
-    // take a touch — it covers most of the screen while it runs, and it runs
-    // during startup, which is exactly when someone is already tapping.
-    // `pointerEvents` here is not enough on its own: gorhom's hosting
-    // container sets `pointerEvents="box-none"` as a prop, which beats the
-    // style on Android, so a warm-up that stalls open (as it does under the
-    // login screen, with the tabs frozen underneath) swallowed every tap on
-    // it. Shifting it off screen takes it out of hit-testing on both
-    // platforms while leaving its layout — the point of warming — intact.
-    warmingUp: { opacity: 0, pointerEvents: "none", transform: [{ translateX: WARM_UP_OFFSCREEN_X }] },
   });

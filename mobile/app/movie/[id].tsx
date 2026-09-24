@@ -54,6 +54,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import PosterPlaceholder from "@/components/ui/PosterPlaceholder";
 import { useShowtimeModal } from "@/components/showtimes/ShowtimeModalProvider";
 import FiltersModal from "@/components/filters/FiltersModal";
+import { useStackAboveKey } from "@/components/sheets/use-stack-above-key";
 import CinemaFilterModal from "@/components/filters/CinemaFilterModal";
 import type { OpenCinemaModalOptions } from "@/components/filters/CinemaFilterModal";
 import ActiveFilterChips from "@/components/filters/ActiveFilterChips";
@@ -256,10 +257,22 @@ function MovieContent({
   const [cinemaModalVisible, setCinemaModalVisible] = useState(false);
   // Set when the cinema pill's dropdown opens the sheet on a preset's pencil.
   const [cinemaEditPresetId, setCinemaEditPresetId] = useState<string | null>(null);
+  // Cinemas opens on top of Filters too, so it must draw in front of it.
+  const {
+    key: cinemaSheetKey,
+    onLowerOpen: onFiltersOpen,
+    onUpperOpen: onCinemaOpen,
+  } = useStackAboveKey();
+  const filtersModalVisibleRef = useRef(filtersModalVisible);
+  useEffect(() => {
+    filtersModalVisibleRef.current = filtersModalVisible;
+    if (filtersModalVisible) onFiltersOpen();
+  }, [filtersModalVisible, onFiltersOpen]);
   const openCinemaModal = useCallback((options?: OpenCinemaModalOptions) => {
+    onCinemaOpen(filtersModalVisibleRef.current);
     setCinemaEditPresetId(options?.editPresetId ?? null);
     setCinemaModalVisible(true);
-  }, []);
+  }, [onCinemaOpen]);
   const closeCinemaModal = useCallback(() => {
     setCinemaModalVisible(false);
     setCinemaEditPresetId(null);
@@ -829,6 +842,7 @@ function MovieContent({
         resultCount={showtimes.length}
       />
       <CinemaFilterModal
+        key={cinemaSheetKey}
         visible={cinemaModalVisible}
         onClose={closeCinemaModal}
         initialEditPresetId={cinemaEditPresetId}

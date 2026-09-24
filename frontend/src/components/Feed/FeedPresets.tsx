@@ -1,14 +1,4 @@
-import {
-  Box,
-  Button,
-  Flex,
-  Input,
-  Portal,
-  Stack,
-  Text,
-  chakra,
-} from "@chakra-ui/react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { Box, Flex, Text, chakra } from "@chakra-ui/react"
 /**
  * Saved filter presets, in the filter rail — the "Quick filters" part.
  *
@@ -32,12 +22,9 @@ import { useMutation, useQueryClient } from "@tanstack/react-query"
  */
 import { memo, useMemo, useRef, useState } from "react"
 import { MdBookmarkAdd } from "react-icons/md"
-import { MeService } from "shared/client"
 import {
   type DisplayPreset,
   type PresetApplyContext,
-  buildSavedPresetCreate,
-  displayPresetsQueryKey,
   presetChangesNothing,
   presetKey,
 } from "shared/filters/saved-presets"
@@ -46,21 +33,13 @@ import useAuth from "shared/hooks/useAuth"
 
 import { useIsSignedIn } from "@/auth/useSession"
 import { RailPartLabel } from "@/components/Feed/FilterRailControls"
-import { Checkbox } from "@/components/ui/checkbox"
-import {
-  DialogBody,
-  DialogContent,
-  DialogHeader,
-  DialogRoot,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import SavePresetDialog from "@/components/Feed/SavePresetDialog"
 import type { FeedParams } from "@/features/showtimes/feed-params"
 import {
   feedParamsToPresetState,
   presetPatchForFeed,
 } from "@/features/showtimes/feed-presets"
 import { usePreferredCinemaIds } from "@/features/showtimes/guest-preferred-cinemas"
-import useCustomToast from "@/hooks/useCustomToast"
 
 import "./preset-chip.css"
 
@@ -137,9 +116,7 @@ const FeedPresets = memo(function FeedPresets({
 }: FeedPresetsProps) {
   // Read flow: prepare derived values/handlers first, then return component JSX.
   const isSignedIn = useIsSignedIn()
-  const queryClient = useQueryClient()
   const { user } = useAuth()
-  const { showSuccessToast } = useCustomToast()
 
   const { presets } = useDisplayPresets({ enabled: isSignedIn })
   const { data: preferredCinemaIds } = usePreferredCinemaIds()
@@ -161,32 +138,6 @@ const FeedPresets = memo(function FeedPresets({
   )
 
   const [isSaveOpen, setIsSaveOpen] = useState(false)
-  const [name, setName] = useState("")
-  const [includeCinemas, setIncludeCinemas] = useState(true)
-
-  const { mutate: save, isPending: isSaving } = useMutation({
-    mutationFn: () =>
-      MeService.createSavedPreset({
-        requestBody: buildSavedPresetCreate({
-          name: name.trim(),
-          // Everything the feed can express is controlled by the preset. The
-          // app's save prompt lets you opt dimensions out one by one; that is a
-          // refinement, and leaving it out means a preset here simply restores
-          // exactly what you saved.
-          untouchedFields: [],
-          includeCinemas,
-          currentFilters: feedParamsToPresetState(params),
-          cinemaIds: [...params.cinemas],
-        }),
-      }),
-    onSuccess: () => {
-      setIsSaveOpen(false)
-      setName("")
-      showSuccessToast("Quick filter saved.")
-      queryClient.invalidateQueries({ queryKey: displayPresetsQueryKey })
-    },
-  })
-
   const apply = (preset: DisplayPreset) => {
     onChange(
       presetPatchForFeed(preset, params, Boolean(user?.letterboxd_username)),
@@ -254,53 +205,12 @@ const FeedPresets = memo(function FeedPresets({
         </Flex>
       )}
 
-      <DialogRoot
+      <SavePresetDialog
         open={isSaveOpen}
-        onOpenChange={(details) => setIsSaveOpen(details.open)}
-      >
-        <Portal>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Save current filters</DialogTitle>
-            </DialogHeader>
-            <DialogBody>
-              <Stack gap={3}>
-                <Input
-                  autoFocus
-                  placeholder="Name this quick filter"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                />
-                <Checkbox
-                  checked={includeCinemas}
-                  onCheckedChange={(details) =>
-                    setIncludeCinemas(!!details.checked)
-                  }
-                >
-                  <Text fontSize="sm">Include the cinemas I have selected</Text>
-                </Checkbox>
-                <Flex justify="flex-end" gap={2}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setIsSaveOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    size="sm"
-                    loading={isSaving}
-                    disabled={name.trim() === ""}
-                    onClick={() => save()}
-                  >
-                    Save
-                  </Button>
-                </Flex>
-              </Stack>
-            </DialogBody>
-          </DialogContent>
-        </Portal>
-      </DialogRoot>
+        onClose={() => setIsSaveOpen(false)}
+        params={params}
+        canUseWatchlistFilter={Boolean(user?.letterboxd_username?.trim())}
+      />
     </>
   )
 })

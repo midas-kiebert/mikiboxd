@@ -308,6 +308,18 @@
   background: var(--p-secondary);
 }
 
+/* An invite also fills the row: it is waiting on you. Selected still lifts
+   it onto the panel's surface, as any row. */
+.ac-row--invited {
+  --mk-ring: var(--p-primary);
+  background-color: var(--p-primary);
+}
+
+.ac-row--invited:hover {
+  --mk-ring: color-mix(in srgb, var(--p-primary) 80%, var(--p-border));
+  background-color: color-mix(in srgb, var(--p-primary) 80%, var(--p-border));
+}
+
 /* When: the time leads, as in any agenda. */
 .ac-row__time {
   display: flex;

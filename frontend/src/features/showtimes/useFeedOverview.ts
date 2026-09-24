@@ -165,12 +165,10 @@ const NO_SECTIONS: FeedOverviewSection[] = []
 
 /**
  * Where "Show more" goes for a list: the filters on the feed that come
- * closest to it, or for invites, which no filter describes, the notification
- * panel. None for "selling fast", which no filter describes either.
+ * closest to it. None for invites and "selling fast", which no filter
+ * describes.
  */
-export type ShowMoreTarget =
-  | { kind: "filters"; params: FeedParams }
-  | { kind: "notifications" }
+export type ShowMoreTarget = { kind: "filters"; params: FeedParams }
 
 export const showMoreTarget = (
   kind: FeedOverviewSectionKind,
@@ -187,7 +185,7 @@ export const showMoreTarget = (
   }
   switch (kind) {
     case "invited":
-      return { kind: "notifications" }
+      return null
     case "plans":
       return {
         kind: "filters",

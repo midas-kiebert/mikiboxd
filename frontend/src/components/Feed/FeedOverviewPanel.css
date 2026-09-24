@@ -64,16 +64,33 @@
   background: var(--chakra-colors-bg-subtle);
 }
 
-/* Going or interested: the status's ticket face, in every list. */
+/* Your status, as on Activity: a bar down the row's edge, in its ink. */
 .mk-overview__row--toned {
+  position: relative;
+}
+
+.mk-overview__row--toned::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--p-secondary);
+}
+
+/* An invite also fills the row: it is waiting on you. */
+.mk-overview__row--invited {
+  --mk-ring: var(--p-primary);
   background: var(--p-primary);
 }
 
-.mk-overview__row--toned:hover {
+.mk-overview__row--invited:hover {
   background: color-mix(in srgb, var(--p-primary) 80%, var(--p-border));
 }
 
-.mk-overview__row--toned + .mk-overview__row--toned {
+.mk-overview__row--invited + .mk-overview__row--invited {
   margin-top: 2px;
 }
 

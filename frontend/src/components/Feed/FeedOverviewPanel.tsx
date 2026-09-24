@@ -31,7 +31,6 @@ import type { KeyboardEvent, ReactNode } from "react"
 import type { ShowtimePublic } from "shared"
 import type { FeedOverviewSectionKind } from "shared/client"
 
-import { openNotificationPanel } from "@/components/Notifications/notification-panel"
 import {
   AvatarStack,
   CinemaTagLink,
@@ -190,22 +189,9 @@ const OverviewSection = ({
       ? (customList?.title ?? "Your list")
       : SECTION_TITLE[section.kind]
   const target = showMoreTarget(section.kind, feedParams, customList)
-  // The caret points where the rest will be: left, into the feed, for a list
-  // that puts its filters on it; right, away, for one that opens elsewhere.
+  // The caret points left, into the feed, where the rest will be.
   const action =
-    target?.kind === "notifications" ? (
-      <button
-        type="button"
-        className="mk-overview__show-more"
-        onClick={openNotificationPanel}
-      >
-        <span>Show more</span>
-        <PanelIcon.chevronRight
-          className="mk-overview__show-more-icon"
-          aria-hidden
-        />
-      </button>
-    ) : target?.kind === "filters" && isShowing(target.params, feedParams) ? (
+    target && isShowing(target.params, feedParams) ? (
       // The feed already is this list; a button that changes nothing reads broken.
       <span className="mk-overview__show-more mk-overview__show-more--current">
         <PanelIcon.chevronLeft
@@ -214,7 +200,7 @@ const OverviewSection = ({
         />
         <span>Currently showing</span>
       </span>
-    ) : target?.kind === "filters" ? (
+    ) : target ? (
       <button
         type="button"
         className="mk-overview__show-more mk-overview__show-more--into-feed"
@@ -238,7 +224,10 @@ const OverviewSection = ({
           key={showtime.id}
           showtime={showtime}
           onSelect={onSelect}
-          accessory={<Accessory kind={section.kind} showtime={showtime} />}
+          showSeats={
+            section.kind === "selling_fast" ||
+            viewerTone(showtime) === "interested"
+          }
           note={
             section.kind === "invited" ? (
               <InvitedByNote showtime={showtime} />
@@ -248,25 +237,6 @@ const OverviewSection = ({
       ))}
     </Section>
   )
-}
-
-/** What each list is about, at the end of its rows. */
-const Accessory = ({
-  kind,
-  showtime,
-}: {
-  kind: FeedOverviewSectionKind
-  showtime: ShowtimePublic
-}) => {
-  switch (kind) {
-    case "selling_fast":
-      return <SeatMark showtime={showtime} withCount />
-    // An invite still shows who is interested or going, like every other
-    // list: the inviter's name in this slot used to crowd those out. Who
-    // invited you goes on its own line under the screening (`InvitedByNote`).
-    default:
-      return <AvatarStack showtime={showtime} size={28} max={5} align="end" />
-  }
 }
 
 /**
@@ -401,22 +371,22 @@ const InvitedByNote = ({ showtime }: { showtime: ShowtimePublic }) => {
 const OverviewRow = ({
   showtime,
   onSelect,
-  accessory,
+  showSeats,
   note,
 }: {
   showtime: ShowtimePublic
   onSelect: (showtime: ShowtimePublic) => void
-  accessory: ReactNode
+  /** "n of m seats left" in the row's meta line, where every list puts it. */
+  showSeats: boolean
   /** A line under when and where, about this row in particular. */
   note?: ReactNode
 }) => {
   // See `PortraitTicketCard`: whoever prints a day holds the day.
   useDayClock()
   const time = when(showtime)
-  // Going or interested reads the same in every list: the row takes that
-  // status's face colour, as its ticket does, never a badge.
+  // Your status reads the same in every list, as on Activity: a bar down the
+  // row's edge, never a badge. An invite also fills the row, to catch the eye.
   const tone = viewerTone(showtime)
-  const toned = tone === "going" || tone === "interested"
   // A `div` acting as the button, as `TicketRoot` does: a real `<button>`
   // cannot hold the cinema tag's link.
   const handleKeyDown = (event: KeyboardEvent) => {
@@ -429,7 +399,9 @@ const OverviewRow = ({
   return (
     <div
       className={`mk-overview__row${
-        toned ? ` mk-overview__row--toned ${paletteClass(TONE_PALETTE[tone])}` : ""
+        tone === "none"
+          ? ""
+          : ` mk-overview__row--toned mk-overview__row--${tone} ${paletteClass(TONE_PALETTE[tone])}`
       }`}
       // biome-ignore lint/a11y/useSemanticElements: a row of block content, which a <button> may not hold
       role="button"
@@ -445,10 +417,13 @@ const OverviewRow = ({
             {time.dateShort} · {time.time}
           </span>
           <CinemaTagLink showtime={showtime} size="xs" />
+          {showSeats ? <SeatMark showtime={showtime} withCount /> : null}
         </span>
         {note}
       </span>
-      <span className="mk-overview__accessory">{accessory}</span>
+      <span className="mk-overview__accessory">
+        <AvatarStack showtime={showtime} size={28} max={5} align="end" />
+      </span>
     </div>
   )
 }

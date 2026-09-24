@@ -36,7 +36,7 @@ const TIP_PRESENTATION: Record<FeatureTipId, Presentation> = {
   },
   "letterboxd-avatar": {
     icon: "account-circle",
-    title: "Use your Letterboxd picture",
+    title: "Use your Letterboxd avatar",
     subtitle: "Let friends recognise you at a glance",
   },
   "add-friends": {

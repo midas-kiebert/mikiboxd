@@ -4,8 +4,9 @@ A handful of short lists, each a way into a screening, chosen by how much each
 one matters right now. In priority order (`FeedOverviewSectionKind`):
 
   1. **Invited** — open invites the viewer has not answered yet.
-  2. **Selling fast** — screenings they are interested in that are at least
-     very busy, while there is still time to buy a seat.
+  2. **Selling fast** — a weighted random draw from screenings that are very
+     busy or down to the last few seats (never sold out), among those the
+     viewer is interested in and those friends picked.
   3. **Custom** — whatever filters the viewer chose for this slot, if any.
   4. **Plans** — the start of their agenda.
   5. **Friends going** — a random draw from screenings friends picked,
@@ -34,11 +35,9 @@ from sqlmodel import Session
 from app.converters import showtime as showtime_converters
 from app.converters import showtime_page as showtime_page_converters
 from app.core.enums import (
-    SEAT_LEVEL_ORDER,
     FeedOverviewSectionKind,
     Language,
     SeatAvailabilityLevel,
-    is_fuller_than,
 )
 from app.crud import feed_overview as feed_overview_crud
 from app.crud import showtime as showtimes_crud
@@ -66,8 +65,22 @@ FRIENDS_GOING_POOL = 60
 # Days ahead at which a screening's draw weight has halved.
 FRIENDS_GOING_HALF_WEIGHT_DAYS = 3.0
 
-# "Selling fast" starts here. Busy is half a room, which is no reason to hurry.
-SELLING_FAST_FROM = SeatAvailabilityLevel.VERY_BUSY
+# Selling fast's draw weights, multiplied together. Fewer seats weigh more:
+# 1 + SCALE / seats left, so 10 seats left is ×2 and 2 left is ×6.
+SELLING_FAST_SEATS_SCALE = 10.0
+# Also which levels qualify (busy is half a room, no reason to hurry), and
+# the weight for a screening with only a level and no seat count.
+SELLING_FAST_LEVEL_WEIGHT: dict[SeatAvailabilityLevel, float] = {
+    SeatAvailabilityLevel.VERY_BUSY: 1.5,
+    SeatAvailabilityLevel.LAST_FEW: 3.0,
+}
+# The viewer's own interest outweighs any number of friends.
+SELLING_FAST_INTERESTED_WEIGHT = 4.0
+# Per point of friend score (going 2, interested 1; see
+# `crud.feed_overview.FRIEND_GOING_WEIGHT`), on top of 1.
+SELLING_FAST_FRIEND_SCORE_WEIGHT = 0.5
+# A friends' screening of a film on the viewer's watchlist.
+SELLING_FAST_WATCHLIST_WEIGHT = 1.5
 
 
 def _invited(*, session: Session, user_id: UUID, filters: Filters) -> list[Showtime]:
@@ -79,21 +92,80 @@ def _invited(*, session: Session, user_id: UUID, filters: Filters) -> list[Showt
     )
 
 
+def _selling_fast_level(showtime: Showtime) -> SeatAvailabilityLevel | None:
+    """The screening's level if it belongs in selling fast, else None."""
+    level = seat_availability_service.effective_seat_level(showtime)
+    if level not in SELLING_FAST_LEVEL_WEIGHT or showtime.seats_left == 0:
+        return None
+    return level
+
+
+def _seats_weight(showtime: Showtime, level: SeatAvailabilityLevel) -> float:
+    """How much fewer seats left raise the draw weight."""
+    if showtime.seats_left is None:
+        return SELLING_FAST_LEVEL_WEIGHT[level]
+    return 1 + SELLING_FAST_SEATS_SCALE / showtime.seats_left
+
+
 def _selling_fast(
     *, session: Session, user_id: UUID, filters: Filters
 ) -> list[Showtime]:
-    """Interested screenings at least very busy: fullest first, then soonest."""
-    candidates = feed_overview_crud.get_interested_showtimes_with_seat_data(
+    """A weighted random draw from screenings very busy or fuller, not sold out.
+
+    Two sources: screenings the viewer is interested in and screenings friends
+    picked. Weight is multiplied from the seats left, the viewer's interest,
+    and — for friends' screenings only — the friend score and whether the film
+    is on the viewer's watchlist. Drawn like `_friends_going`.
+    """
+    weighted: list[tuple[Showtime, float]] = []
+    for showtime in feed_overview_crud.get_interested_showtimes_with_seat_data(
         session=session, user_id=user_id, now=filters.snapshot_time
+    ):
+        level = _selling_fast_level(showtime)
+        if level is not None:
+            weighted.append(
+                (
+                    showtime,
+                    _seats_weight(showtime, level) * SELLING_FAST_INTERESTED_WEIGHT,
+                )
+            )
+
+    friends_picked: list[tuple[Showtime, int, SeatAvailabilityLevel]] = []
+    for showtime, score in feed_overview_crud.get_showtimes_friends_picked(
+        session=session,
+        user_id=user_id,
+        now=filters.snapshot_time,
+        languages=None,
+        limit=FRIENDS_GOING_POOL,
+        with_seat_data=True,
+    ):
+        level = _selling_fast_level(showtime)
+        if level is not None:
+            friends_picked.append((showtime, score, level))
+
+    watchlisted: set[int] = set()
+    if friends_picked:
+        letterboxd_username = viewer_context.letterboxd_username_for(
+            session=session, viewer_id=user_id
+        )
+        if letterboxd_username is not None:
+            watchlisted = feed_overview_crud.get_watchlisted_movie_ids(
+                session=session,
+                letterboxd_username=letterboxd_username,
+                movie_ids=[showtime.movie_id for showtime, _, _ in friends_picked],
+            )
+    for showtime, score, level in friends_picked:
+        weight = _seats_weight(showtime, level) * (
+            1 + SELLING_FAST_FRIEND_SCORE_WEIGHT * score
+        )
+        if showtime.movie_id in watchlisted:
+            weight *= SELLING_FAST_WATCHLIST_WEIGHT
+        weighted.append((showtime, weight))
+
+    drawn = sorted(
+        weighted, key=lambda entry: random.random() ** (1 / entry[1]), reverse=True
     )
-    busy: list[tuple[SeatAvailabilityLevel, Showtime]] = []
-    for showtime in candidates:
-        level = seat_availability_service.effective_seat_level(showtime)
-        if level is not None and not is_fuller_than(SELLING_FAST_FROM, level):
-            busy.append((level, showtime))
-    # Stable, so screenings on the same level keep the query's soonest-first.
-    busy.sort(key=lambda entry: SEAT_LEVEL_ORDER.index(entry[0]), reverse=True)
-    return [showtime for _, showtime in busy]
+    return [showtime for showtime, _ in drawn]
 
 
 def _custom(*, session: Session, user_id: UUID, filters: Filters) -> list[Showtime]:

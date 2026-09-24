@@ -2,16 +2,16 @@ import fcntl
 import json
 import os
 import random
-import subprocess
-import tempfile
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from threading import BoundedSemaphore, Lock
+from threading import BoundedSemaphore, Lock, local
 from typing import Any
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup, Tag
+from curl_cffi import CurlError
+from curl_cffi import requests as curl_requests
 from pydantic import BaseModel
 
 from app.api.deps import get_db_context
@@ -21,22 +21,12 @@ from app.models.movie import MovieUpdate
 from app.scraping.logger import logger
 from app.utils import now_amsterdam_naive
 
+# Only headers the browser profile does not set itself. The user-agent and
+# sec-fetch-* set come from `LETTERBOXD_IMPERSONATE`, so they always match the
+# TLS fingerprint - a mismatch is exactly what Cloudflare challenges.
 HEADERS = {
     "referer": "https://letterboxd.com",
-    "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "accept-language": "en-US,en;q=0.9",
-    "cache-control": "no-cache",
-    "pragma": "no-cache",
-    "upgrade-insecure-requests": "1",
-    "sec-fetch-dest": "document",
-    "sec-fetch-mode": "navigate",
-    "sec-fetch-site": "same-origin",
-    "sec-fetch-user": "?1",
-    "user-agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/133.0.0.0 Safari/537.36"
-    ),
 }
 
 
@@ -126,13 +116,11 @@ LETTERBOXD_PACING_STATE_FILE = os.getenv(
     "LETTERBOXD_PACING_STATE_FILE",
     os.path.join(LETTERBOXD_STATE_DIR, "cinema_agenda_letterboxd_pacing.state"),
 )
-# Deliberately NOT derived from LETTERBOXD_STATE_DIR: curl rewrites the whole
-# jar when it exits, so sharing one file between containers would race. Each
-# container keeps its own Cloudflare clearance cookie.
-LETTERBOXD_COOKIE_JAR_FILE = os.getenv(
-    "LETTERBOXD_COOKIE_JAR_FILE",
-    "/tmp/cinema_agenda_letterboxd_cookies.txt",
-)
+# Cloudflare challenges /films/page/N/, /films/by/*, profile and diary pages
+# for any client whose TLS/HTTP2 fingerprint is not a browser's - from
+# residential IPs too (measured 2026-09-24). Plain curl claiming to be Chrome
+# got 403 on the first request; curl_cffi impersonating Chrome got every page.
+LETTERBOXD_IMPERSONATE = os.getenv("LETTERBOXD_IMPERSONATE", "chrome").strip()
 LETTERBOXD_SESSION_REFRESH_URL = os.getenv(
     "LETTERBOXD_SESSION_REFRESH_URL",
     "https://letterboxd.com/",
@@ -166,6 +154,7 @@ LETTERBOXD_STALE_REFRESH_MAX_PROBABILITY = _env_probability(
     1.0,
 )
 _letterboxd_http_sync_semaphore = BoundedSemaphore(LETTERBOXD_HTTP_CONCURRENCY)
+_curl_session_local = local()
 _letterboxd_rate_limit_lock = Lock()
 _letterboxd_next_request_at: float = 0.0
 _letterboxd_403_streak_lock = Lock()
@@ -721,45 +710,6 @@ def _is_probable_automated_block(response: CurlResponse) -> bool:
     return bool(metadata["cloudflare_header_detected"])
 
 
-def _parse_curl_headers(raw: str) -> dict[str, str]:
-    blocks: list[list[str]] = []
-    current_block: list[str] = []
-    for raw_line in raw.splitlines():
-        line = raw_line.strip("\r")
-        if line.startswith("HTTP/"):
-            if current_block:
-                blocks.append(current_block)
-            current_block = [line]
-            continue
-        if not line:
-            if current_block:
-                blocks.append(current_block)
-                current_block = []
-            continue
-        if current_block:
-            current_block.append(line)
-    if current_block:
-        blocks.append(current_block)
-
-    if not blocks:
-        return {}
-
-    headers: dict[str, str] = {}
-    for line in blocks[-1][1:]:
-        if ":" not in line:
-            continue
-        key_raw, value_raw = line.split(":", 1)
-        key = key_raw.strip().lower()
-        value = value_raw.strip()
-        if not key:
-            continue
-        if key in headers:
-            headers[key] = f"{headers[key]}, {value}"
-        else:
-            headers[key] = value
-    return headers
-
-
 def _next_request_interval() -> float:
     """Spacing until the request after this one, with jitter."""
     if LETTERBOXD_REQUEST_INTERVAL_JITTER_SECONDS <= 0:
@@ -900,99 +850,33 @@ def _attempt_session_refresh_after_403(*, blocked_url: str, attempt: int) -> Non
     )
 
 
+def _curl_session() -> curl_requests.Session:
+    # One per thread: curl_cffi sessions are not thread-safe, and the session
+    # carries the Cloudflare clearance cookies between requests. Cookies are
+    # deliberately per process rather than shared through LETTERBOXD_STATE_DIR.
+    session = getattr(_curl_session_local, "session", None)
+    if session is None:
+        session = curl_requests.Session(impersonate=LETTERBOXD_IMPERSONATE)
+        _curl_session_local.session = session
+    return session
+
+
 def _fetch_with_curl(url: str) -> CurlResponse:
-    status_marker = "__CINEMA_CURL_HTTP_CODE__:"
-    effective_url_marker = "__CINEMA_CURL_EFFECTIVE_URL__:"
-    write_out = (
-        f"\n{status_marker}%{{http_code}}\n{effective_url_marker}%{{url_effective}}\n"
-    )
-
-    cookie_jar_dir = os.path.dirname(LETTERBOXD_COOKIE_JAR_FILE)
-    if cookie_jar_dir:
-        os.makedirs(cookie_jar_dir, exist_ok=True)
-
-    header_file_path: str | None = None
-    with tempfile.NamedTemporaryFile(
-        mode="w+",
-        prefix="letterboxd_headers_",
-        delete=False,
-    ) as header_file:
-        header_file_path = header_file.name
-
-    command = [
-        "curl",
-        "--silent",
-        "--show-error",
-        "--location",
-        "--http2",
-        "--compressed",
-        "--max-time",
-        f"{LETTERBOXD_REQUEST_TIMEOUT_SECONDS:.2f}",
-        "--cookie",
-        LETTERBOXD_COOKIE_JAR_FILE,
-        "--cookie-jar",
-        LETTERBOXD_COOKIE_JAR_FILE,
-        "--dump-header",
-        header_file_path,
-        # Only Letterboxd traffic goes through this proxy, so the bulk
-        # enrichment scrape and the user syncs can be moved off the host IP
-        # without touching any other outbound request.
-        *(["--proxy", LETTERBOXD_HTTP_PROXY] if LETTERBOXD_HTTP_PROXY else []),
-        *[arg for name, value in HEADERS.items() for arg in ("-H", f"{name}: {value}")],
-        "--write-out",
-        write_out,
-        url,
-    ]
     try:
-        result = subprocess.run(
-            command,
-            check=False,
-            capture_output=True,
-            text=True,
+        response = _curl_session().get(
+            url,
+            headers=HEADERS,
+            timeout=LETTERBOXD_REQUEST_TIMEOUT_SECONDS,
+            proxy=LETTERBOXD_HTTP_PROXY or None,
+            allow_redirects=True,
         )
-    finally:
-        headers_text = ""
-        if header_file_path is not None:
-            try:
-                with open(header_file_path, encoding="utf-8") as fp:
-                    headers_text = fp.read()
-            except Exception:
-                headers_text = ""
-            try:
-                os.remove(header_file_path)
-            except OSError:
-                pass
-    if result.returncode != 0:
-        stderr = result.stderr.strip() or "curl failed"
-        raise RuntimeError(stderr)
-
-    output = result.stdout
-    marker_index = output.rfind(status_marker)
-    if marker_index < 0:
-        raise RuntimeError("curl output missing status marker")
-
-    body = output[:marker_index]
-    metadata = output[marker_index:].splitlines()
-    raw_status = ""
-    effective_url = url
-    for line in metadata:
-        if line.startswith(status_marker):
-            raw_status = line[len(status_marker) :].strip()
-        elif line.startswith(effective_url_marker):
-            parsed_effective_url = line[len(effective_url_marker) :].strip()
-            if parsed_effective_url:
-                effective_url = parsed_effective_url
-    try:
-        status_code = int(raw_status)
-    except ValueError as e:
-        raise RuntimeError(f"invalid curl status code: {raw_status}") from e
-
-    headers = _parse_curl_headers(headers_text)
+    except CurlError as e:
+        raise RuntimeError(str(e) or "curl failed") from e
     return CurlResponse(
-        url=effective_url,
-        text=body,
-        status_code=status_code,
-        headers=headers,
+        url=str(response.url) or url,
+        text=response.text,
+        status_code=response.status_code,
+        headers={key.lower(): value for key, value in response.headers.items()},
     )
 
 

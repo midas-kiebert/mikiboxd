@@ -378,7 +378,7 @@ const LetterboxdAvatarPrompt = ({
   if (isPictureMissing) {
     return (
       <PageShell
-        title="No picture found"
+        title="No avatar found"
         message="Your coloured initial is used for now."
         primaryLabel="Continue"
         onPrimary={onDone}
@@ -394,7 +394,7 @@ const LetterboxdAvatarPrompt = ({
           />
           <div className="in-note">
             <p className="in-help">
-              Letterboxd didn't give us a profile picture for{" "}
+              Letterboxd didn't give us an avatar for{" "}
               <strong>{user.letterboxd_username}</strong>: either the account
               has none, or Letterboxd couldn't be reached just now. If you add
               one later, your avatar updates by itself.
@@ -411,13 +411,13 @@ const LetterboxdAvatarPrompt = ({
 
   return (
     <PageShell
-      title="Use your Letterboxd picture?"
+      title="Use your Letterboxd avatar?"
       message={
         pictureUrl
-          ? "Show your Letterboxd profile picture to friends on MiKiNO instead of a coloured initial. It stays off unless you say so."
-          : "Show your Letterboxd profile picture to friends on MiKiNO instead of a coloured initial. We'll fetch it from Letterboxd as soon as you turn this on."
+          ? "Show your Letterboxd avatar to friends on MiKiNO instead of a coloured initial. It stays off unless you say so."
+          : "Show your Letterboxd avatar to friends on MiKiNO instead of a coloured initial. We'll fetch it from Letterboxd as soon as you turn this on."
       }
-      primaryLabel={avatarPreference.isSaving ? "Fetching…" : "Use my picture"}
+      primaryLabel={avatarPreference.isSaving ? "Fetching…" : "Use my avatar"}
       primaryBusy={avatarPreference.isSaving}
       onPrimary={() => {
         avatarPreference

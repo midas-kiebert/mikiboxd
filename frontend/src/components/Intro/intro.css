@@ -219,7 +219,7 @@
   outline: none;
 }
 
-/* The Letterboxd picture question: the avatar friends would see, centred. */
+/* The Letterboxd avatar question: the avatar friends would see, centred. */
 .in-avatar {
   display: flex;
   flex-direction: column;

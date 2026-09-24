@@ -562,7 +562,7 @@ function SettingsScreen() {
           <ThemedText style={styles.sectionTitle}>My profile</ThemedText>
           <View style={styles.card}>
             {user ? (
-              // The avatar exactly as friends see it: the Letterboxd picture
+              // The avatar exactly as friends see it: the Letterboxd avatar
               // only once it is switched on, the coloured initial otherwise.
               <View style={styles.profileHeader}>
                 <PersonAvatar
@@ -578,8 +578,8 @@ function SettingsScreen() {
                   </ThemedText>
                   <ThemedText style={styles.profileCaption}>
                     {user.avatar_url
-                      ? 'Your Letterboxd profile picture, as friends see it.'
-                      : 'Your coloured initial. You can use your Letterboxd picture instead under Letterboxd.'}
+                      ? 'Your Letterboxd avatar, as friends see it.'
+                      : 'Your coloured initial. You can use your Letterboxd avatar instead under Letterboxd.'}
                   </ThemedText>
                 </View>
               </View>

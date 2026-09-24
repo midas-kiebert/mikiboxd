@@ -503,10 +503,21 @@ const FeedLayout = ({
   // Publish the toolbar's height for the panels to pin below. A layout effect
   // rather than an ordinary one, so the first paint already has the real number
   // and no card is drawn under the bar and then moved.
+  //
+  // Keyed on whether there is a toolbar at all: a cinema's or friend's header
+  // arrives once its subject loads, on a feed that had no toolbar at mount, and
+  // measuring only at mount left the panels pinning at 0 — sliding up under
+  // the header with the page until their bottoms came into view.
+  const hasToolbar = Boolean(toolbar)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: hasToolbar is the trigger; the toolbar node is read through its ref
   useLayoutEffect(() => {
     const bar = toolbarRef.current
     const scroller = scrollRef.current
-    if (!bar || !scroller) return
+    if (!scroller) return
+    if (!bar) {
+      scroller.style.setProperty(TOOLBAR_HEIGHT_VAR, "0px")
+      return
+    }
 
     const publish = () =>
       scroller.style.setProperty(TOOLBAR_HEIGHT_VAR, `${bar.offsetHeight}px`)
@@ -515,7 +526,7 @@ const FeedLayout = ({
     const observer = new ResizeObserver(publish)
     observer.observe(bar)
     return () => observer.disconnect()
-  }, [])
+  }, [hasToolbar])
 
   // On a desktop the content area fills the viewport and scrolls as one page,
   // with the toolbar and both panels pinned inside it. A phone has one column

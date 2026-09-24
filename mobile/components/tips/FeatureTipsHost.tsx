@@ -2,7 +2,7 @@
  * Renders at most one feature tip. Candidates are listed in priority order —
  * verify email; the three "you missed something" notification tips (an invite,
  * a sold-out screening, a friend request); cinemas, friends, Letterboxd,
- * Letterboxd picture, filter presets, watchlist digest, interest reminders and
+ * Letterboxd avatar, filter presets, watchlist digest, interest reminders and
  * the Cineville pass — and `rollForFeatureTip` applies eligibility, dismissal,
  * per-tip cooldowns and a random chance, so the user is never handed a stack of
  * nags and does not see a tip on every single app open. The exceptions are
@@ -186,12 +186,14 @@ export default function FeatureTipsHost() {
   //     who skipped that page.
   //  5. friends — the social half of the app, but it needs other people to
   //     accept before it pays off.
-  //  6. Letterboxd, 7. its profile picture, 8. filter presets — real
-  //     conveniences, no urgency; all carry the longer cooldown. The two
-  //     Letterboxd tips never compete: the picture needs a username first.
-  //  9. watchlist digest, 10. interest reminders, 11. the Cineville pass —
-  //     last on purpose: niche conveniences with the longest cooldowns. They
-  //     should feel like something you stumble on, not a pitch.
+  //  6. Letterboxd, 7. filter presets — real conveniences, no urgency; both
+  //     carry the longer cooldown.
+  //  8. watchlist digest, 9. interest reminders, 10. the Cineville pass —
+  //     niche conveniences with the longest cooldowns. They should feel like
+  //     something you stumble on, not a pitch.
+  //  11. the Letterboxd avatar — last of all: purely cosmetic, and
+  //     the username tip already asks it the moment a username is saved. Never
+  //     competes with the username tip: the picture needs a username first.
   const candidates: FeatureTipCandidate[] = [
     { id: "verify-email", isEligible: needsEmailVerification },
     { id: "invite", isEligible: shouldSuggestInvites },
@@ -200,11 +202,11 @@ export default function FeatureTipsHost() {
     { id: "cinema-presets", isEligible: shouldSuggestCinemaPreset },
     { id: "add-friends", isEligible: shouldSuggestAddFriends },
     { id: "letterboxd-username", isEligible: !hasLetterboxdUsername },
-    { id: "letterboxd-avatar", isEligible: shouldSuggestLetterboxdAvatar },
     { id: "filter-presets", isEligible: shouldSuggestFilterPreset },
     { id: "watchlist-digest", isEligible: shouldSuggestWatchlistDigest },
     { id: "interest-reminders", isEligible: shouldSuggestInterestReminders },
     { id: "cineville-pass", isEligible: shouldSuggestCinevillePass },
+    { id: "letterboxd-avatar", isEligible: shouldSuggestLetterboxdAvatar },
   ];
   // The candidates change identity every render; the roll only needs to see
   // the latest list when it actually runs.

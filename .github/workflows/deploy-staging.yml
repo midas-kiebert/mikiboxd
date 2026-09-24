@@ -41,6 +41,10 @@ jobs:
           TELEGRAM_USER_ID=${{ secrets.TELEGRAM_USER_ID }}
           TMDB_KEY=${{ secrets.TMDB_KEY }}
           SCRAPE_MONITOR_API_KEY=${{ secrets.SCRAPE_MONITOR_API_KEY }}
+          # One full scrape a day (09:00 Amsterdam) instead of prod's weekly
+          # shape: each deploy copies prod's database anyway, and scraping at
+          # prod's cadence would double the load we put on the cinemas.
+          SCRAPE_SLOT_HOURS=9
           FRONTEND_HOST=https://staging.mikino.nl
           PUBLIC_HOST=https://staging.mikino.nl
           API_HOST=https://api.staging.mikino.nl

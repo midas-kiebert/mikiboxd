@@ -16,7 +16,7 @@
  * Emptying the username and saving unlinks it, which is why this does not use
  * the shared hook that only accepts a name.
  *
- * "Use my profile picture" is an opt-in, off by default: connecting Letterboxd
+ * "Use my avatar" is an opt-in, off by default: connecting Letterboxd
  * for a watchlist is not consent to show its picture to friends.
  *
  * Lists are what the feed can filter by and the digest can follow. Curated
@@ -206,17 +206,17 @@ const LetterboxdSection = () => {
               now={now}
             />
             <SettingsRow
-              title="Use my profile picture"
+              title="Use my avatar"
               description={
                 avatarPreference.pictureUrl
-                  ? "Show your Letterboxd profile picture to friends on MiKiNO."
-                  : "Show your Letterboxd profile picture to friends on MiKiNO. We'll fetch it from Letterboxd as soon as you turn this on."
+                  ? "Show your Letterboxd avatar to friends on MiKiNO."
+                  : "Show your Letterboxd avatar to friends on MiKiNO. We'll fetch it from Letterboxd as soon as you turn this on."
               }
             >
               <Switch
                 checked={avatarPreference.enabled}
                 onChange={avatarPreference.setEnabled}
-                label="Use my Letterboxd profile picture"
+                label="Use my Letterboxd avatar"
               />
             </SettingsRow>
           </div>

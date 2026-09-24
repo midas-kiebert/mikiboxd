@@ -131,7 +131,6 @@ const TIP_COOLDOWN_MS: Record<FeatureTipId, number> = {
   'cinema-presets': ONE_DAY_MS,
   'add-friends': ONE_DAY_MS,
   'letterboxd-username': THREE_DAYS_MS,
-  'letterboxd-avatar': THREE_DAYS_MS,
   'filter-presets': THREE_DAYS_MS,
   // The quietest of the lot: a niche convenience the user has lived without,
   // and one the backend only offers at all once it is switched on there.
@@ -139,6 +138,8 @@ const TIP_COOLDOWN_MS: Record<FeatureTipId, number> = {
   // Low-priority conveniences, offered rarely.
   'interest-reminders': A_WEEK_MS,
   'cineville-pass': A_WEEK_MS,
+  // The lowest priority of all: cosmetic only.
+  'letterboxd-avatar': A_WEEK_MS,
 };
 
 /**

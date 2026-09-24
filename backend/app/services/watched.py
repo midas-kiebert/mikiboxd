@@ -2,6 +2,7 @@ from collections.abc import Iterable
 from datetime import timedelta
 from uuid import UUID
 
+import sentry_sdk
 from sqlmodel import Session
 
 from app.crud import movie as movies_crud
@@ -62,6 +63,42 @@ def _add_missing_watched_selections(
         known_slugs.add(slug)
         added += 1
     return added
+
+
+def _top_up_from_feed(
+    *,
+    session: Session,
+    letterboxd: Letterboxd,
+    known_slugs: set[str],
+) -> bool:
+    """Add the member's recent diary films from RSS; False if the feed is unusable."""
+    recent_slugs = get_recent_watched_slugs(letterboxd.letterboxd_username)
+    if recent_slugs is None:
+        return False
+    _add_missing_watched_selections(
+        session=session,
+        letterboxd_username=letterboxd.letterboxd_username,
+        slugs=recent_slugs,
+        known_slugs=known_slugs,
+    )
+    letterboxd.last_watched_sync = now_amsterdam_naive()
+    session.commit()
+    return True
+
+
+def _report_blocked_full_walk(
+    *, letterboxd_username: str, error: LetterboxdTemporarilyUnavailable
+) -> None:
+    # A blocked walk went unnoticed for ten days in 2026-09 because it only
+    # reached the user as a 503. One fingerprint so every user lands in a
+    # single Sentry issue whose event count shows how widespread it is.
+    with sentry_sdk.push_scope() as scope:
+        scope.fingerprint = ["letterboxd-watched-full-walk-blocked"]
+        scope.set_tag("letterboxd_username", letterboxd_username)
+        scope.set_extra("error", str(error))
+        sentry_sdk.capture_message(
+            "Letterboxd blocked a watched full walk", level="warning"
+        )
 
 
 def clear_watched(*, session: Session, user_id: UUID) -> None:
@@ -127,29 +164,43 @@ def sync_watched(
     # Fast path: one RSS request instead of a page-per-72-films walk. Only
     # viable once we already hold a full list to top up, and only until the
     # full-resync interval comes round.
-    if known_slugs and not _is_full_resync_due(user.letterboxd):
-        recent_slugs = get_recent_watched_slugs(letterboxd_username)
-        if recent_slugs is not None:
-            _add_missing_watched_selections(
-                session=session,
-                letterboxd_username=letterboxd_username,
-                slugs=recent_slugs,
-                known_slugs=known_slugs,
-            )
-            user.letterboxd.last_watched_sync = now_amsterdam_naive()
-            session.commit()
+    full_resync_due = _is_full_resync_due(user.letterboxd)
+    if known_slugs and not full_resync_due:
+        if _top_up_from_feed(
+            session=session,
+            letterboxd=user.letterboxd,
+            known_slugs=known_slugs,
+        ):
             return
         # Feed unusable: fall through to the full walk rather than skipping the
         # sync, so a member with no feed still gets their watched list.
 
-    result = scrape_watched(letterboxd_username)
-    if not result.is_complete:
-        # The stored rows are replaced wholesale below, so a partial scrape
-        # would delete films the user has watched and mark the result synced.
-        raise LetterboxdTemporarilyUnavailable(
-            "Letterboxd only returned part of your watched list. Keeping the "
-            "previous data; it will sync again shortly."
-        )
+    try:
+        result = scrape_watched(letterboxd_username)
+        if not result.is_complete:
+            # The stored rows are replaced wholesale below, so a partial scrape
+            # would delete films the user has watched and mark the result synced.
+            raise LetterboxdTemporarilyUnavailable(
+                "Letterboxd only returned part of your watched list. Keeping the "
+                "previous data; it will sync again shortly."
+            )
+    except LetterboxdTemporarilyUnavailable as e:
+        _report_blocked_full_walk(letterboxd_username=letterboxd_username, error=e)
+        # A blocked overdue walk must not strand the user: without this, the
+        # walk stays due on every later sync and the feed is never consulted
+        # again. last_watched_full_sync is left alone so the walk is retried
+        # next time.
+        if (
+            known_slugs
+            and full_resync_due
+            and _top_up_from_feed(
+                session=session,
+                letterboxd=user.letterboxd,
+                known_slugs=known_slugs,
+            )
+        ):
+            return
+        raise
 
     clear_watched(
         session=session,

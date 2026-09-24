@@ -1,6 +1,6 @@
 /**
  * Profile: your avatar, username and email — the app's "My profile" card.
- * The avatar is the one friends see: the Letterboxd picture only once it is
+ * The avatar is the one friends see: the Letterboxd avatar only once it is
  * switched on (Letterboxd section), the coloured initial otherwise.
  *
  * Changing either asks for the current password, as the app does; an account
@@ -169,8 +169,8 @@ const ProfileSection = ({ onGoToPassword }: { onGoToPassword: () => void }) => {
                 </span>
                 <span className="st-profile-head__caption">
                   {user.avatar_url
-                    ? "Your Letterboxd profile picture, as friends see it."
-                    : "Your coloured initial. You can use your Letterboxd picture instead under Letterboxd."}
+                    ? "Your Letterboxd avatar, as friends see it."
+                    : "Your coloured initial. You can use your Letterboxd avatar instead under Letterboxd."}
                 </span>
               </div>
             </div>

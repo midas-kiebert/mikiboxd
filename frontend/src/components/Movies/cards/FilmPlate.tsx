@@ -43,7 +43,7 @@ import type { ShowtimeInMoviePublic } from "shared"
  * 15px, flush, from 4px in, with 3.5px of ring outside each box, so five end
  * at 82.5px. The seat mark in the opposite corner starts at 81px, so a plate
  * carrying one gets four. It was two and a tally, which left most of every
- * plate's edge empty ("allow some more user profile pictures to show up,
+ * plate's edge empty ("allow some more user avatars to show up,
  * there is plenty of space").
  */
 const MAX_CIRCLES = 5

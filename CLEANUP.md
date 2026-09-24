@@ -309,7 +309,7 @@ Legend:
 - [ ] `cinemas/generic/eagerly.py` — Eagerly-based generic scraper; fixed 2026-08-24 a double-slash bug in every derived URL (`self.url`, `ticket_link`) since every call site passes a trailing-slash `url_base` — `self.url_base` now strips it once in `__init__` instead
 
 **Letterboxd integration:**
-- [ ] `letterboxd/load_letterboxd_data.py` — Watchlist sync ⚠️ Large (1193 LOC) — needs splitting
+- [ ] `letterboxd/load_letterboxd_data.py` — Watchlist sync ⚠️ Large (1269 LOC after curl_cffi swap, 2026-09-24) — needs splitting
 - [ ] `letterboxd/watchlist.py` — Watchlist parsing
 - [ ] `letterboxd/watched.py` — Watched ("films") parsing; blocked/partial-page detection
 - [x] `letterboxd/rss.py` — Member RSS feed parsing; the cheap "anything new?" check the incremental watched sync runs instead of a full page walk

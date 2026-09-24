@@ -27,17 +27,22 @@ const TIP_PRESENTATION: Record<FeatureTipId, Presentation> = {
   "watchlist-digest": {
     icon: "mail",
     title: "Get watchlist films by email",
-    subtitle: "Hear when one gets a showtime at your cinemas",
+    subtitle: "Hear when one gets a screening at your cinemas",
   },
   "letterboxd-username": {
     icon: "bookmark-added",
     title: "Connect your Letterboxd watchlist",
-    subtitle: "Filter showtimes by your watchlist",
+    subtitle: "Filter screenings by your watchlist",
+  },
+  "letterboxd-avatar": {
+    icon: "account-circle",
+    title: "Use your Letterboxd picture",
+    subtitle: "Let friends recognise you at a glance",
   },
   "add-friends": {
     icon: "person-add",
     title: "Add some friends",
-    subtitle: "See what they're watching and plan showtimes together",
+    subtitle: "See what they're watching and plan screenings together",
   },
   "cinema-presets": {
     icon: "theaters",
@@ -46,13 +51,33 @@ const TIP_PRESENTATION: Record<FeatureTipId, Presentation> = {
   },
   "filter-presets": {
     icon: "tune",
-    title: "Save your filters as a preset",
+    title: "Save your filters as a quick filter",
     subtitle: "Reuse the filters you set most often",
   },
-  "notification-permission": {
-    icon: "notifications-active",
-    title: "Allow notifications",
-    subtitle: "Hear when friends pick a showtime",
+  invite: {
+    icon: "mail",
+    title: "Turn on invite notifications",
+    subtitle: "So you don't miss the next invite from a friend",
+  },
+  "sold-out": {
+    icon: "event-busy",
+    title: "Turn on seat availability notifications",
+    subtitle: "Hear before a screening you want sells out",
+  },
+  "friend-request": {
+    icon: "person-add",
+    title: "Turn on friend request notifications",
+    subtitle: "Hear when someone adds you",
+  },
+  "interest-reminders": {
+    icon: "alarm",
+    title: "Turn on interest reminders",
+    subtitle: "A nudge before screenings you're interested in",
+  },
+  "cineville-pass": {
+    icon: "badge",
+    title: "Add your Cineville pass",
+    subtitle: "Keep your pass barcode one tap away",
   },
 };
 

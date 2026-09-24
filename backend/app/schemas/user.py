@@ -22,6 +22,10 @@ class UserPublic(SQLModel):
     id: UUID
     is_active: bool
     display_name: str | None
+    # From their linked Letterboxd account, when they have one and it has been
+    # synced at least once (`Letterboxd.avatar_url`). `None` for everyone else,
+    # and the client falls back to an initial.
+    avatar_url: str | None = None
     seat_row: str | None = None
     seat_number: str | None = None
 
@@ -52,6 +56,7 @@ class UserMe(UserPublic):
     notify_on_interest_reminder: bool
     notify_on_seat_alert: bool
     notify_on_sold_out: bool
+    notify_on_tickets_available: bool
     notify_on_showtime_reminder: bool
     notify_channel_friend_showtime_match: NotificationChannel
     notify_channel_friend_requests: NotificationChannel
@@ -60,6 +65,7 @@ class UserMe(UserPublic):
     notify_channel_interest_reminder: NotificationChannel
     notify_channel_seat_alert: NotificationChannel
     notify_channel_sold_out: NotificationChannel
+    notify_channel_tickets_available: NotificationChannel
     notify_channel_showtime_reminder: NotificationChannel
     letterboxd_username: str | None
     watchlist_count: int
@@ -75,6 +81,15 @@ class UserMe(UserPublic):
     # Master switch; which lists/cinemas/frequency to follow lives in
     # `GET /me/watchlist-digest-sources` (a user may have several).
     notify_watchlist_digest_enabled: bool
+    # Opt-in: the account's avatar is its Letterboxd picture only when this is
+    # on. `letterboxd_avatar_url` is that picture regardless of the switch, so
+    # the user can preview what they would be opting in to; `None` until a
+    # sync has read one.
+    use_letterboxd_avatar: bool
+    letterboxd_avatar_url: str | None
+    # Letterboxd answered 404 for `letterboxd_username`: no such account.
+    # False when unchecked or unknown, so it only ever warns on a certainty.
+    letterboxd_account_not_found: bool = False
     can_report: bool
     # Whether this account may ask to be told when a full showtime has seats
     # again. The capability, never the tier behind it: the app has no concept
@@ -82,6 +97,12 @@ class UserMe(UserPublic):
     # backend about who is one.
     can_watch_sold_out: bool
     has_password: bool
+    # Whether any device is registered to receive this account's pushes. A
+    # preference set to push without one reaches nobody, so the clients show it
+    # as off and do not offer push until a device registers.
+    has_push_token: bool
+    # Whether the app has asked this account how it wants to be notified.
+    app_notifications_prompted: bool
 
 
 class UserWithFriendStatus(UserPublic):

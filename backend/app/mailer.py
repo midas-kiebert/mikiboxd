@@ -17,9 +17,10 @@ from typing import TYPE_CHECKING, Any
 
 import emails  # type: ignore
 from jinja2 import Template
+from markupsafe import Markup
 
 from app.core.config import settings
-from app.core.enums import DIGEST_FREQUENCY_LABELS, DigestFrequency
+from app.core.enums import DIGEST_FREQUENCY_LABELS, DigestFrequency, Environment
 from app.core.security import generate_watchlist_digest_unsubscribe_token
 
 if TYPE_CHECKING:
@@ -30,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 BRAND_NAME = "MiKiNO"
 REPORT_NOTIFICATION_EMAIL = "info@mikino.nl"
+RECAP_EMAIL_TO = "scraper.mikino@midaskiebert.nl"
 
 
 @dataclass
@@ -59,6 +61,14 @@ class DigestSource:
     cinemas_label: str
 
 
+# Stand-ins for the per-recipient unsubscribe link in the notification emails.
+# Those are rendered once and sent to everyone the event concerns, but the link
+# is signed for one user, so it is filled in per recipient at send time — see
+# `EmailData.with_unsubscribe`.
+UNSUBSCRIBE_LINK_PLACEHOLDER = "__MIKINO_UNSUBSCRIBE_LINK__"
+UNSUBSCRIBE_LABEL_PLACEHOLDER = "__MIKINO_UNSUBSCRIBE_LABEL__"
+
+
 @dataclass
 class EmailData:
     html_content: str
@@ -66,6 +76,20 @@ class EmailData:
     # Hand-written text/plain alternative. Generators that care about the
     # wording set it; the rest fall back to _html_to_plain_text().
     text_content: str = ""
+
+    def with_unsubscribe(self, *, link: str, label: str) -> "EmailData":
+        """This email with its unsubscribe placeholders filled in for one user."""
+
+        def fill(content: str) -> str:
+            return content.replace(
+                UNSUBSCRIBE_LINK_PLACEHOLDER, html.escape(link)
+            ).replace(UNSUBSCRIBE_LABEL_PLACEHOLDER, html.escape(label))
+
+        return EmailData(
+            html_content=fill(self.html_content),
+            subject=self.subject,
+            text_content=fill(self.text_content),
+        )
 
 
 class EmailDeliveryError(Exception):
@@ -130,6 +154,29 @@ def _html_to_plain_text(html_content: str) -> str:
     return "\n".join(lines).strip()
 
 
+# Internal inboxes, not users: always deliverable, so staging's recap and
+# report mails keep arriving without having to be allowlisted.
+_INTERNAL_RECIPIENTS = frozenset(
+    {REPORT_NOTIFICATION_EMAIL.lower(), RECAP_EMAIL_TO.lower()}
+)
+
+
+def is_deliverable_address(email_to: str) -> bool:
+    """Whether mail to this address may leave this environment.
+
+    Always in production. Elsewhere only internal inboxes and addresses in
+    NON_PROD_EMAIL_ALLOWLIST — an exact address, or "@domain" for a domain.
+    """
+    if settings.ENVIRONMENT is Environment.PRODUCTION:
+        return True
+    address = email_to.strip().lower()
+    if address in _INTERNAL_RECIPIENTS:
+        return True
+    domain = "@" + address.rpartition("@")[2]
+    allowed = {entry.strip().lower() for entry in settings.NON_PROD_EMAIL_ALLOWLIST}
+    return address in allowed or domain in allowed
+
+
 def send_email(
     *,
     email_to: str,
@@ -153,6 +200,13 @@ def send_email(
         )
     if not settings.emails_enabled:
         raise RuntimeError("no provided configuration for email variables")
+    if not is_deliverable_address(email_to):
+        # Treated as sent, so callers record it exactly as they would in
+        # production and the rest of the flow can still be tested.
+        logger.info(
+            "Suppressed email to %s outside production: not allowlisted", email_to
+        )
+        return
     message = emails.Message(
         subject=subject,
         html=html_content,
@@ -208,16 +262,14 @@ def generate_reset_password_email(email_to: str, email: str, token: str) -> Emai
 def generate_verify_email_email(email_to: str, token: str) -> EmailData:
     """Generate the "confirm your email" email sent when an account is created.
 
-    The link points straight at the API rather than the frontend, like the
-    digest's unsubscribe link: confirming is one click with nothing to fill in,
-    and routing it through a single-page app would only add a way for it to
-    fail in someone's mail client.
+    The link goes to the website's /verify-email page rather than the API: that
+    path is claimed by the app's universal/app links, so on a phone with the app
+    installed it opens there, and everywhere else it lands on a page that looks
+    like the rest of the site instead of a bare API response.
     """
     project_name = settings.PROJECT_NAME
     subject = f"{project_name} - Confirm your email address"
-    link = (
-        f"{settings.API_HOST}{settings.API_V1_STR}" f"/users/verify-email?token={token}"
-    )
+    link = f"{settings.FRONTEND_HOST}/verify-email?token={token}"
     html_content = _render_email_template(
         template_name="verify_email.html",
         context={
@@ -441,6 +493,171 @@ def generate_user_report_email(
     return EmailData(html_content=html_content, subject=subject)
 
 
+def _italicize_movie_title(text: str, movie_title: str) -> Markup:
+    """Escape `text`, then wrap the (also escaped) `movie_title` in <em>.
+
+    Titles are plain strings built by string concatenation upstream (actor
+    name + verb phrase + movie title + day word), so this is the one place
+    that needs to turn just the movie's name italic without touching the
+    rest of the sentence. Returns pre-escaped `Markup` so the autoescaping
+    template renders the `<em>` tag instead of escaping it away.
+    """
+    escaped_text = str(Markup.escape(text))
+    escaped_title = str(Markup.escape(movie_title))
+    if escaped_title and escaped_title in escaped_text:
+        escaped_text = escaped_text.replace(
+            escaped_title, f"<em>{escaped_title}</em>", 1
+        )
+    return Markup(escaped_text)
+
+
+def _generate_activity_notification_email(
+    *,
+    subject: str,
+    heading: str,
+    cta_label: str,
+    cta_link: str,
+    movie: dict[str, Any] | None = None,
+) -> EmailData:
+    """Render one of the branded event-notification emails (invites, matches, etc.)."""
+    heading_html: str | Markup = (
+        _italicize_movie_title(heading, movie["title"]) if movie else heading
+    )
+    html_content = _render_email_template(
+        template_name="notification.html",
+        context={
+            "brand_name": BRAND_NAME,
+            "heading": heading_html,
+            "movie": movie,
+            "cta_label": cta_label,
+            "cta_link": cta_link,
+            "settings_link": f"{settings.FRONTEND_HOST}/settings",
+            "unsubscribe_link": UNSUBSCRIBE_LINK_PLACEHOLDER,
+            "unsubscribe_label": UNSUBSCRIBE_LABEL_PLACEHOLDER,
+        },
+    )
+    return EmailData(html_content=html_content, subject=subject)
+
+
+def _movie_context(
+    *,
+    title: str,
+    cinema_name: str,
+    showtime_datetime_label: str,
+    poster_link: str | None,
+) -> dict[str, Any]:
+    return {
+        "title": title,
+        "cinema_name": cinema_name,
+        "datetime_label": showtime_datetime_label,
+        "poster_link": poster_link,
+    }
+
+
+def _showtime_link(*, movie_id: int, showtime_id: int) -> str:
+    return f"{settings.FRONTEND_HOST}/movie/{movie_id}?showtime={showtime_id}"
+
+
+def generate_friend_showtime_status_email(
+    *,
+    heading: str,
+    movie_id: int,
+    showtime_id: int,
+    movie_title: str,
+    poster_link: str | None,
+    cinema_name: str,
+    showtime_datetime_label: str,
+) -> EmailData:
+    """A friend you're both attending changed status on a showtime you share."""
+    return _generate_activity_notification_email(
+        subject=heading,
+        heading=heading,
+        movie=_movie_context(
+            title=movie_title,
+            cinema_name=cinema_name,
+            showtime_datetime_label=showtime_datetime_label,
+            poster_link=poster_link,
+        ),
+        cta_label=f"View on {BRAND_NAME}",
+        cta_link=_showtime_link(movie_id=movie_id, showtime_id=showtime_id),
+    )
+
+
+def generate_invite_response_email(
+    *,
+    heading: str,
+    movie_id: int,
+    showtime_id: int,
+    movie_title: str,
+    poster_link: str | None,
+    cinema_name: str,
+    showtime_datetime_label: str,
+) -> EmailData:
+    """Someone you invited to a showtime responded going/interested."""
+    return _generate_activity_notification_email(
+        subject=heading,
+        heading=heading,
+        movie=_movie_context(
+            title=movie_title,
+            cinema_name=cinema_name,
+            showtime_datetime_label=showtime_datetime_label,
+            poster_link=poster_link,
+        ),
+        cta_label=f"View on {BRAND_NAME}",
+        cta_link=_showtime_link(movie_id=movie_id, showtime_id=showtime_id),
+    )
+
+
+def generate_friend_request_email(*, heading: str) -> EmailData:
+    """Someone sent you a friend request."""
+    return _generate_activity_notification_email(
+        subject=heading,
+        heading=heading,
+        cta_label="View friends",
+        cta_link=f"{settings.FRONTEND_HOST}/friends",
+    )
+
+
+def generate_friend_request_accepted_email(*, heading: str) -> EmailData:
+    """Someone accepted the friend request you sent."""
+    return _generate_activity_notification_email(
+        subject=heading,
+        heading=heading,
+        cta_label="View friends",
+        cta_link=f"{settings.FRONTEND_HOST}/friends",
+    )
+
+
+def generate_showtime_notice_email(
+    *,
+    heading: str,
+    movie_id: int,
+    showtime_id: int,
+    movie_title: str,
+    poster_link: str | None,
+    cinema_name: str,
+    showtime_datetime_label: str,
+) -> EmailData:
+    """A generic branded notice about one showtime.
+
+    Shared by every event type whose email is just "headline + movie card +
+    view on MiKiNO" — interest reminders, a friend's manual nudge, and seat
+    availability alerts.
+    """
+    return _generate_activity_notification_email(
+        subject=heading,
+        heading=heading,
+        movie=_movie_context(
+            title=movie_title,
+            cinema_name=cinema_name,
+            showtime_datetime_label=showtime_datetime_label,
+            poster_link=poster_link,
+        ),
+        cta_label=f"View on {BRAND_NAME}",
+        cta_link=_showtime_link(movie_id=movie_id, showtime_id=showtime_id),
+    )
+
+
 def generate_showtime_report_email(
     *,
     movie_title: str,
@@ -455,7 +672,7 @@ def generate_showtime_report_email(
     Plain inline HTML rather than a Jinja template — this is an internal
     moderation notification, not a branded user-facing email.
     """
-    subject = f"{BRAND_NAME} - Showtime report: {movie_title} ({reason_label})"
+    subject = f"{BRAND_NAME} - Screening report: {movie_title} ({reason_label})"
     admin_link = f"{settings.FRONTEND_HOST}/admin/reports"
     html_content = f"""
     <p><strong>{html.escape(movie_title)}</strong> at <strong>{html.escape(cinema_name)}</strong>, {html.escape(showtime_datetime_label)}</p>

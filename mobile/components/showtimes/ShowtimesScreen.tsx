@@ -94,7 +94,7 @@ export function ShowtimesListContent({
   onLoadMore,
   refreshing,
   onRefresh,
-  emptyText = "No showtimes found",
+  emptyText = "No screenings found",
   emptyExtra,
   openModalOptions,
   inheritFiltersOnMovieNav = false,
@@ -154,12 +154,14 @@ export function ShowtimesListContent({
   // whenever the list shrinks, since that means a fresh load replaced it
   // (a filter/search change) rather than a page being appended to it.
   const initialRowCountRef = React.useRef(0);
-  if (showtimes.length < initialRowCountRef.current) {
-    initialRowCountRef.current = 0;
-  }
-  if (initialRowCountRef.current === 0 && showtimes.length > 0) {
-    initialRowCountRef.current = showtimes.length;
-  }
+  React.useEffect(() => {
+    if (showtimes.length < initialRowCountRef.current) {
+      initialRowCountRef.current = 0;
+    }
+    if (initialRowCountRef.current === 0 && showtimes.length > 0) {
+      initialRowCountRef.current = showtimes.length;
+    }
+  }, [showtimes.length]);
   const renderItem = React.useCallback(
     ({ item, index }: { item: ShowtimePublic; index: number }) => (
       <FeedItemEntrance index={index} stagger={index < initialRowCountRef.current}>
@@ -307,6 +309,8 @@ type ShowtimesScreenProps<TFilterId extends string = string> = {
   topBarOnTitleSuffixPress?: () => void;
   topBarLinkUrl?: string;
   topBarAvatarInitial?: string;
+  /** The same person's actual picture, shown over the initial when it loads. */
+  topBarAvatarUrl?: string | null;
   showtimes: ShowtimePublic[];
   isLoading: boolean;
   isFetching: boolean;
@@ -358,6 +362,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
   topBarOnTitleSuffixPress,
   topBarLinkUrl,
   topBarAvatarInitial,
+  topBarAvatarUrl,
   showtimes,
   isLoading,
   isFetching,
@@ -378,7 +383,7 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
   onLongPressFilter,
   filterRow,
   listContent,
-  emptyText = "No showtimes found",
+  emptyText = "No screenings found",
   emptyExtra,
   openModalOptions,
   inheritFiltersOnMovieNav,
@@ -397,11 +402,12 @@ export default function ShowtimesScreen<TFilterId extends string = string>({
         onTitleSuffixPress={topBarOnTitleSuffixPress}
         linkUrl={topBarLinkUrl}
         avatarInitial={topBarAvatarInitial}
+        avatarUrl={topBarAvatarUrl}
       />
       <SearchBar
         value={searchQuery}
         onChangeText={onSearchChange}
-        placeholder="Search showtimes"
+        placeholder="Search screenings"
         searchField={searchField}
         onChangeSearchField={onChangeSearchField}
         hiddenSearchFields={hiddenSearchFields}
@@ -460,7 +466,7 @@ export function ShowtimesScreenSkeleton({
   topBarAvatarInitial,
   searchQuery,
   onSearchChange,
-  searchPlaceholder = "Search showtimes",
+  searchPlaceholder = "Search screenings",
   searchField,
   onChangeSearchField,
   hiddenSearchFields,

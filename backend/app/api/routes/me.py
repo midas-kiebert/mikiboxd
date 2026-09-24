@@ -15,18 +15,21 @@ from app.api.deps import (
     SessionDep,
 )
 from app.converters import user as user_converters
-from app.core.enums import ShowtimePingSort
+from app.core.enums import ActivityMode, Language, ShowtimePingSort
 from app.core.security import get_password_hash, verify_password
 from app.crud import analytics_event as analytics_event_crud
 from app.inputs.movie import Filters, get_filters
 from app.models.auth_schemas import Message, UpdatePassword
 from app.models.user import UserUpdate
+from app.schemas.activity import ActivitySummaryPublic
 from app.schemas.analytics_event import AnalyticsEventCreate
+from app.schemas.away_events import AwayEventsPublic
 from app.schemas.cinema_preset import (
     CinemaPresetCreate,
     CinemaPresetPublic,
     CinemaPresetRename,
 )
+from app.schemas.feed_overview import FeedOverviewPublic
 from app.schemas.letterboxd_list import (
     LetterboxdListCreate,
     LetterboxdListPublic,
@@ -43,6 +46,9 @@ from app.schemas.watchlist_digest_source import (
     WatchlistDigestSourcePublic,
     WatchlistDigestSourceUpdate,
 )
+from app.services import activity as activity_service
+from app.services import away_events as away_events_service
+from app.services import feed_overview as feed_overview_service
 from app.services import letterboxd_lists as letterboxd_lists_service
 from app.services import me as me_service
 from app.services import moderation as moderation_service
@@ -442,6 +448,86 @@ def get_my_agenda(
         include_invited=include_invited,
         limit=limit,
         offset=offset,
+    )
+
+
+@router.get("/feed-overview", response_model=FeedOverviewPublic)
+def get_feed_overview(
+    session: SessionDep,
+    current_user: CurrentUser,
+    overview_languages: list[Language] | None = Query(
+        None,
+        description="The feed's language choice; the friends and watchlist lists follow it",
+    ),
+    overview_cinema_ids: list[int] | None = Query(
+        None,
+        description="The feed's cinema selection, for the watchlist list; none means the account's usual cinemas",
+    ),
+    overview_all_cinemas: bool = Query(
+        False,
+        description="The feed ignores the usual cinemas; so does the watchlist list",
+    ),
+    include_plans: bool = Query(
+        True, description="False where the page is the viewer's agenda already"
+    ),
+    include_custom: bool = Query(
+        False,
+        description="Whether the filter parameters describe the viewer's own list",
+    ),
+    filters: Filters = Depends(get_filters),
+) -> FeedOverviewPublic:
+    """The short lists beside the website's feed while nothing is selected.
+
+    The usual filter parameters describe the viewer's custom list, and are
+    ignored unless `include_custom` is set. See `services.feed_overview`.
+    """
+    return feed_overview_service.get_feed_overview(
+        session=session,
+        user_id=current_user.id,
+        now=now_amsterdam_naive(),
+        languages=overview_languages,
+        cinema_ids=overview_cinema_ids,
+        all_cinemas=overview_all_cinemas,
+        include_plans=include_plans,
+        custom_filters=filters if include_custom else None,
+    )
+
+
+@router.get("/activity/summary", response_model=ActivitySummaryPublic)
+def get_activity_summary(
+    session: SessionDep,
+    current_user: CurrentUser,
+    mode: ActivityMode = Query(ActivityMode.ALL),
+    snapshot_time: datetime | None = Query(
+        None, description="The list's own snapshot, so the counts match its rows"
+    ),
+) -> ActivitySummaryPublic:
+    """The numbers beside the Activity list, counted over the whole list.
+
+    Per-day counts, your next plan, unanswered invites and the friends behind
+    the most of it. See `services.activity`.
+    """
+    return activity_service.get_activity_summary(
+        session=session,
+        user_id=current_user.id,
+        mode=mode,
+        snapshot_time=snapshot_time or now_amsterdam_naive(),
+    )
+
+
+@router.get("/away-events", response_model=AwayEventsPublic)
+def get_away_events(
+    session: SessionDep,
+    current_user: CurrentUser,
+    since: datetime = Query(..., description="When the app was last in use"),
+) -> AwayEventsPublic:
+    """Invites, friend requests and sold-out screenings since `since`.
+
+    Read by the app when it comes to the foreground, to decide whether to offer
+    the notification that would have told the user about them.
+    """
+    return away_events_service.get_away_events(
+        session=session, user_id=current_user.id, since=since
     )
 
 

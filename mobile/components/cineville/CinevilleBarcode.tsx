@@ -8,7 +8,7 @@ import { useMemo, useState } from 'react';
 import { type LayoutChangeEvent, PixelRatio, StyleSheet, View } from 'react-native';
 import Svg, { Rect } from 'react-native-svg';
 
-import { encodeCode128 } from '@/utils/code128';
+import { encodeCode128 } from 'shared/cineville/code128';
 
 const BAR_COLOR = '#000000';
 const BACKGROUND_COLOR = '#ffffff';

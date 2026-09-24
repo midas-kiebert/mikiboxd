@@ -1,0 +1,84 @@
+/*
+ * The filter rail's card, and the perforations that divide it.
+ *
+ * The card is the ordinary panel card — the same fill, hairline, radius and
+ * shadow `FeedLayout` gives the detail panel on the other side of the list —
+ * painted here rather than taken from `SidePanel` only because the dividers
+ * have to run the full width, which they cannot do inside someone else's
+ * padding. It is deliberately *not* a surface of its own: a tinted panel was
+ * tried (brand green, then a green-cast "ticket stock" with its own ink) and
+ * both read as a coloured slab rather than as part of the page. The two cards
+ * facing each other across the feed are now the same card.
+ *
+ * What is left of the ticket is the tear: sections are divided by a dashed
+ * seam, the one the wall's cards carry (`Showtimes/cards/PortraitTicketCard.css`),
+ * in the card's own hairline colour. The wall's other half of that seam — the
+ * punched half-circles biting in at each edge — was built here and dropped: two
+ * notches read as a stub on a card an inch tall, but stacked down an 800px
+ * column they became a row of scalloped bites down both edges.
+ */
+
+.mk-rail {
+  background: var(--chakra-colors-bg-panel);
+  border: 1px solid var(--chakra-colors-border);
+  border-radius: var(--chakra-radii-md);
+  /* `clip`, not `hidden`: it rounds the corners the same, but does not make
+     the card a scroll container, which would pin the sticky "Clear filters"
+     button to the card instead of to the aside it actually scrolls in. */
+  overflow: clip;
+  /* A layer of its own, always. Otherwise the browser promotes the rail only
+     while the feed's cards animate in beside it and drops it after, and the
+     rail's text is rasterised differently in each — it visibly snapped
+     thinner/bolder about a second after switching the feed style. */
+  will-change: transform;
+}
+
+/*
+ * One tear line: a single row of dashes, edge to edge.
+ *
+ * Full-bleed on purpose — a perforation stopping short of the edges is a
+ * divider, not a tear — which is why the rail owns its own horizontal padding
+ * rather than taking it from the panel around it.
+ */
+.mk-rail__tear {
+  height: 12px;
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--chakra-colors-border) 0 4px,
+    transparent 4px 9px
+  );
+  background-size: 100% 1px;
+  background-position: 50% 50%;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+
+/*
+ * The rail's column scrolls once the rail outgrows the viewport — that is
+ * `FeedLayout`'s `SidePanel`, not this element, which is why the selector has
+ * to reach up to it, and the rail is a *grandchild* of that aside, so a child
+ * combinator here silently matches nothing.
+ *
+ * The bar itself is the browser's — the site does not restyle scrollbars, and
+ * an attempt to (thin, transparent track, thumb in `border`) was reverted: over
+ * a transparent track an unhovered bar takes its colour from whatever happens
+ * to be scrolling past it, so every scroller on the page looked like a
+ * different colour. What is set here is only the reserved lane, so that opening
+ * a section long enough to overflow the column does not shift every chip left
+ * as the bar appears.
+ */
+[data-feed-side-panel]:has(.mk-rail) {
+  scrollbar-gutter: stable;
+}
+
+/* The date and time boxes open a dropdown the browser draws, not us, and
+   `color-scheme` is the only thing that tells it which mode it is in — left to
+   itself it renders a white calendar in dark mode. The app is class-themed
+   (`next-themes`, `attribute="class"`), so the class is what this follows. */
+.mk-rail input {
+  color-scheme: light;
+}
+
+.dark .mk-rail input {
+  color-scheme: dark;
+}

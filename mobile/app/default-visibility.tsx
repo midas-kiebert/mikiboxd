@@ -102,7 +102,7 @@ export default function DefaultVisibilityScreen() {
       <TopBar title="Default status visibility" showBackButton showNotificationBell={false} />
       <View style={styles.content}>
         <ThemedText style={styles.intro}>
-          Who can see your status on a new showtime, until you change it for that showtime.
+          Who can see your status on a new screening, until you change it for that screening.
         </ThemedText>
         {VISIBILITY_MODE_ORDER.map((mode) => {
           const optionMeta = getVisibilityModeMeta(mode, colors);
@@ -140,13 +140,13 @@ export default function DefaultVisibilityScreen() {
         visible={pendingMode !== null}
         icon="visibility"
         tone="primary"
-        title="Apply to your showtimes too?"
+        title="Apply to your screenings too?"
         message={
-          "Showtimes you're going to or interested in follow this default. Keep them as they are, " +
-          'or apply the new setting to them too? Showtimes you set individually keep their own ' +
+          "Screenings you're going to or interested in follow this default. Keep them as they are, " +
+          'or apply the new setting to them too? Screenings you set individually keep their own ' +
           'setting either way.'
         }
-        confirmLabel="New showtimes only"
+        confirmLabel="New screenings only"
         secondaryLabel="Apply to all"
         cancelLabel="Cancel"
         onConfirm={() => handleAnswer(false)}

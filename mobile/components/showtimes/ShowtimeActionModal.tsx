@@ -86,6 +86,7 @@ import { useShowtimeSeatFloorPlan } from "shared/hooks/useShowtimeSeatFloorPlan"
 import useTrackEvent from "shared/hooks/useTrackEvent";
 
 import CinemaPill from "@/components/badges/CinemaPill";
+import { InheritFiltersContext } from "@/hooks/usePageFilters";
 import {
   formatCheckedAtShort,
   getSeatAvailabilityMeta,
@@ -116,6 +117,7 @@ import {
 import FriendOfFriendPopup from "@/components/friends/FriendOfFriendPopup";
 import InlineFriendRequestButtons from "@/components/friends/InlineFriendRequestButtons";
 import { ThemedText } from "@/components/themed-text";
+import PersonAvatar from "@/components/ui/PersonAvatar";
 import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { formatShowtimeTimeRange } from "@/utils/showtime-time";
@@ -125,7 +127,6 @@ import {
   UNKNOWN_METADATA_PLACEHOLDER,
   isSyntheticMovieId,
 } from "@/constants/synthetic-movies";
-import { getAvatarColors, getAvatarInitial } from "@/utils/avatar-color";
 import { useIsSignedIn } from "@/utils/auth-session";
 import { useSignInGate } from "@/components/auth/SignInGateProvider";
 import { useRegisterBlockingOverlay } from "@/utils/blocking-overlays";
@@ -170,7 +171,7 @@ type ReportReason =
   | "wrong_subtitles";
 
 const REPORT_REASON_OPTIONS: { value: ReportReason; label: string }[] = [
-  { value: "incorrect_movie", label: "Wrong movie" },
+  { value: "incorrect_movie", label: "Wrong film" },
   { value: "incorrect_time", label: "Wrong time" },
   { value: "wrong_subtitles", label: "Wrong subtitles" },
   { value: "does_not_exist", label: "Doesn't exist" },
@@ -366,7 +367,10 @@ export default function ShowtimeActionModal({
       })
   );
   const goToUserPage = useSingleFireNavigation((userId: string, name: string) =>
-    router.push({ pathname: "/friend-showtimes/[id]", params: { id: userId, name } })
+    router.push({
+      pathname: "/friend-showtimes/[id]",
+      params: { id: userId, name, ...(inheritFilters ? { inheritFilters: "1" } : {}) },
+    })
   );
   // Generous trailing space so the invite section can always be scrolled to the
   // top, even after typing shrinks the friend list (so the view doesn't jump).
@@ -504,6 +508,17 @@ export default function ShowtimeActionModal({
   const sheetDataEnabled =
     isSheetDataEnabled && visible && selectedShowtimeId !== null && !isTour && isSignedIn;
 
+  // Opening a showtime re-arms its "tickets available" notice: whatever the
+  // last one said has now been seen, so the next time it sells out and gets
+  // tickets back is worth telling them about too. Fire-and-forget — nothing on
+  // screen depends on it, and a failure only means one notice fewer.
+  useEffect(() => {
+    if (!sheetDataEnabled || selectedShowtimeId === null) return;
+    ShowtimesService.markShowtimeViewed({ showtimeId: selectedShowtimeId }).catch(
+      () => {}
+    );
+  }, [sheetDataEnabled, selectedShowtimeId]);
+
   // Window positions of the controls the tour explains, read on demand rather
   // than on layout: layout fires while the sheet is still rising, so it would
   // report where a button was on the way up.
@@ -535,8 +550,10 @@ export default function ShowtimeActionModal({
     true
   );
   const isWarmingUpRef = useRef(isWarmingUp);
+  const visibleRef = useRef(visible);
   useEffect(() => {
     isWarmingUpRef.current = isWarmingUp;
+    visibleRef.current = visible;
   });
 
   // Held in a ref so re-measuring depends on which target the tour is on, not
@@ -556,6 +573,13 @@ export default function ShowtimeActionModal({
       // neither `onClose` nor the blocking-overlay registration.
       if (isWarmingUpRef.current) {
         onWarmUpSheetChange(index);
+        return;
+      }
+      // Open while nothing asked for it: a warm-up's present that arrived
+      // after the warm-up had finished. Put it straight back (as AppBottomSheet
+      // does) rather than show a sheet nobody opened.
+      if (index >= 0 && !visibleRef.current) {
+        requestAnimationFrame(() => bottomSheetModalRef.current?.close());
         return;
       }
       if (index === -1) {
@@ -880,7 +904,7 @@ export default function ShowtimeActionModal({
     }) => ShowtimesService.reportShowtime({ showtimeId, requestBody: { reason } }),
     onSuccess: () => {
       setIsReportDialogVisible(false);
-      Alert.alert("Thanks!", "We'll take a look at this showtime.");
+      Alert.alert("Thanks!", "We'll take a look at this screening.");
     },
     onError: () => {
       Alert.alert("Error", "Could not submit the report. Please try again.");
@@ -1104,9 +1128,10 @@ export default function ShowtimeActionModal({
   // row, because a permanent shrug next to a real ticket link is worse than
   // the card simply being the ticket (and seat) actions it can act on.
   const isSeatTrackable = Boolean(seatAvailability?.trackable);
-  // ...and whether a first reading can still be asked for by hand. The server
-  // owns the rule (never read, nothing already on its way); the button just
-  // stops rendering when it goes false, including the moment the tap lands.
+  // ...and whether a fresh reading can be asked for by hand. The server owns
+  // the rule (never read or ten minutes stale, nothing already on its way,
+  // budget left); the button just stops rendering when it goes false,
+  // including the moment the tap lands.
   const canRequestSeatCheck = Boolean(seatAvailability?.can_request_check);
   // Whether the card has a busyness reading (real, pending, or askable) to
   // show at all. False while the query is still loading too, in which case a
@@ -1115,7 +1140,7 @@ export default function ShowtimeActionModal({
   const showSeatBusynessInfo =
     isCheckingSeatAvailability || Boolean(seatMeta) || isSeatTrackable;
 
-  const { mutate: requestSeatCheck } = useMutation({
+  const { mutate: requestSeatCheck, isPending: isRequestingSeatCheck } = useMutation({
     mutationFn: (showtimeId: number) =>
       ShowtimesService.requestSeatAvailabilityCheck({ showtimeId }),
     onSuccess: (availability, showtimeId) => {
@@ -1136,6 +1161,9 @@ export default function ShowtimeActionModal({
 
   const handleRequestSeatCheck = useCallback(() => {
     if (selectedShowtimeId === null) return;
+    // One press, one request: a second tap before the answer lands would only
+    // be refused by the server.
+    if (isRequestingSeatCheck) return;
     if (!requireAccount("seats")) return;
     triggerSelectionHaptic();
     // Painted before the request, not after it: the reading itself takes a few
@@ -1151,7 +1179,13 @@ export default function ShowtimeActionModal({
           : previous
     );
     requestSeatCheck(selectedShowtimeId);
-  }, [selectedShowtimeId, requireAccount, queryClient, requestSeatCheck]);
+  }, [
+    selectedShowtimeId,
+    isRequestingSeatCheck,
+    requireAccount,
+    queryClient,
+    requestSeatCheck,
+  ]);
 
   // ─── Waiting for a returned ticket ─────────────────────────────────────────
   // The account either has this or it doesn't; there is no tier to show, no
@@ -1191,7 +1225,7 @@ export default function ShowtimeActionModal({
       Alert.alert(
         "Error",
         (error as { body?: { detail?: string } })?.body?.detail ??
-          "Could not watch this showtime for tickets."
+          "Could not watch this screening for tickets."
       );
     },
     onSuccess: (watch) => queryClient.setQueryData(soldOutWatchQueryKey, watch),
@@ -1207,7 +1241,7 @@ export default function ShowtimeActionModal({
     },
     onError: (_error, _variables, context) => {
       queryClient.setQueryData(soldOutWatchQueryKey, context?.previous);
-      Alert.alert("Error", "Could not stop watching this showtime.");
+      Alert.alert("Error", "Could not stop watching this screening.");
     },
   });
 
@@ -1729,6 +1763,7 @@ export default function ShowtimeActionModal({
         return {
           id: friend.id,
           label: friend.display_name?.trim() || "Friend",
+          avatarUrl: friend.avatar_url ?? null,
           availability,
           watchStatus: getWatchStatus(friend.id),
           isWatchlisted: watchlistedIds.has(friend.id),
@@ -1813,10 +1848,18 @@ export default function ShowtimeActionModal({
     const nonFriendParticipantsById = new Map(
       nonFriendParticipants.map((entry) => [entry.user.id, entry.user])
     );
+    // Sent pings don't carry the receiver's picture themselves, so it's read
+    // off the friend list (or, for a receiver who has since dropped out of
+    // it, the non-friend participant entry) by id instead.
+    const friendAvatarById = new Map((friends ?? []).map((friend) => [friend.id, friend.avatar_url]));
     const sentEntries = sentPings.map((ping) => ({
       key: `sent-${ping.id}`,
       userId: ping.receiver_id,
       name: ping.receiver_name,
+      avatarUrl:
+        nonFriendParticipantsById.get(ping.receiver_id)?.avatar_url ??
+        friendAvatarById.get(ping.receiver_id) ??
+        null,
       invitedByLabel: "Invited by you" as string | null,
       statusLabel: ping.dismissed_at ? "Dismissed" : ping.seen_at ? "Seen" : "Pending",
       statusColor: ping.dismissed_at
@@ -1831,6 +1874,7 @@ export default function ShowtimeActionModal({
       key: `co-${entry.friend.id}`,
       userId: entry.friend.id,
       name: entry.friend.display_name?.trim() || "Friend",
+      avatarUrl: entry.friend.avatar_url ?? null,
       invitedByLabel: `Invited by ${entry.inviter.display_name?.trim() || "a friend"}` as
         | string
         | null,
@@ -1855,6 +1899,7 @@ export default function ShowtimeActionModal({
         key: `friend-inviter-${sender.id}`,
         userId: sender.id,
         name: sender.display_name?.trim() || "Friend",
+        avatarUrl: sender.avatar_url ?? null,
         invitedByLabel: "Invited you" as string | null,
         statusLabel: null,
         statusColor: colors.textSecondary,
@@ -1867,6 +1912,7 @@ export default function ShowtimeActionModal({
         key: `non-friend-${entry.user.id}`,
         userId: entry.user.id,
         name: entry.user.display_name?.trim() || "Friend",
+        avatarUrl: entry.user.avatar_url ?? null,
         invitedByLabel: (entry.invited_by_you
           ? "Invited by you"
           : entry.invited_you
@@ -1880,7 +1926,7 @@ export default function ShowtimeActionModal({
         nonFriendUser: entry.user as (typeof nonFriendParticipants)[number]["user"] | null,
       }));
     return [...sentEntries, ...coInvitedEntries, ...friendInviterEntries, ...nonFriendEntries];
-  }, [sentPings, coInvitedFriends, nonFriendParticipants, invitedByUsers, colors]);
+  }, [sentPings, coInvitedFriends, nonFriendParticipants, invitedByUsers, friends, colors]);
   const showtimeStartsAt = showtime ? DateTime.fromISO(showtime.datetime) : null;
   const dateLabel = showtimeStartsAt?.isValid ? showtimeStartsAt.toFormat("cccc d LLLL") : null;
   const isSyntheticMovie = showtime ? isSyntheticMovieId(showtime.movie.id) : false;
@@ -1961,6 +2007,12 @@ export default function ShowtimeActionModal({
       enablePanDownToClose={!isTour}
       enableDismissOnClose={false}
       enableDynamicSizing={false}
+      // No rubber-band past the top snap point. With it, pulling up on a sheet
+      // whose content is too short to scroll (a guest's showtime sheet, the
+      // filters with the list at its top) lifted the whole sheet off the bottom
+      // of the screen on iOS, leaving a gap under it, and on the filters it
+      // fought the list's own scroll and bounced it back to the top.
+      enableOverDrag={false}
       animationConfigs={isWarmingUp ? INSTANT_ANIMATION_CONFIG : SHEET_ANIMATION_CONFIG}
       // `containerStyle`, not `style`: gorhom composes its own animated style
       // *after* the `style` prop and hard-sets `opacity: 1` on it whenever the
@@ -1981,6 +2033,7 @@ export default function ShowtimeActionModal({
       {/* @gorhom/portal (used by the bottom sheet) does not forward React
           context, so re-provide the QueryClient for hooks rendered inside. */}
       <QueryClientProvider client={queryClient}>
+      <InheritFiltersContext.Provider value={inheritFilters}>
       <CommittedShowtimeReporter
         showtimeId={selectedShowtimeId}
         onCommitted={handleContentCommitted}
@@ -2028,7 +2081,7 @@ export default function ShowtimeActionModal({
             {!visible ? null : isLoadingShowtime ? (
               <ActivityIndicator size="large" color={colors.tint} />
             ) : (
-              <ThemedText style={styles.loadingErrorText}>Showtime unavailable.</ThemedText>
+              <ThemedText style={styles.loadingErrorText}>Screening unavailable.</ThemedText>
             )}
           </View>
         ) : (
@@ -2218,7 +2271,7 @@ export default function ShowtimeActionModal({
                 />
               ) : (
                 <ThemedText style={styles.audienceEmptyText}>
-                  No friends are interested in this showtime yet.
+                  No friends are interested in this screening yet.
                 </ThemedText>
               )}
             </View>
@@ -2332,6 +2385,27 @@ export default function ShowtimeActionModal({
                         </ThemedText>
                       ) : null}
                     </View>
+                    {/* A count we already have can be asked for again once
+                        it is ten minutes old, budget permitting — the server
+                        decides, and the button is simply there when it can be
+                        pressed. A re-read in flight holds its slot with a
+                        spinner, so the pill beside it doesn't shift. */}
+                    {isCheckingSeatAvailability ? (
+                      <View style={styles.seatRecheckButton}>
+                        <ActivityIndicator size="small" color={colors.textSecondary} />
+                      </View>
+                    ) : canRequestSeatCheck ? (
+                      <TouchableOpacity
+                        style={styles.seatRecheckButton}
+                        onPress={handleRequestSeatCheck}
+                        activeOpacity={0.7}
+                        hitSlop={SEAT_WATCH_BELL_HIT_SLOP}
+                        accessibilityRole="button"
+                        accessibilityLabel="Check again how many seats are left"
+                      >
+                        <MaterialIcons name="refresh" size={20} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                    ) : null}
                     <View style={[styles.seatInfoValue, { backgroundColor: seatMeta.color }]}>
                       <MaterialIcons
                         name={seatMeta.icon}
@@ -2385,7 +2459,7 @@ export default function ShowtimeActionModal({
                       <ThemedText style={styles.seatInfoCheckedAt}>
                         {isCheckingSeatAvailability
                           ? "Checking now…"
-                          : canRequestSeatCheck
+                          : canRequestSeatCheck && !seatCheckedLabelShort
                             ? "Not tracked yet"
                             : "No count available"}
                       </ThemedText>
@@ -2415,9 +2489,9 @@ export default function ShowtimeActionModal({
                         <ThemedText style={styles.seatInfoCheckButtonText}>Check</ThemedText>
                       </TouchableOpacity>
                     ) : (
-                      // Read once, and the ticket shop had nothing usable to
-                      // say. Nothing to offer here — asking again is what the
-                      // poller is for.
+                      // Read, and the ticket shop had nothing usable to say.
+                      // Once that reading is old enough the Check button
+                      // above takes its place.
                       <View style={[styles.seatInfoValue, styles.seatInfoValueUnknown]}>
                         <MaterialIcons name="help-outline" size={13} color={colors.textSecondary} />
                       </View>
@@ -2606,7 +2680,6 @@ export default function ShowtimeActionModal({
               ) : (
                 <View style={styles.invitedList}>
                   {invitedTabEntries.map((entry) => {
-                    const avatarColors = getAvatarColors(entry.userId, colors);
                     return (
                       <TouchableOpacity
                         key={entry.key}
@@ -2614,18 +2687,14 @@ export default function ShowtimeActionModal({
                         onPress={() => handleGoToUserPage(entry.userId, entry.name)}
                         activeOpacity={0.7}
                       >
-                        <View
-                          style={[
-                            styles.invitedRowAvatar,
-                            { backgroundColor: avatarColors.primary },
-                          ]}
-                        >
-                          <ThemedText
-                            style={[styles.invitedRowAvatarText, { color: avatarColors.secondary }]}
-                          >
-                            {getAvatarInitial(entry.name)}
-                          </ThemedText>
-                        </View>
+                        <PersonAvatar
+                          userId={entry.userId}
+                          name={entry.name}
+                          avatarUrl={entry.avatarUrl}
+                          size={24}
+                          fontSize={11}
+                          style={styles.invitedRowAvatar}
+                        />
                         <View style={styles.invitedRowTextCol}>
                           <ThemedText style={styles.invitedRowName} numberOfLines={1}>
                             {entry.name}
@@ -2738,6 +2807,7 @@ export default function ShowtimeActionModal({
                               key={friend.id}
                               userId={friend.id}
                               name={friend.label}
+                              avatarUrl={friend.avatarUrl}
                               watchStatus={friend.watchStatus}
                               pingStatus={getPingRowStatus(friend.availability)}
                               mode="invite"
@@ -2861,7 +2931,7 @@ export default function ShowtimeActionModal({
           <View style={styles.seatDialogCard}>
             <ThemedText style={styles.seatDialogTitle}>Report an issue</ThemedText>
             <ThemedText style={styles.reportDialogSubtitle}>
-              What&apos;s wrong with this showtime?
+              What&apos;s wrong with this screening?
             </ThemedText>
             <View style={styles.reportReasonList}>
               {REPORT_REASON_OPTIONS.map((option) => (
@@ -2894,7 +2964,7 @@ export default function ShowtimeActionModal({
         icon="notifications-active"
         tone="primary"
         title={`Remind ${remindDialogFriend?.name ?? "friend"}?`}
-        message="They'll get a notification nudging them about this showtime."
+        message="They'll get a notification nudging them about this screening."
         confirmLabel="Remind"
         cancelLabel="Cancel"
         onConfirm={handleConfirmRemindFriend}
@@ -2944,8 +3014,8 @@ export default function ShowtimeActionModal({
             <ThemedText style={styles.confirmDialogTitle}>Dismiss invite?</ThemedText>
             <ThemedText style={styles.confirmDialogMessage}>
               {inviterNames
-                ? `The invite from ${inviterNames} will be removed from your list. You can still find this showtime yourself.`
-                : "This invite will be removed from your list. You can still find this showtime yourself."}
+                ? `The invite from ${inviterNames} will be removed from your list. You can still find this screening yourself.`
+                : "This invite will be removed from your list. You can still find this screening yourself."}
             </ThemedText>
             <View style={styles.confirmDialogActions}>
               <TouchableOpacity
@@ -2991,11 +3061,15 @@ export default function ShowtimeActionModal({
         onConfirm={handleInterestedElsewhereConfirm}
         onSkip={handleInterestedElsewhereSkip}
       />
+      </InheritFiltersContext.Provider>
       </QueryClientProvider>
     </BottomSheetModal>
     </>
   );
 }
+
+/** Far enough right of any screen that a warming sheet can't be touched. */
+const WARM_UP_OFFSCREEN_X = 100000;
 
 const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
   StyleSheet.create({
@@ -3013,7 +3087,13 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     // The warm-up: mounted and laid out, but neither on screen nor able to take
     // a touch — it covers most of the screen while it runs, and it runs during
     // startup, which is exactly when someone is already tapping.
-    warmingUp: { opacity: 0, pointerEvents: "none" },
+    // `pointerEvents` here is not enough on its own: gorhom's hosting
+    // container sets `pointerEvents="box-none"` as a prop, which beats the
+    // style on Android, so a warm-up that stalls open (as it does under the
+    // login screen, with the tabs frozen underneath) swallowed every tap on
+    // it. Shifting it off screen takes it out of hit-testing on both
+    // platforms while leaving its layout — the point of warming — intact.
+    warmingUp: { opacity: 0, pointerEvents: "none", transform: [{ translateX: WARM_UP_OFFSCREEN_X }] },
     sheetBackground: {
       backgroundColor: colors.background,
       borderTopLeftRadius: 16,
@@ -3335,6 +3415,14 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       color: colors.textSecondary,
     },
     seatWatchBell: {
+      alignItems: "center",
+      justifyContent: "center",
+      width: 20,
+      height: 20,
+    },
+    // Same footprint as the bell, so the spinner that replaces it mid-read
+    // takes exactly its space.
+    seatRecheckButton: {
       alignItems: "center",
       justifyContent: "center",
       width: 20,

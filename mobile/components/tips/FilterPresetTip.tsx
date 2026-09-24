@@ -161,7 +161,7 @@ export default function FilterPresetTip({ isPreview = false, onClose }: FilterPr
     },
     onError: (error) => {
       console.error("Error saving filter preset from tip:", error);
-      Alert.alert("Could not save", "That preset was not saved. Please try again.");
+      Alert.alert("Could not save", "That quick filter was not saved. Please try again.");
     },
     onSettled: () => setPendingRowId(null),
   });
@@ -225,7 +225,6 @@ export default function FilterPresetTip({ isPreview = false, onClose }: FilterPr
         CURRENT_FILTERS_ROW_ID,
         buildSavedPresetCreate({
           name,
-          isFavorite: false,
           // Saved as a full preset: the user asked for "what I have now", and
           // leaving dimensions untouched would make it mean something else.
           untouchedFields: [],
@@ -260,8 +259,8 @@ export default function FilterPresetTip({ isPreview = false, onClose }: FilterPr
     <FeatureTipModal
       tipId="filter-presets"
       icon="tune"
-      title="Save your filters as a preset"
-      message="Presets remember a set of filters so you can apply them again in one tap."
+      title="Save your filters as a quick filter"
+      message="Quick filters remember a set of filters so you can apply them again in one tap."
       density="compact"
       actionLabel="Choose your own filters"
       onAction={handleOpenFilters}
@@ -356,7 +355,7 @@ export default function FilterPresetTip({ isPreview = false, onClose }: FilterPr
         >
           <MaterialIcons name="info-outline" size={13} color={colors.textSecondary} />
           <ThemedText style={styles.letterboxdNoticeText}>
-            Add your Letterboxd username to use this preset
+            Add your Letterboxd username to use this quick filter
           </ThemedText>
         </Animated.View>
       ) : null}
@@ -366,7 +365,7 @@ export default function FilterPresetTip({ isPreview = false, onClose }: FilterPr
           modals from the same level, and this one has to sit over the tip. */}
       <NamePromptDialog
         visible={isNamingCurrentFilters}
-        title="Give this preset a name:"
+        title="Give this quick filter a name:"
         placeholder="My filters"
         confirmLabel="Save"
         isBusy={pendingRowId === CURRENT_FILTERS_ROW_ID}

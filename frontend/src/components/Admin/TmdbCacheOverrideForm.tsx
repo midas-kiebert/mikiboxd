@@ -66,8 +66,7 @@ const TmdbCacheOverrideForm = ({
 
   const { data: results, isFetching } = useQuery({
     queryKey: ["tmdb-cache-search", searchTerm],
-    queryFn: () =>
-      UtilsService.searchTmdbCacheEntries({ title: searchTerm }),
+    queryFn: () => UtilsService.searchTmdbCacheEntries({ title: searchTerm }),
     enabled: searchTerm.trim().length > 0,
   })
 
@@ -91,10 +90,10 @@ const TmdbCacheOverrideForm = ({
 
   return (
     <Stack gap={3} maxW="md">
-      <Text fontSize="sm" color="gray.500">
-        Search for the exact cache entry a title's showtimes are using, then
-        correct its TMDB ID directly. Every movie/showtime already produced
-        by that entry is reassigned to the corrected ID immediately.
+      <Text fontSize="sm" color="fg.muted">
+        Search for the exact cache entry a title's screenings are using, then
+        correct its TMDB ID directly. Every film/screening already produced by
+        that entry is reassigned to the corrected ID immediately.
       </Text>
       <Field label="Title as scraped">
         <Input
@@ -122,7 +121,7 @@ const TmdbCacheOverrideForm = ({
       </Button>
 
       {results && results.length === 0 && (
-        <Text fontSize="sm" color="gray.500">
+        <Text fontSize="sm" color="fg.muted">
           No cache entries found for that title.
         </Text>
       )}
@@ -133,7 +132,7 @@ const TmdbCacheOverrideForm = ({
             <Box
               key={entry.id}
               borderWidth={1}
-              borderColor={selected?.id === entry.id ? "blue.400" : "gray.200"}
+              borderColor={selected?.id === entry.id ? "blue.400" : "border"}
               borderRadius="md"
               p={2}
               cursor="pointer"
@@ -142,7 +141,7 @@ const TmdbCacheOverrideForm = ({
               <Text fontSize="sm" fontWeight="bold">
                 cache #{entry.id} → tmdb_id {entry.tmdb_id ?? "none"}
               </Text>
-              <Text fontSize="xs" color="gray.500">
+              <Text fontSize="xs" color="fg.muted">
                 {describeEntry(entry)}
               </Text>
             </Box>

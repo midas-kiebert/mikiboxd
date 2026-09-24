@@ -13,6 +13,7 @@ from app.crud import showtime_ping_link as showtime_ping_link_crud
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud import user as user_crud
 from app.models.showtime_ping import ShowtimePing
+from app.models.showtime_selection import ShowtimeSelection
 from app.models.showtime_visibility import ShowtimeVisibilityEffective
 from app.models.user import User
 from app.utils import now_amsterdam_naive
@@ -2404,9 +2405,10 @@ def test_requesting_a_first_seat_reading_queues_one_and_says_so(
     body = response.json()
     assert body["checking"] is True
     assert body["trackable"] is True
-    # Gone the moment it is used: one hand-requested read per screening, ever.
+    # Gone the moment it is used, until the reading is ten minutes old.
     assert body["can_request_check"] is False
-    check_now.assert_called_once_with(showtime_id)
+    check_now.assert_called_once()
+    assert check_now.call_args.args[0] == showtime_id
 
 
 def test_requesting_a_seat_reading_that_already_happened_costs_nothing(
@@ -2441,6 +2443,168 @@ def test_requesting_a_seat_reading_that_already_happened_costs_nothing(
     assert body["seats_left"] == 40
     assert body["can_request_check"] is False
     check_now.assert_not_called()
+
+
+def test_requesting_a_fresh_reading_of_a_stale_count(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    showtime_factory,
+    mocker,
+) -> None:
+    """A count ten minutes old or more can be asked for again — once, until
+    that request is itself ten minutes old. Offered by the detail endpoint;
+    list rows never offer it."""
+    check_now = mocker.patch("app.api.routes.showtimes._check_seat_availability_now")
+    showtime = showtime_factory(
+        datetime=now_amsterdam_naive() + timedelta(days=2),
+        ticket_link=_READABLE_TICKET_LINK,
+        seats_left=40,
+        seats_capacity=100,
+        seats_checked_at=now_amsterdam_naive() - timedelta(minutes=11),
+        seats_next_check_at=now_amsterdam_naive() + timedelta(hours=2),
+    )
+    showtime_id = showtime.id
+    db_transaction.commit()
+
+    before = client.get(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/seat-availability",
+    ).json()
+    assert before["can_request_check"] is True
+
+    url = f"{settings.API_V1_STR}/showtimes/{showtime_id}/seat-availability/check"
+    first = client.post(url, headers=normal_user_token_headers).json()
+    assert first["checking"] is True
+    assert first["seats_left"] == 40
+    assert first["can_request_check"] is False
+
+    # The mocked read never lands, so the showtime still looks stale by its
+    # reading — the request log is what refuses the second press.
+    showtime.seats_next_check_at = now_amsterdam_naive() + timedelta(hours=2)
+    db_transaction.add(showtime)
+    db_transaction.commit()
+    second = client.post(url, headers=normal_user_token_headers).json()
+    assert second["can_request_check"] is False
+    check_now.assert_called_once()
+
+
+def test_hand_requested_readings_stop_when_the_shop_budget_is_spent(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    showtime_factory,
+    mocker,
+) -> None:
+    check_now = mocker.patch("app.api.routes.showtimes._check_seat_availability_now")
+    mocker.patch("app.services.seat_availability.MANUAL_CHECK_HOST_LIMIT", 1)
+    first = showtime_factory(
+        datetime=now_amsterdam_naive() + timedelta(days=2),
+        ticket_link=_READABLE_TICKET_LINK,
+        seats_checked_at=None,
+    )
+    second = showtime_factory(
+        datetime=now_amsterdam_naive() + timedelta(days=3),
+        ticket_link=_READABLE_TICKET_LINK.replace("1293554", "1293555"),
+        seats_checked_at=None,
+    )
+    first_id, second_id = first.id, second.id
+    db_transaction.commit()
+
+    client.post(
+        f"{settings.API_V1_STR}/showtimes/{first_id}/seat-availability/check",
+        headers=normal_user_token_headers,
+    )
+    offered = client.get(
+        f"{settings.API_V1_STR}/showtimes/{second_id}/seat-availability",
+    ).json()
+    refused = client.post(
+        f"{settings.API_V1_STR}/showtimes/{second_id}/seat-availability/check",
+        headers=normal_user_token_headers,
+    ).json()
+
+    assert offered["can_request_check"] is False
+    assert refused["checking"] is False
+    assert refused["can_request_check"] is False
+    check_now.assert_called_once()
+
+
+def test_opening_a_showtime_re_arms_its_tickets_available_notice(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    showtime_factory,
+) -> None:
+    """Told once that a sold-out screening had tickets again; opening it means
+    the next return is news again. The once-ever notices are left alone."""
+    user_id = _normal_user_id(db_transaction)
+    showtime = showtime_factory(datetime=now_amsterdam_naive() + timedelta(days=2))
+    stamped = now_amsterdam_naive() - timedelta(hours=1)
+    selection = ShowtimeSelection(
+        user_id=user_id,
+        showtime_id=showtime.id,
+        going_status=GoingStatus.INTERESTED,
+        sold_out_alert_sent_at=stamped,
+        tickets_available_alert_sent_at=stamped,
+    )
+    db_transaction.add(selection)
+    db_transaction.commit()
+
+    response = client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime.id}/viewed",
+        headers=normal_user_token_headers,
+    )
+
+    assert response.status_code == 200
+    # The request closes the shared session on its way out, detaching `selection`.
+    db_transaction.add(selection)
+    db_transaction.refresh(selection)
+    assert selection.tickets_available_alert_sent_at is None
+    assert selection.sold_out_alert_sent_at == stamped
+
+
+def test_a_failed_hand_requested_read_withdraws_the_button_for_hours(
+    client: TestClient,
+    normal_user_token_headers: dict[str, str],
+    db_transaction: Session,
+    showtime_factory,
+    mocker,
+) -> None:
+    """Past the ordinary ten-minute cooldown, a screening whose pressed read
+    failed at the ticket shop still offers nothing: the next press would most
+    likely fail the same way."""
+    from app.models.seat_check_request import SeatCheckRequest
+    from app.scraping.seat_availability import SeatAvailabilityFetchError
+
+    mocker.patch(
+        "app.services.seat_availability.fetch_seat_availability",
+        side_effect=SeatAvailabilityFetchError("shop is down"),
+    )
+    showtime = showtime_factory(
+        datetime=now_amsterdam_naive() + timedelta(days=2),
+        ticket_link=_READABLE_TICKET_LINK,
+        seats_checked_at=None,
+        seats_next_check_at=None,
+    )
+    showtime_id = showtime.id
+    db_transaction.commit()
+
+    client.post(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/seat-availability/check",
+        headers=normal_user_token_headers,
+    )
+    request = db_transaction.exec(
+        select(SeatCheckRequest).where(SeatCheckRequest.showtime_id == showtime_id)
+    ).one()
+    assert request.failed is True
+    request.requested_at = now_amsterdam_naive() - timedelta(minutes=11)
+    db_transaction.add(request)
+    db_transaction.commit()
+
+    body = client.get(
+        f"{settings.API_V1_STR}/showtimes/{showtime_id}/seat-availability",
+    ).json()
+    assert body["checking"] is False
+    assert body["can_request_check"] is False
 
 
 def test_requesting_a_seat_reading_needs_an_account(

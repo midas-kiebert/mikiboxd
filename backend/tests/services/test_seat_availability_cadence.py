@@ -9,6 +9,10 @@ from app.scraping.seat_availability import SeatAvailability
 from app.services.seat_availability import (
     POLL_BATCH_LIMIT,
     POLL_HOST_BATCH_LIMIT,
+    SOLD_OUT_FINAL_APPROACH,
+    SOLD_OUT_FINAL_APPROACH_INTERVAL,
+    SOLD_OUT_LAST_CHECK_BEFORE,
+    SOLD_OUT_RECHECK_INTERVAL,
     UNCHANGED_BACKOFF_CAP,
     _RECHECK_JITTER,
     _select_batch,
@@ -76,15 +80,53 @@ def test_interval_follows_level_and_proximity(
     )
 
 
-def test_sold_out_is_never_re_read() -> None:
-    """Not a long interval — none at all. A sold-out screening reads sold out on
-    the next hundred requests too, and the one case that matters is what the
-    sold-out watch exists for. Parked at the screening's own start time, which
-    the candidate query can never take — it only accepts screenings that have
-    not started yet."""
-    showtime = _showtime(
-        starts_in=timedelta(days=7), seats_left=0, seats_capacity=100
-    )
+def _sold_out(starts_in: timedelta, *, now: datetime = NOW) -> Showtime:
+    showtime = _showtime(starts_in=starts_in, seats_left=0, seats_capacity=100)
+    showtime.datetime = now + starts_in
+    return showtime
+
+
+def test_sold_out_far_off_is_read_hourly() -> None:
+    """A thin watch for returned tickets, not the ordinary cadence."""
+    showtime = _sold_out(timedelta(days=7))
+    delay = next_check_at(showtime=showtime, now=NOW, unchanged_streak=0) - NOW
+    assert SOLD_OUT_RECHECK_INTERVAL <= delay <= SOLD_OUT_RECHECK_INTERVAL + _RECHECK_JITTER
+
+
+def test_sold_out_hourly_reads_skip_the_night() -> None:
+    late = datetime(2026, 8, 24, 23, 30)
+    showtime = _sold_out(timedelta(days=3), now=late)
+    assert next_check_at(
+        showtime=showtime, now=late, unchanged_streak=0
+    ) == datetime(2026, 8, 25, 8, 0)
+
+
+def test_sold_out_hourly_read_never_overshoots_the_final_approach() -> None:
+    showtime = _sold_out(timedelta(hours=2, minutes=30))
+    assert next_check_at(
+        showtime=showtime, now=NOW, unchanged_streak=0
+    ) == showtime.datetime - SOLD_OUT_FINAL_APPROACH
+
+
+def test_sold_out_final_approach_reads_every_ten_minutes() -> None:
+    showtime = _sold_out(timedelta(hours=1, minutes=30))
+    assert next_check_at(
+        showtime=showtime, now=NOW, unchanged_streak=0
+    ) == NOW + SOLD_OUT_FINAL_APPROACH_INTERVAL
+
+
+def test_sold_out_final_approach_ends_on_the_last_check() -> None:
+    showtime = _sold_out(timedelta(minutes=25))
+    assert next_check_at(
+        showtime=showtime, now=NOW, unchanged_streak=0
+    ) == showtime.datetime - SOLD_OUT_LAST_CHECK_BEFORE
+
+
+def test_sold_out_is_parked_after_the_last_check() -> None:
+    """Twenty minutes out nobody can still buy a ticket and get there. Parked at
+    the screening's own start time, which the candidate query can never take —
+    it only accepts screenings that have not started yet."""
+    showtime = _sold_out(timedelta(minutes=20))
     assert (
         next_check_at(showtime=showtime, now=NOW, unchanged_streak=0)
         == showtime.datetime

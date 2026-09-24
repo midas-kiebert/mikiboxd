@@ -10,6 +10,7 @@ __all__ = [
     "ShowtimePingPublic",
     "SentShowtimePingPublic",
     "ShowtimePingLinkToken",
+    "ShowtimeInviteContext",
 ]
 
 
@@ -39,3 +40,13 @@ class SentShowtimePingPublic(SQLModel):
 
 class ShowtimePingLinkToken(SQLModel):
     token: str
+
+
+class ShowtimeInviteContext(SQLModel):
+    """What an install prompt may say about a shared invite link, unauthenticated."""
+
+    sender_name: str | None
+    movie_title: str
+    movie_poster_link: str | None
+    cinema_name: str
+    datetime: DateTime

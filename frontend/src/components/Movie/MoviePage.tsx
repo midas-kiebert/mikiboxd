@@ -1,79 +1,147 @@
-import Page from "@/components/Common/Page"
-import Sidebar from "@/components/Common/Sidebar"
-import TopBar from "@/components/Common/TopBar"
-import UserMenu from "@/components/Common/UserMenu"
-import MovieLinks from "@/components/Movie/MovieLinks"
-import MoviePoster from "@/components/Movie/MoviePoster"
-import MovieTitle from "@/components/Movie/MovieTitle"
-import ReportShowtimeButton from "@/components/Movie/ReportShowtimeButton"
-import { Showtimes } from "@/components/Movie/Showtimes"
-import Filters from "@/components/Movies/Filters"
-import { Route } from "@/routes/movie.$movieId"
-import type { ShowtimeSelectionTogglePayload } from "@/types"
-import { Box, Center, Flex, Spacer, Spinner } from "@chakra-ui/react"
-import { Button, Dialog, HStack, Portal, Text, VStack } from "@chakra-ui/react"
-import { useQuery } from "@tanstack/react-query"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { DateTime } from "luxon"
-import { useEffect, useMemo, useState } from "react"
 /**
- * Single-movie detail feature component: Movie Page.
+ * A film's own page: the film at the top, its whole run below it, and the
+ * shipped `ShowtimeDetailPanel` docked beside both when a screening is
+ * pressed — the same panel the feeds dock, so acting on a screening never
+ * hides the alternatives you were choosing between. The layout itself is
+ * `MovieDetail`'s.
+ *
+ * The page sits outside `_layout` — it is where a shared link lands — so it
+ * carries the site's nav itself, in flow under the notice banner.
+ *
+ * The feed's filter rail docks on the left, cut down to the filters that
+ * narrow screenings: cinemas, language, days, time of day and whose plans.
+ * The ones that choose films are pinned to their defaults — the film is
+ * already chosen, so all they could do is empty its run. The filters live in
+ * the URL, as the feed's do.
  */
-import { type MoviesReadMovieResponse, MoviesService } from "shared"
+import { Box, Center, Flex, Spinner, Text } from "@chakra-ui/react"
+import { useQuery } from "@tanstack/react-query"
 import {
-  ShowtimesService,
-  type ShowtimesUpdateShowtimeSelectionResponse,
-} from "shared"
-import type { GoingStatus, ShowtimeInMoviePublic } from "shared"
-import type { MovieSummaryPublic } from "shared"
-import { useFetchFriends } from "shared/hooks/useFetchFriends"
-import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas"
-import useTrackEvent from "shared/hooks/useTrackEvent"
-import Directors from "./Directors"
-import OriginalTitle from "./OriginalTitle"
-import ReleaseYear from "./ReleaseYear"
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
+import type { MoviesReadMovieResponse, ShowtimePublic } from "shared"
+import { MoviesService } from "shared"
 
-type FriendPingAvailability = "eligible" | "pinged"
+import TopNavBar from "@/components/Common/TopNavBar"
+import FeedFilterRail from "@/components/Feed/FeedFilterRail"
+import {
+  DETAIL_WIDTH,
+  RAIL_WIDTH,
+  RAISED_PANEL_ATTRIBUTE,
+  RAISED_PANEL_Z_INDEX,
+} from "@/components/Feed/FeedLayout"
+import {
+  RAIL_STRIP_GAP,
+  RAIL_STRIP_WIDTH,
+  RailStrip,
+} from "@/components/Feed/RailCollapse"
+import {
+  DETAIL_FADE_MS,
+  detailCardStyle,
+  detailColumnStyle,
+  useDetailColumn,
+} from "@/components/Feed/useDetailColumn"
+import MovieDetail from "@/components/Movie/MovieDetail"
+import type { FilmTime } from "@/components/Movies/cards/film-card-kit"
+import ShowtimeDetailPanel from "@/components/Showtimes/ShowtimeDetailPanel"
+import { PAGE_NOTICE_BANNER_OFFSET_CSS } from "@/constants"
+import {
+  FILM_LEVEL_FEED_PARAMS,
+  feedParamsToApiFilters,
+} from "@/features/showtimes/feed-params"
+import { usePreferredCinemaIds } from "@/features/showtimes/guest-preferred-cinemas"
+import { useShowtimePanelSlot } from "@/features/showtimes/showtime-panel-slot"
+import { useFeedParams } from "@/features/showtimes/useFeedParams"
+import { useHeldShowtime } from "@/features/showtimes/useHeldShowtime"
+import { useIsMobile } from "@/hooks/useIsMobile"
+import { Route } from "@/routes/movie.$movieId"
 
-type UpdateCacheData = {
-  movieId: number
-  showtimeId: number
-  newValue: GoingStatus
-}
+/**
+ * How wide the film itself may get. A poster and a paragraph do not improve
+ * past this — the rest of an ultrawide monitor is margin, or the panel.
+ */
+const FILM_MAX_WIDTH = 1100
+/**
+ * The narrowest the film may be beside the full filters and the panel. Past
+ * this the header's poster, synopsis and friends stop fitting side by side, so
+ * the filters give up their room for good instead (see `isRailFolded`).
+ */
+const FILM_MIN_WIDTH = 640
+/** Tight on purpose: every pixel here is one the film does not get. */
+const COLUMN_GAP = 16
+/** The widest the detail column is ever asked to be (`DETAIL_WIDTH`'s `2xl`). */
+const DETAIL_MAX_WIDTH = 520
+/**
+ * The pair, capped so that the cap never eats into the film: exactly enough for
+ * a full-width film beside a full-width panel. Set to anything less and opening
+ * the panel on a large monitor would take the difference out of the film.
+ *
+ * The pair is centred, so opening a screening slides the whole film left into
+ * the room it always leaves for the panel — see `FILM_WIDTH_BESIDE_PANEL`.
+ * Tried the other way (film anchored, panel opening beside it, film narrowing
+ * to fit) on 2026-09-22: a shrinking poster and a re-wrapping run felt worse
+ * than the slide.
+ */
+const CONTENT_MAX_WIDTH = FILM_MAX_WIDTH + COLUMN_GAP + DETAIL_MAX_WIDTH
+const PANEL_INSET = 16
 
-type InfiniteMoviesData = {
-  pages: MovieSummaryPublic[][]
-  pageParams: unknown[]
-}
+/**
+ * The film's width, panel open or not: whatever is left beside a fully open
+ * panel. So opening a screening never resizes the film — the room is already
+ * there, and the film only slides over to make it.
+ */
+const FILM_WIDTH_BESIDE_PANEL = Object.fromEntries(
+  Object.entries(DETAIL_WIDTH).map(([key, value]) => [
+    key,
+    `min(${FILM_MAX_WIDTH}px, calc(100% - ${COLUMN_GAP}px - ${value}))`,
+  ]),
+)
+
+/**
+ * Where the panel pins, and how tall it may get. The nav is in the document
+ * flow and scrolls away with the page, so the only thing still fixed above the
+ * panel once you have scrolled is the notice banner, when it is up.
+ */
+const PANEL_STICKY_TOP = `calc(${PAGE_NOTICE_BANNER_OFFSET_CSS} + ${PANEL_INSET}px)`
+const PANEL_MAX_HEIGHT = `calc(100dvh - ${PAGE_NOTICE_BANNER_OFFSET_CSS} - ${
+  2 * PANEL_INSET
+}px)`
 
 const MoviePage = () => {
   // Read flow: prepare derived values/handlers first, then return component JSX.
-  const queryClient = useQueryClient()
-  const { trackEvent } = useTrackEvent()
-  const [selectedShowtime, setSelectedShowtime] =
-    useState<ShowtimeInMoviePublic | null>(null)
-  const [pingListOpen, setPingListOpen] = useState(false)
-  const [pingedFriendIds, setPingedFriendIds] = useState<string[]>([])
-  const [selectedDays, setSelectedDays] = useState<Date[]>([])
+  const isMobile = useIsMobile()
+  const [selectedShowtimeId, setSelectedShowtimeId] = useState<number | null>(
+    null,
+  )
   const params = Route.useParams()
   const { movieId } = params as { movieId: string }
   const movieIdNumber = Number(movieId)
+  const { showtime: linkedShowtimeId } = Route.useSearch()
+  const [hasOpenedLinkedShowtime, setHasOpenedLinkedShowtime] = useState(false)
   // Data hooks keep this module synced with backend data and shared cache state.
+  // A guest's preferred cinemas come from this browser, never the account
+  // endpoint: asking that only earns a 401, retried, and the film waited out
+  // every retry before it showed.
   const { data: selectedCinemaIds, isLoading: isLoadingSelectedCinemas } =
-    useFetchSelectedCinemas()
-  const { data: friends } = useFetchFriends({ enabled: !!selectedShowtime })
-  const selectedDayFilters = selectedDays.map(
-    (day) => DateTime.fromJSDate(day).toISODate() || "",
-  )
+    usePreferredCinemaIds()
   const shouldWaitForCinemaSelection =
     isLoadingSelectedCinemas && selectedCinemaIds === undefined
 
-  // Include cinema/day filters in the query key so cached data lines up with active filters.
-  const { data, isLoading, isFetching } = useQuery<
-    MoviesReadMovieResponse,
-    Error
-  >({
-    queryKey: ["movie", movieIdNumber, selectedCinemaIds, selectedDayFilters],
+  const feed = useFeedParams({ pinned: FILM_LEVEL_FEED_PARAMS })
+  const filters = useMemo(
+    () => feedParamsToApiFilters(feed.queryParams),
+    [feed.queryParams],
+  )
+
+  // The filters are in the query key so cached data lines up with them. No
+  // cinemas picked falls back to the account's saved ones, as it always did.
+  const { data, isLoading } = useQuery<MoviesReadMovieResponse, Error>({
+    queryKey: ["movie", movieIdNumber, selectedCinemaIds, filters],
     enabled:
       Number.isFinite(movieIdNumber) &&
       // `!== 0` (not `> 0`): synthetic listings like sneak previews use
@@ -82,431 +150,417 @@ const MoviePage = () => {
       !shouldWaitForCinemaSelection,
     queryFn: () =>
       MoviesService.readMovie({
+        ...filters,
         id: movieIdNumber,
-        selectedCinemaIds,
-        days: selectedDayFilters,
+        selectedCinemaIds: filters.selectedCinemaIds ?? selectedCinemaIds,
       }),
+    // A filter change swaps the run, not the page: the film stays up while its
+    // screenings are fetched again. Only for this film, though — arriving at
+    // another one must not show the last one's poster in the meantime.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === movieIdNumber ? previous : undefined,
   })
-
-  const title = data?.title || ""
-  const showtimes = data?.showtimes || []
-  const posterUrl =
-    data?.poster_link ||
-    "https://via.placeholder.com/300x450.png?text=No+Poster+Available"
-  const letterboxdSlug = data?.letterboxd_slug || ""
-  const letterboxdSearchQuery = title
-    ? `${title}${data?.release_year ? ` ${data.release_year}` : ""}`
-    : ""
-  const letterboxdSearchUrl = letterboxdSearchQuery
-    ? `https://letterboxd.com/search/${encodeURIComponent(letterboxdSearchQuery)}/`
-    : null
-  const letterboxdUrl = letterboxdSlug
-    ? `https://letterboxd.com/film/${letterboxdSlug}`
-    : letterboxdSearchUrl
 
   const isMovieLoading = shouldWaitForCinemaSelection || (isLoading && !data)
-  const handleDaysChange = (days: Date[]) => setSelectedDays(days)
+
+  /**
+   * The screening the panel is open on, built where it is used rather than
+   * kept in state: only its *id* is remembered, so a status change that
+   * refetches the film leaves the panel looking at the new row instead of the
+   * copy it was handed when the plate was pressed. The panel wants a whole
+   * `ShowtimePublic`, and a screening listed under a film is exactly one minus
+   * the film — it was listed *under* it, so it carries no copy of it.
+   *
+   * Nor does it carry the friends who watchlisted or watched the film: those
+   * are the film's, not the screening's, so the page sends them once on the
+   * film's own `viewer` rather than on every screening. The panel reads them
+   * off the screening (its watch pills, and the Invite beside each name), so
+   * they are put back here — the same lists the feed's screenings carry.
+   *
+   * A screening opened from a notification can be another film's, so it falls
+   * back to the held copy (`useHeldShowtime`), which status writes patch too.
+   * That one already carries its own film's lists.
+   */
+  const { held, hold } = useHeldShowtime()
+  const selectedShowtime: ShowtimePublic | null = useMemo(() => {
+    if (selectedShowtimeId === null) return null
+    const found = data?.showtimes.find(
+      (showtime) => showtime.id === selectedShowtimeId,
+    )
+    if (found && data) {
+      return {
+        ...found,
+        movie: data,
+        viewer: found.viewer
+          ? {
+              ...found.viewer,
+              friends_watchlisted: data.viewer?.friends_watchlisted,
+              friends_watched: data.viewer?.friends_watched,
+            }
+          : found.viewer,
+      }
+    }
+    return held && held.id === selectedShowtimeId ? held : null
+  }, [data, held, selectedShowtimeId])
+
+  // A screening filtered out from under the panel should not keep it open.
   useEffect(() => {
-    if (!selectedShowtime) {
-      setPingListOpen(false)
-      setPingedFriendIds([])
+    if (selectedShowtimeId !== null && !selectedShowtime && !isMovieLoading) {
+      setSelectedShowtimeId(null)
     }
-  }, [selectedShowtime])
+  }, [selectedShowtimeId, selectedShowtime, isMovieLoading])
 
-  const friendsForPing = useMemo(() => {
-    const availabilityRank: Record<FriendPingAvailability, number> = {
-      eligible: 0,
-      pinged: 1,
-    }
-    return (friends ?? [])
-      .map((friend) => {
-        const alreadyPinged = pingedFriendIds.includes(friend.id)
-        const availability: FriendPingAvailability = alreadyPinged
-          ? "pinged"
-          : "eligible"
-        const label = friend.display_name?.trim() || "Friend"
-        return {
-          id: friend.id,
-          label,
-          initial: label.charAt(0).toUpperCase(),
-          availability,
-        }
-      })
-      .sort((left, right) => {
-        const rankDifference =
-          availabilityRank[left.availability] -
-          availabilityRank[right.availability]
-        if (rankDifference !== 0) {
-          return rankDifference
-        }
-        return left.label.localeCompare(right.label)
-      })
-  }, [friends, pingedFriendIds])
+  // Open the showtime a notification email linked to, once, when it loads.
+  useEffect(() => {
+    if (hasOpenedLinkedShowtime || !linkedShowtimeId || !data) return
+    if (!data.showtimes.some((showtime) => showtime.id === linkedShowtimeId))
+      return
+    setSelectedShowtimeId(linkedShowtimeId)
+    setHasOpenedLinkedShowtime(true)
+  }, [hasOpenedLinkedShowtime, linkedShowtimeId, data])
 
-  // Keep movie details and movie-list caches in sync after a showtime status change.
-  const updateCacheAfterShowtimeToggle = ({
-    movieId,
-    showtimeId,
-    newValue,
-  }: UpdateCacheData) => {
-    queryClient.invalidateQueries({ queryKey: ["showtimes"] })
+  /**
+   * The docked panel opens and closes the way the feeds' does — the column
+   * widens, then the card fades in; the card fades, then the column narrows —
+   * rather than appearing in one frame and shoving the whole run sideways.
+   * The screening is kept after it is deselected so there is still something
+   * in the column while it closes.
+   */
+  const hasDockedPanel = !isMobile && selectedShowtime !== null
+  const lastShowtime = useRef<ShowtimePublic | null>(null)
+  if (selectedShowtime) lastShowtime.current = selectedShowtime
+  const dockedShowtime = selectedShowtime ?? lastShowtime.current
+  const detailColumn = useDetailColumn(hasDockedPanel)
 
-    // update the cache in the movie details page
-    queryClient.setQueriesData(
-      { queryKey: ["movie", movieId] },
-      (oldData: MoviesReadMovieResponse | undefined) => {
-        if (!oldData || !oldData.showtimes) return oldData
+  const handleSelectTime = useCallback((time: FilmTime) => {
+    setSelectedShowtimeId((current) => (current === time.id ? null : time.id))
+  }, [])
+  const handleClose = useCallback(() => setSelectedShowtimeId(null), [])
 
-        const newShowtimes = oldData.showtimes.map((s) =>
-          s.id === showtimeId ? { ...s, going: newValue } : s,
-        )
-
-        return {
-          ...oldData,
-          showtimes: newShowtimes,
-        }
-      },
-    )
-
-    // new showtimes with going flag updated
-    const updatedShowtimes = showtimes.map((s) =>
-      s.id === showtimeId
-        ? { ...s, viewer: { ...s.viewer, going: newValue } }
-        : s,
-    )
-    // true if going to any showtime
-    const going = updatedShowtimes.some((s) => s.viewer?.going)
-
-    const movieQueries = queryClient.getQueriesData<InfiniteMoviesData>({
-      queryKey: ["movies"],
-    })
-    for (const [queryKey, oldData] of movieQueries) {
-      if (!oldData) continue
-
-      const newPages = oldData.pages.map((page) => {
-        const newResults = page.map((movie) =>
-          movie.id === movieId
-            ? { ...movie, viewer: { ...movie.viewer, going } }
-            : movie,
-        )
-        return newResults
-      })
-
-      queryClient.setQueryData(queryKey, {
-        ...oldData,
-        pages: newPages,
-      })
-    }
-  }
-
-  const { mutate: handleToggle } = useMutation<
-    ShowtimesUpdateShowtimeSelectionResponse,
-    Error,
-    ShowtimeSelectionTogglePayload
-  >({
-    mutationFn: ({ showtimeId, going_status }) =>
-      ShowtimesService.updateShowtimeSelection({
-        showtimeId,
-        requestBody: {
-          going_status: going_status,
-        },
-      }),
-    onSuccess: (data) => {
-      console.log("Showtime toggled", data)
-      updateCacheAfterShowtimeToggle({
-        movieId: data.movie.id,
-        showtimeId: data.id,
-        newValue: data.viewer?.going ?? "NOT_GOING",
-      })
+  const openFromElsewhere = useCallback(
+    (showtime: ShowtimePublic) => {
+      hold(showtime)
+      setSelectedShowtimeId(showtime.id)
     },
-    onError: (error) => {
-      console.error("Error toggling showtime:", error)
-    },
-  })
-  const { mutate: handlePingFriend, isPending: isPingingFriend } = useMutation<
-    { message: string },
-    Error,
-    { showtimeId: number; friendId: string }
-  >({
-    mutationFn: ({ showtimeId, friendId }) =>
-      ShowtimesService.pingFriendForShowtime({
-        showtimeId,
-        friendId,
-      }),
-    onSuccess: (_message, variables) => {
-      setPingedFriendIds((previous) =>
-        previous.includes(variables.friendId)
-          ? previous
-          : [...previous, variables.friendId],
-      )
-      trackEvent("invite_sent")
-    },
-    onError: (error) => {
-      console.error("Error inviting friend:", error)
-    },
-  })
+    [hold],
+  )
+  useShowtimePanelSlot(openFromElsewhere)
 
-  // Dialog buttons call into the mutation with the selected showtime row.
-  const handleToggleShowtime = (going: GoingStatus) => {
+  // A plate is what opens the panel, so anything that isn't one closes it —
+  // except the panel itself, whose own buttons (going, invite, seat map) have
+  // to keep working without dismissing the thing they act on. Same rule as the
+  // films feed's. A plate's own click handler stops its propagation, so this
+  // never fights the toggle that lets pressing it again close the panel.
+  useEffect(() => {
     if (!selectedShowtime) return
-    handleToggle({ showtimeId: selectedShowtime.id, going_status: going })
-  }
+    const handleOutsidePress = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null
+      // The notification bell and panel too: they open screenings in this one.
+      if (
+        target?.closest(
+          ".fc-plate, [data-feed-side-panel], [data-notification-centre]",
+        )
+      ) {
+        return
+      }
+      handleClose()
+    }
+    document.addEventListener("mousedown", handleOutsidePress)
+    return () => document.removeEventListener("mousedown", handleOutsidePress)
+  }, [selectedShowtime, handleClose])
+
+  // The feed drops its rail on a phone too; there is no room beside the film.
+  const showRail = !isMobile
+
+  /**
+   * The filters are a strip whenever the full filters would leave the film
+   * narrower than `FILM_MIN_WIDTH` beside the panel — whether or not a panel
+   * is open, so opening one never changes anything but where the film sits.
+   *
+   * Worked out from the page's own width and two hidden rulers at the rail's
+   * and the panel's full widths, never from the film, which is exactly what
+   * moves when the rail folds.
+   */
+  const pageRef = useRef<HTMLDivElement>(null)
+  const railRulerRef = useRef<HTMLDivElement>(null)
+  const panelRulerRef = useRef<HTMLDivElement>(null)
+  const [isShortOfRoom, setIsShortOfRoom] = useState(false)
+  useLayoutEffect(() => {
+    const page = pageRef.current
+    const railRuler = railRulerRef.current
+    const panelRuler = panelRulerRef.current
+    if (!showRail || !page || !railRuler || !panelRuler) return
+    const update = () => {
+      const style = getComputedStyle(page)
+      const pageWidth =
+        page.clientWidth -
+        Number.parseFloat(style.paddingLeft) -
+        Number.parseFloat(style.paddingRight)
+      const filmRoom =
+        pageWidth -
+        railRuler.offsetWidth -
+        COLUMN_GAP -
+        panelRuler.offsetWidth -
+        COLUMN_GAP
+      setIsShortOfRoom(filmRoom < FILM_MIN_WIDTH)
+    }
+    update()
+    // The rulers too: their widths step with the breakpoint.
+    const observer = new ResizeObserver(update)
+    observer.observe(page)
+    observer.observe(railRuler)
+    observer.observe(panelRuler)
+    return () => observer.disconnect()
+  }, [showRail])
+  const isRailFolded = showRail && isShortOfRoom
+
+  // Folded, the strip opens the filters over the film rather than docking
+  // them back, which would only squeeze it again.
+  const stripRef = useRef<HTMLDivElement>(null)
+  const floatingRailRef = useRef<HTMLDivElement>(null)
+  const [isRailFloating, setIsRailFloating] = useState(false)
+  useEffect(() => {
+    if (!isRailFolded) setIsRailFloating(false)
+  }, [isRailFolded])
+  // A click elsewhere on the page puts them away. Only clicks on the page
+  // count: the cinema sheet is portalled to the body, and picking a cinema in
+  // it must not close the filters it belongs to.
+  useEffect(() => {
+    if (!isRailFloating) return
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (!pageRef.current?.contains(target)) return
+      if (floatingRailRef.current?.contains(target)) return
+      if (stripRef.current?.contains(target)) return
+      setIsRailFloating(false)
+    }
+    document.addEventListener("pointerdown", onPointerDown)
+    return () => document.removeEventListener("pointerdown", onPointerDown)
+  }, [isRailFloating])
+
+  const rail = (
+    <FeedFilterRail
+      params={feed.params}
+      onChange={feed.setParams}
+      onReset={feed.resetParams}
+      activeFilterCount={feed.activeFilterCount}
+      screeningsOnly
+    />
+  )
+  /** Sticky beside the film, like the panel on the other side of it. */
+  const railColumnStyle = {
+    // Clicks in here keep the screening open (see the outside-press rule
+    // above), as they do in the feed's rail.
+    "data-feed-side-panel": "",
+    flexShrink: 0,
+    position: "sticky",
+    top: PANEL_STICKY_TOP,
+    maxH: PANEL_MAX_HEIGHT,
+    overscrollBehavior: "contain",
+    // The rail lifts itself above the cinema sheet's scrim; the sticky column
+    // is its own stacking context, so it has to come up too.
+    css: {
+      [`&:has([${RAISED_PANEL_ATTRIBUTE}])`]: { zIndex: RAISED_PANEL_Z_INDEX },
+    },
+  } as const
+
   // Render/output using the state and derived values prepared above.
   return (
     <>
-      {selectedShowtime && (
-        <Dialog.Root
-          lazyMount
-          placement="center"
-          open={true}
-          onOpenChange={(e) => {
-            if (!e.open) {
-              setSelectedShowtime(null)
-              setPingListOpen(false)
-              setPingedFriendIds([])
-            }
-          }}
-        >
-          <Portal>
-            <Dialog.Backdrop />
-            <Dialog.Positioner>
-              <Dialog.Content p={2} maxW={600} transform="translateY(-6vh)">
-                <Dialog.Header>
-                  <Dialog.Title fontSize="md">
-                    {/* {`Are you going the ${formattedTime} showtime of ${title} on ${formattedDate} at ${cinema.name}?`} */}
-                  </Dialog.Title>
-                </Dialog.Header>
-                <Dialog.Body>
-                  <HStack
-                    gap={3}
-                    justify={"center"}
-                    flexWrap={{ base: "wrap", md: "nowrap" }}
-                  >
-                    <Dialog.ActionTrigger asChild>
-                      <Button
-                        maxW={150}
-                        variant={
-                          selectedShowtime.viewer?.going === "GOING"
-                            ? "solid"
-                            : "surface"
-                        }
-                        colorScheme="green"
-                        w="100%"
-                        onClick={() => handleToggleShowtime("GOING")}
-                      >
-                        I'm Going!
-                      </Button>
-                    </Dialog.ActionTrigger>
-                    <Dialog.ActionTrigger asChild>
-                      <Button
-                        maxW={150}
-                        variant={
-                          selectedShowtime.viewer?.going === "INTERESTED"
-                            ? "solid"
-                            : "surface"
-                        }
-                        colorPalette="orange"
-                        w="100%"
-                        onClick={() => handleToggleShowtime("INTERESTED")}
-                      >
-                        I'm Interested
-                      </Button>
-                    </Dialog.ActionTrigger>
-                    <Dialog.ActionTrigger asChild>
-                      <Button
-                        maxW={150}
-                        variant={"surface"}
-                        colorPalette={"red"}
-                        w="100%"
-                        onClick={() => handleToggleShowtime("NOT_GOING")}
-                      >
-                        I'm Not Going
-                      </Button>
-                    </Dialog.ActionTrigger>
-                  </HStack>
-                  <VStack align="stretch" gap={2} mt={4}>
-                    <Button
-                      variant="surface"
-                      onClick={() => setPingListOpen((previous) => !previous)}
-                      disabled={isPingingFriend}
-                    >
-                      {pingListOpen ? "Hide friends" : "Invite friends"}
-                    </Button>
-                    {pingListOpen ? (
-                      <Box
-                        borderWidth="1px"
-                        borderColor="border.muted"
-                        borderRadius="md"
-                        bg="bg.muted"
-                        p={2}
-                      >
-                        <Text
-                          color="fg.muted"
-                          fontSize="xs"
-                          fontWeight="700"
-                          mb={2}
-                        >
-                          Friends ({friendsForPing.length})
-                        </Text>
-                        {friendsForPing.length === 0 ? (
-                          <Text color="fg.muted" fontSize="sm">
-                            No friends yet.
-                          </Text>
-                        ) : (
-                          <VStack
-                            align="stretch"
-                            gap={2}
-                            maxH="16rem"
-                            overflowY="auto"
-                            pr={1}
-                          >
-                            {friendsForPing.map((friend) => {
-                              const canPing =
-                                friend.availability === "eligible" &&
-                                !isPingingFriend
-                              const statusLabel =
-                                friend.availability === "pinged"
-                                  ? "Invited"
-                                  : "Ready"
-                              return (
-                                <Flex
-                                  key={friend.id}
-                                  alignItems="center"
-                                  justifyContent="space-between"
-                                  gap={3}
-                                  borderWidth="1px"
-                                  borderColor="border.muted"
-                                  borderRadius="md"
-                                  bg="bg.panel"
-                                  px={2}
-                                  py={2}
-                                >
-                                  <Flex alignItems="center" gap={2} minW={0}>
-                                    <Flex
-                                      w="26px"
-                                      h="26px"
-                                      alignItems="center"
-                                      justifyContent="center"
-                                      borderRadius="full"
-                                      borderWidth="1px"
-                                      borderColor="border.muted"
-                                      bg="bg.muted"
-                                      flexShrink={0}
-                                    >
-                                      <Text fontSize="xs" fontWeight="700">
-                                        {friend.initial || "F"}
-                                      </Text>
-                                    </Flex>
-                                    <Box minW={0}>
-                                      <Text
-                                        fontSize="sm"
-                                        overflow="hidden"
-                                        textOverflow="ellipsis"
-                                        whiteSpace="nowrap"
-                                      >
-                                        {friend.label}
-                                      </Text>
-                                      <Text color="fg.muted" fontSize="xs">
-                                        {statusLabel}
-                                      </Text>
-                                    </Box>
-                                  </Flex>
-                                  <Button
-                                    size="sm"
-                                    variant="surface"
-                                    disabled={!canPing}
-                                    onClick={() =>
-                                      selectedShowtime &&
-                                      handlePingFriend({
-                                        showtimeId: selectedShowtime.id,
-                                        friendId: friend.id,
-                                      })
-                                    }
-                                  >
-                                    {friend.availability === "eligible"
-                                      ? "Invite"
-                                      : statusLabel}
-                                  </Button>
-                                </Flex>
-                              )
-                            })}
-                          </VStack>
-                        )}
-                      </Box>
-                    ) : null}
-                    <ReportShowtimeButton showtimeId={selectedShowtime.id} />
-                  </VStack>
-                </Dialog.Body>
-              </Dialog.Content>
-            </Dialog.Positioner>
-          </Portal>
-        </Dialog.Root>
-      )}
-      <Flex>
-        <Sidebar />
-        <TopBar>
-          <Filters
-            selectedDays={selectedDays}
-            handleDaysChange={handleDaysChange}
-          />
-          <Spacer />
-          <UserMenu />
-        </TopBar>
-      </Flex>
-      <Page>
-        {isMovieLoading ? (
-          <Center h="50vh">
-            <Spinner size="xl" />
-          </Center>
-        ) : (
+      {/* Outside `_layout`, so this page carries the site's nav itself, in
+          flow under the notice banner. */}
+      <Box mt={PAGE_NOTICE_BANNER_OFFSET_CSS}>
+        <TopNavBar />
+      </Box>
+      {/* A plain box rather than `Common/Page`: that one exists to clear the
+          fixed secondary bar this page no longer has, and its
+          `overflow-x: hidden` makes it a scrollport the docked panel below
+          could never stick in. */}
+      <Flex
+        ref={pageRef}
+        position="relative"
+        px={{ base: 3, md: 4 }}
+        pt={{ base: 4, md: 5 }}
+        pb={10}
+        align="flex-start"
+      >
+        {showRail ? (
           <>
-            <Flex gap={4}>
-              {letterboxdUrl ? (
-                <a
-                  href={letterboxdUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={`Open ${title} on Letterboxd`}
-                  style={{ display: "inline-block" }}
-                >
-                  <MoviePoster posterUrl={posterUrl} />
-                </a>
-              ) : (
-                <MoviePoster posterUrl={posterUrl} />
-              )}
-              <Flex
-                flexDirection={"column"}
-                flex={1}
-                minW={0}
-                justifyContent={"top"}
-              >
-                <Flex
-                  alignItems={"baseline"}
-                  gap={4}
-                  minW={0}
-                  flexWrap={"wrap"}
-                >
-                  <MovieTitle title={title} />
-                  <ReleaseYear releaseYear={data?.release_year || null} />
-                  <OriginalTitle originalTitle={data?.original_title || null} />
-                </Flex>
-                <Directors directors={data?.directors || null} />
-                <MovieLinks letterboxd={letterboxdUrl ?? undefined} />
-              </Flex>
-            </Flex>
-
-            <Showtimes
-              showtimes={showtimes}
-              setSelectedShowtime={setSelectedShowtime}
+            <Box
+              ref={railRulerRef}
+              w={RAIL_WIDTH}
+              h={0}
+              position="absolute"
+              visibility="hidden"
+              pointerEvents="none"
+              aria-hidden
             />
-            {isFetching ? (
-              <Center mt={4}>
-                <Spinner />
-              </Center>
-            ) : null}
+            <Box
+              ref={panelRulerRef}
+              w={DETAIL_WIDTH}
+              h={0}
+              position="absolute"
+              visibility="hidden"
+              pointerEvents="none"
+              aria-hidden
+            />
           </>
-        )}
-      </Page>
+        ) : null}
+
+        {/* Docked at the page's left edge rather than centred with the film,
+            so opening a screening slides the film and not the filters.
+
+            One column for both the full filters and the strip: the filters
+            stay mounted either way, and the strip opens those same ones over
+            the film rather than building a second set. */}
+        {showRail ? (
+          <Box
+            as="aside"
+            {...railColumnStyle}
+            w={isRailFolded ? RAIL_STRIP_WIDTH : RAIL_WIDTH}
+            me={`${isRailFolded ? RAIL_STRIP_GAP : COLUMN_GAP}px`}
+            // Docked, the column scrolls the filters; folded, it clips them
+            // as it narrows; floating, they hang out past the strip, over the
+            // film. Not `hidden` on one axis and `visible` on the other: that
+            // pair computes to a scroll box, which clipped the strip away.
+            overflowX={isRailFloating ? "visible" : "hidden"}
+            overflowY={
+              isRailFloating ? "visible" : isRailFolded ? "hidden" : "auto"
+            }
+            zIndex={isRailFloating ? 4 : undefined}
+          >
+            <Box
+              position={isRailFolded ? "static" : "absolute"}
+              top={0}
+              left={0}
+              visibility={isRailFolded ? "visible" : "hidden"}
+              aria-hidden={!isRailFolded}
+            >
+              <RailStrip
+                stripRef={stripRef}
+                activeFilterCount={feed.activeFilterCount}
+                isOpen={isRailFloating}
+                onToggle={() => setIsRailFloating((current) => !current)}
+              />
+            </Box>
+            <Box
+              ref={floatingRailRef}
+              w={RAIL_WIDTH}
+              position={isRailFolded ? "absolute" : "static"}
+              top={0}
+              left={
+                isRailFolded ? `calc(100% + ${RAIL_STRIP_GAP}px)` : undefined
+              }
+              maxH={isRailFolded ? PANEL_MAX_HEIGHT : undefined}
+              overflowY={isRailFolded ? "auto" : undefined}
+              overscrollBehavior="contain"
+              borderRadius="md"
+              boxShadow={isRailFloating ? "lg" : undefined}
+              opacity={isRailFolded && !isRailFloating ? 0 : 1}
+              transform={
+                isRailFolded && !isRailFloating ? "translateX(-8px)" : "none"
+              }
+              visibility={
+                isRailFolded && !isRailFloating ? "hidden" : "visible"
+              }
+              // Floating in and out only; folding itself happens on a resize,
+              // not under anyone's pointer, so it does not animate.
+              transition={
+                isRailFolded
+                  ? isRailFloating
+                    ? `opacity ${DETAIL_FADE_MS}ms ease, transform ${DETAIL_FADE_MS}ms ease`
+                    : `opacity ${DETAIL_FADE_MS}ms ease, transform ${DETAIL_FADE_MS}ms ease, visibility 0s ${DETAIL_FADE_MS}ms`
+                  : undefined
+              }
+            >
+              {rail}
+            </Box>
+          </Box>
+        ) : null}
+
+        <Box flex="1 1 auto" minW={0}>
+          {isMovieLoading ? (
+            <Center h="50vh">
+              <Spinner size="xl" />
+            </Center>
+          ) : !data ? (
+            // A film that was pulled, an id that is not one, or a request that
+            // failed. The page said nothing at all in this case before — it drew
+            // its own chrome around an empty poster and a blank title.
+            <Center h="50vh">
+              <Text color="fg.muted">This film could not be loaded.</Text>
+            </Center>
+          ) : (
+            <Flex
+              maxW={`${CONTENT_MAX_WIDTH}px`}
+              mx="auto"
+              align="flex-start"
+              justify="center"
+            >
+              <Box
+                flex="0 0 auto"
+                // A phone has no docked panel to leave room for.
+                w={isMobile ? "100%" : FILM_WIDTH_BESIDE_PANEL}
+                minW={0}
+              >
+                <MovieDetail
+                  movie={data}
+                  selectedShowtimeId={selectedShowtimeId}
+                  onSelectTime={handleSelectTime}
+                  emptyText={
+                    feed.activeFilterCount > 0
+                      ? "No screenings match these filters"
+                      : undefined
+                  }
+                />
+
+                {/* On a phone there is no room for a docked panel, so the
+                    selection opens under the film until it becomes a drawer. The
+                    panel paints its own card, so this only insets it. */}
+                {isMobile && selectedShowtime ? (
+                  <Box py={3}>
+                    <ShowtimeDetailPanel
+                      showtime={selectedShowtime}
+                      onClose={handleClose}
+                    />
+                  </Box>
+                ) : null}
+              </Box>
+
+              {/* Sticky rather than full-height, like the feed's own column: the
+                  card ends where its content does and the page reads through
+                  underneath it. */}
+              {!isMobile && detailColumn.isMounted && dockedShowtime ? (
+                <Box
+                  as="aside"
+                  ref={detailColumn.columnRef}
+                  // `SIDE_PANEL_SCROLLER_ATTRIBUTE`: what the panel looks for
+                  // when it scrolls itself back to the top on a new screening.
+                  data-feed-side-panel=""
+                  // The gap is the column's own margin rather than the row's
+                  // `gap`, so it closes with the width instead of snapping.
+                  {...detailColumnStyle(DETAIL_WIDTH, COLUMN_GAP, detailColumn)}
+                  flexShrink={0}
+                  position="sticky"
+                  top={PANEL_STICKY_TOP}
+                  maxH={PANEL_MAX_HEIGHT}
+                  overflowY="auto"
+                  // A panel that does scroll internally keeps its wheel to
+                  // itself rather than handing the overflow to the page.
+                  overscrollBehavior="contain"
+                >
+                  <Box {...detailCardStyle(DETAIL_WIDTH, detailColumn.isOpen)}>
+                    <ShowtimeDetailPanel
+                      showtime={dockedShowtime}
+                      onClose={handleClose}
+                    />
+                  </Box>
+                </Box>
+              ) : null}
+            </Flex>
+          )}
+        </Box>
+      </Flex>
     </>
   )
 }

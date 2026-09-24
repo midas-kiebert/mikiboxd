@@ -7,10 +7,10 @@ export function useSessionGroupByMovie() {
   const queryClient = useQueryClient();
 
   // Mirror the other session-filter hooks: leave the cache entry `undefined`
-  // until something is explicitly set, so callers (e.g. the favorite-preset
-  // restore in useSharedTabFilters) can distinguish "never set" from "set to
+  // until something is explicitly set, so callers (e.g. the feed-style
+  // default in useSharedTabFilters) can distinguish "never set" from "set to
   // false". Seeding `false` here would make group-by indistinguishable from an
-  // explicit "Showtimes" choice and break that restore.
+  // explicit "Screenings" choice and break that restore.
   const { data } = useQuery<boolean | undefined>({
     queryKey: SESSION_GROUP_BY_MOVIE_KEY,
     queryFn: () => queryClient.getQueryData<boolean>(SESSION_GROUP_BY_MOVIE_KEY),

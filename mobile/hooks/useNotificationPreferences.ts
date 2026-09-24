@@ -1,7 +1,7 @@
 /**
- * The notification preferences shared by the Settings screen and the
- * notification-permission tip: the four preference toggles, each one's delivery
- * channel, the OS permission status, and the writes that keep them in sync.
+ * The notification preferences behind the Settings screen: the preference
+ * toggles, each one's delivery channel, the OS permission status, and the
+ * writes that keep them in sync.
  *
  * Each preference is one three-way choice (off, push, email) rather than a
  * boolean plus a channel, so the UI can be a single segmented control and the
@@ -9,36 +9,43 @@
  *
  * Choosing push registers a push token first, so the system prompt appears
  * exactly when the user asks for the notification, and the control rolls back
- * if permission is refused. Every write is optimistic and reverts on failure,
+ * if permission is refused — with the steps to allow it in system settings
+ * when the OS has stopped asking (`usePushPermissionFlow`). A row set to push
+ * on a device that cannot receive one is shown as off: push is never the
+ * selected option unless a push could actually arrive. Every write is optimistic and reverts on failure,
  * so the controls never lie about what the server holds.
+ *
+ * A row can be changed again while its last change is still saving: writes for
+ * one row go out one at a time and a burst collapses to the latest choice, so
+ * quick Push/Email/Push taps cannot land out of order and flip the control back.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, AppState, Linking } from "react-native";
 import { Notifications } from '@/utils/notifications-module';
 import type * as NotificationsTypes from 'expo-notifications';
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type NotificationChannel, MeService, type UserUpdate } from "shared/client";
 import useAuth from "shared/hooks/useAuth";
+import {
+  LINKED_PREFERENCE_KEYS,
+  NOTIFICATION_LABELS,
+  normalizeChannel,
+  preferenceToChannelKey,
+  TOGGLE_ORDER,
+  getDelivery,
+  type NotificationChannelPreferenceKey,
+  type NotificationDelivery,
+  type NotificationPreferenceKey,
+} from "shared/notifications/preferences";
 
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { usePushPermissionFlow } from "@/hooks/usePushPermissionFlow";
 import { registerPushTokenForCurrentDevice } from "@/utils/push-notifications";
 
-export type NotificationPreferenceKey =
-  | "notify_on_friend_showtime_match"
-  | "notify_on_friend_requests"
-  | "notify_on_showtime_ping"
-  | "notify_on_interest_reminder"
-  | "notify_on_seat_alert"
-  | "notify_on_sold_out"
-  | "notify_on_showtime_reminder";
-
-export type NotificationChannelPreferenceKey =
-  | "notify_channel_friend_showtime_match"
-  | "notify_channel_friend_requests"
-  | "notify_channel_showtime_ping"
-  | "notify_channel_interest_reminder"
-  | "notify_channel_seat_alert"
-  | "notify_channel_sold_out"
-  | "notify_channel_showtime_reminder";
+export type {
+  NotificationPreferenceKey,
+  NotificationChannelPreferenceKey,
+} from "shared/notifications/preferences";
 
 type NotificationPreferencesState = Record<NotificationPreferenceKey, boolean>;
 type NotificationChannelsState = Record<NotificationChannelPreferenceKey, NotificationChannel>;
@@ -55,7 +62,7 @@ type NotificationChannelSource =
  * two backend fields, but they are one decision, so the UI treats them as one
  * three-way choice and this type is what the list reads and writes.
  */
-export type NotificationDelivery = "off" | NotificationChannel;
+export type { NotificationDelivery } from "shared/notifications/preferences";
 
 /** One row of the list: the preference, its wording and its current setting. */
 export type NotificationToggleDescriptor = {
@@ -68,60 +75,27 @@ export type NotificationToggleDescriptor = {
     | "person-add"
     | "local-fire-department"
     | "event-busy"
+    | "confirmation-number"
     | "notifications-active";
   delivery: NotificationDelivery;
 };
 
-const DEFAULT_NOTIFICATION_CHANNEL: NotificationChannel = "push";
-
-const preferenceToChannelKey: Record<NotificationPreferenceKey, NotificationChannelPreferenceKey> = {
-  notify_on_friend_showtime_match: "notify_channel_friend_showtime_match",
-  notify_on_friend_requests: "notify_channel_friend_requests",
-  notify_on_showtime_ping: "notify_channel_showtime_ping",
-  notify_on_interest_reminder: "notify_channel_interest_reminder",
-  notify_on_seat_alert: "notify_channel_seat_alert",
-  notify_on_sold_out: "notify_channel_sold_out",
-  notify_on_showtime_reminder: "notify_channel_showtime_reminder",
-};
-
-/**
- * "Almost sold out" and "Sold out" are two backend fields (and two push
- * kinds) but one decision for the user, so notify_on_seat_alert's row also
- * drives notify_on_sold_out and neither is shown separately in TOGGLE_ORDER.
- */
-const LINKED_PREFERENCE_KEYS: Partial<Record<NotificationPreferenceKey, NotificationPreferenceKey[]>> = {
-  notify_on_seat_alert: ["notify_on_sold_out"],
-};
-
-// Labels carry the whole explanation now that the rows are one line each, so
-// they have to stand on their own next to the icon.
-const TOGGLE_COPY: Record<
+// Only the icons live here now; the labels are shared with the website via
+// `shared/notifications/preferences`, so the two clients cannot end up calling
+// the same preference different things.
+const TOGGLE_ICONS: Record<
   NotificationPreferenceKey,
-  Pick<NotificationToggleDescriptor, "label" | "icon">
+  NotificationToggleDescriptor["icon"]
 > = {
-  notify_on_friend_showtime_match: { label: "Friend activity", icon: "groups" },
-  notify_on_showtime_ping: { label: "Invites", icon: "mail" },
-  notify_on_interest_reminder: { label: "Interest reminders", icon: "alarm" },
-  notify_on_seat_alert: { label: "Seat availability", icon: "local-fire-department" },
-  notify_on_sold_out: { label: "Sold out", icon: "event-busy" },
-  notify_on_friend_requests: { label: "Friend requests", icon: "person-add" },
-  notify_on_showtime_reminder: { label: "Reminders from friends", icon: "notifications-active" },
+  notify_on_friend_showtime_match: "groups",
+  notify_on_showtime_ping: "mail",
+  notify_on_interest_reminder: "alarm",
+  notify_on_seat_alert: "local-fire-department",
+  notify_on_sold_out: "event-busy",
+  notify_on_tickets_available: "confirmation-number",
+  notify_on_friend_requests: "person-add",
+  notify_on_showtime_reminder: "notifications-active",
 };
-
-// Fixed display order, which is not the declaration order of the copy above.
-// notify_on_sold_out is deliberately absent: it rides along with
-// notify_on_seat_alert via LINKED_PREFERENCE_KEYS instead of its own row.
-const TOGGLE_ORDER: readonly NotificationPreferenceKey[] = [
-  "notify_on_friend_showtime_match",
-  "notify_on_showtime_ping",
-  "notify_on_showtime_reminder",
-  "notify_on_interest_reminder",
-  "notify_on_seat_alert",
-  "notify_on_friend_requests",
-];
-
-const normalizeChannel = (channel: NotificationChannel | null | undefined): NotificationChannel =>
-  channel === "email" ? "email" : DEFAULT_NOTIFICATION_CHANNEL;
 
 export const buildNotificationPreferencesState = (
   source: NotificationPreferenceSource
@@ -132,6 +106,7 @@ export const buildNotificationPreferencesState = (
   notify_on_interest_reminder: !!source?.notify_on_interest_reminder,
   notify_on_seat_alert: !!source?.notify_on_seat_alert,
   notify_on_sold_out: !!source?.notify_on_sold_out,
+  notify_on_tickets_available: !!source?.notify_on_tickets_available,
   notify_on_showtime_reminder: !!source?.notify_on_showtime_reminder,
 });
 
@@ -146,26 +121,13 @@ export const buildNotificationChannelsState = (
   notify_channel_interest_reminder: normalizeChannel(source?.notify_channel_interest_reminder),
   notify_channel_seat_alert: normalizeChannel(source?.notify_channel_seat_alert),
   notify_channel_sold_out: normalizeChannel(source?.notify_channel_sold_out),
+  notify_channel_tickets_available: normalizeChannel(
+    source?.notify_channel_tickets_available
+  ),
   notify_channel_showtime_reminder: normalizeChannel(
     source?.notify_channel_showtime_reminder
   ),
 });
-
-/**
- * True when at least one enabled preference is set to arrive as a push. Someone
- * who turned everything off, or routed it all to email, does not need the OS
- * permission and should not be nagged about it.
- */
-export const wantsPushNotifications = (
-  source:
-    | (Partial<Record<NotificationPreferenceKey, boolean>> &
-        Partial<Record<NotificationChannelPreferenceKey, NotificationChannel | null>>)
-    | null
-    | undefined
-): boolean =>
-  TOGGLE_ORDER.some(
-    (key) => !!source?.[key] && normalizeChannel(source?.[preferenceToChannelKey[key]]) === "push"
-  );
 
 /**
  * Hand the user off to the OS settings screen. Never rejects: this can fail on
@@ -227,6 +189,24 @@ export const useSystemNotificationPermission = (): SystemNotificationPermission 
   return { status, isGranted: status === "granted", canAskAgain, apply };
 };
 
+/**
+ * Whether a push can reach the user on this device: the OS allows it and the
+ * account has a registered push token. Null until the permission is read.
+ */
+export const useCanReceivePush = (): boolean | null => {
+  const { status, isGranted } = useSystemNotificationPermission();
+  const currentUser = useCurrentUser();
+  if (status === null || currentUser === undefined) return null;
+  return isGranted && currentUser.has_push_token;
+};
+
+/** Whether this notification would actually reach the user right now. */
+export const isNotificationDeliverable = (
+  source: Parameters<typeof getDelivery>[0],
+  key: NotificationPreferenceKey,
+  canPush: boolean
+): boolean => getDelivery(source, key, canPush) !== "off";
+
 export type NotificationPreferencesController = {
   toggles: NotificationToggleDescriptor[];
   /** Null until the first permission read resolves. */
@@ -234,7 +214,7 @@ export type NotificationPreferencesController = {
   isSystemPermissionGranted: boolean;
   /** False once the user has refused and the OS will not prompt again. */
   canAskSystemPermission: boolean;
-  /** The row currently being written; only that row is disabled. */
+  /** The row waiting on the OS permission prompt; only that row is disabled. */
   pendingKey: NotificationPreferenceKey | null;
   /** True once the user is loaded and the controls can be operated. */
   isReady: boolean;
@@ -244,6 +224,8 @@ export type NotificationPreferencesController = {
   /** True while the "confirm your email first" dialog should be shown. */
   isEmailVerificationRequired: boolean;
   dismissEmailVerificationRequired: () => void;
+  /** The "turn notifications on in system settings" dialog; render it. */
+  pushHelpDialog: ReactNode;
 };
 
 export const useNotificationPreferences = (): NotificationPreferencesController => {
@@ -259,67 +241,123 @@ export const useNotificationPreferences = (): NotificationPreferencesController 
   const [pendingKey, setPendingKey] = useState<NotificationPreferenceKey | null>(null);
   const [isEmailVerificationRequired, setIsEmailVerificationRequired] = useState(false);
   const permission = useSystemNotificationPermission();
-  const { apply: applyPermission } = permission;
+  const { apply: applyPermission, isGranted: isPushPermissionGranted } = permission;
+
+  /** What the user last chose for a row and has not been sent yet. */
+  const queuedWritesRef = useRef(new Map<NotificationPreferenceKey, UserUpdate>());
+  /** Rows with a write on the wire right now. */
+  const writingKeysRef = useRef(new Set<NotificationPreferenceKey>());
+  /** The server's word after the latest successful write, for rolling back. */
+  const lastConfirmedUserRef = useRef(user);
 
   useEffect(() => {
+    lastConfirmedUserRef.current = user;
+    // A refetch landing in the middle of a burst of changes carries a state the
+    // user has already moved past; adopting it is what made the control jump
+    // back and then forward again. The refetch after the burst settles is the
+    // one that counts.
+    if (queuedWritesRef.current.size > 0 || writingKeysRef.current.size > 0) return;
     setPreferences(buildNotificationPreferencesState(user));
     setChannels(buildNotificationChannelsState(user));
   }, [user]);
 
   const { mutateAsync: savePreference } = useMutation({
     mutationFn: (data: UserUpdate) => MeService.updateUserMe({ requestBody: data }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["currentUser"] });
-    },
   });
 
   /**
-   * Runs the OS prompt via token registration, which is the only path that both
-   * asks and leaves the backend able to reach this device.
-   *
-   * Never rejects: registration throws on its own for reasons that have nothing
-   * to do with the user's answer (no project id, Expo Go on Android, a network
-   * blip), and every caller treats this as a yes/no question.
+   * Sends a row's queued write, and then whatever was chosen while it was on
+   * the wire, until nothing is owed. One write per row at a time, always the
+   * latest choice. On failure the row goes back to what the server last said.
+   */
+  const flushWrites = useCallback(
+    async (key: NotificationPreferenceKey, keys: readonly NotificationPreferenceKey[]) => {
+      // Already sending: that loop picks the new choice up when it lands.
+      if (writingKeysRef.current.has(key)) return;
+      writingKeysRef.current.add(key);
+      let payload = queuedWritesRef.current.get(key);
+      let failure: unknown = null;
+      while (payload && failure === null) {
+        queuedWritesRef.current.delete(key);
+        try {
+          lastConfirmedUserRef.current = await savePreference(payload);
+        } catch (error) {
+          failure = error;
+        }
+        payload = queuedWritesRef.current.get(key);
+      }
+      writingKeysRef.current.delete(key);
+
+      if (failure !== null) {
+        queuedWritesRef.current.delete(key);
+        console.error("Error updating notification preference:", failure);
+        const confirmedPreferences = buildNotificationPreferencesState(lastConfirmedUserRef.current);
+        const confirmedChannels = buildNotificationChannelsState(lastConfirmedUserRef.current);
+        setPreferences((previous) => ({
+          ...previous,
+          ...Object.fromEntries(keys.map((k) => [k, confirmedPreferences[k]])),
+        }));
+        setChannels((previous) => ({
+          ...previous,
+          ...Object.fromEntries(
+            keys.map((k) => [preferenceToChannelKey[k], confirmedChannels[preferenceToChannelKey[k]]])
+          ),
+        }));
+        Alert.alert(
+          "Error",
+          failure instanceof Error ? failure.message : "Could not update notification preferences."
+        );
+      }
+      // Once per burst rather than once per write: the refetch is what brings
+      // the rest of the app (and the guard above) back in line.
+      void queryClient.invalidateQueries({ queryKey: ["currentUser"] });
+    },
+    [queryClient, savePreference]
+  );
+
+  /**
+   * The row the user set to push while this device cannot receive one. Set
+   * before asking; a grant that arrives later — back from system settings —
+   * finishes that row by itself.
+   */
+  const awaitingPushKeyRef = useRef<NotificationPreferenceKey | null>(null);
+  const isAskingRef = useRef(false);
+  const setDeliveryRef = useRef<
+    ((key: NotificationPreferenceKey, delivery: NotificationDelivery) => Promise<void>) | null
+  >(null);
+  // A token registered in this session, ahead of `has_push_token` refetching.
+  const [hasRegisteredHere, setHasRegisteredHere] = useState(false);
+
+  const pushFlow = usePushPermissionFlow({
+    onGranted: () => {
+      setHasRegisteredHere(true);
+      void Notifications.getPermissionsAsync().then(applyPermission).catch(() => {});
+      // A grant answering the prompt directly is handled by `setDelivery`
+      // itself; only the late one, via system settings, is finished here.
+      if (isAskingRef.current) return;
+      const key = awaitingPushKeyRef.current;
+      awaitingPushKeyRef.current = null;
+      if (key) void setDeliveryRef.current?.(key, "push");
+    },
+  });
+  const { request: requestPush } = pushFlow;
+
+  /**
+   * Asks for push (the OS prompt, or the settings steps once the OS has
+   * stopped asking). Resolves whether this device can now receive a push.
+   * Never rejects.
    */
   const requestSystemPermission = useCallback(async (): Promise<boolean> => {
     if (!user) return false;
-
-    let token: string | null = null;
+    isAskingRef.current = true;
     try {
-      token = await registerPushTokenForCurrentDevice({
-        userId: String(user.id),
-        force: true,
-      });
-    } catch (error) {
-      console.error("Error registering this device for push notifications:", error);
+      return await requestPush();
+    } finally {
+      isAskingRef.current = false;
     }
+  }, [requestPush, user]);
 
-    // Read the permission even when registration failed: the prompt may well
-    // have been answered before whatever went wrong afterwards.
-    const permissions = await Notifications.getPermissionsAsync().catch(() => null);
-    if (permissions) applyPermission(permissions);
-    if (token) return true;
-
-    // Permission but no token means the device could not be registered, which
-    // is not something the system settings screen can fix.
-    if (permissions?.granted) {
-      Alert.alert(
-        "Notifications unavailable",
-        "This device could not be registered for notifications. Please try again later."
-      );
-      return false;
-    }
-
-    Alert.alert(
-      "Enable notifications",
-      "To receive notifications, allow them in your system settings.",
-      [
-        { text: "Not now", style: "cancel" },
-        { text: "Open settings", onPress: () => void openSystemSettings() },
-      ]
-    );
-    return false;
-  }, [applyPermission, user]);
+  const canPush = isPushPermissionGranted && (Boolean(user?.has_push_token) || hasRegisteredHere);
 
   /**
    * Off and the delivery channel are one decision for the user, so they travel
@@ -342,7 +380,12 @@ export const useNotificationPreferences = (): NotificationPreferencesController 
       // Turning a preference off leaves its channel alone, so switching it back
       // on later restores the channel the user last picked.
       const nextChannel = delivery === "off" ? previousChannel : delivery;
-      if (previousEnabled === nextEnabled && previousChannel === nextChannel) return;
+      // A row stored as push on a device that cannot receive one reads as off,
+      // so picking push there is a real change: it has to ask.
+      const isUnreachablePush = delivery === "push" && !canPush;
+      if (previousEnabled === nextEnabled && previousChannel === nextChannel && !isUnreachablePush) {
+        return;
+      }
 
       // Nothing is sent to an address nobody has confirmed, so the backend
       // refuses this (403). Said here instead, because a failed save would put
@@ -369,49 +412,64 @@ export const useNotificationPreferences = (): NotificationPreferencesController 
         ...previous,
         ...Object.fromEntries(keys.map((k) => [preferenceToChannelKey[k], nextChannel])),
       }));
-      try {
-        setPendingKey(key);
-        // A push is worthless without permission, so ask up front and put the
-        // control back where it was if the user says no.
-        if (delivery === "push") {
+
+      if (delivery === "push") {
+        if (canPush) {
+          // Allowed already: making sure this device is registered is worth
+          // doing, but not worth making the control wait for.
+          void registerPushTokenForCurrentDevice({ userId: String(user.id), force: true }).catch(
+            (error: unknown) => {
+              console.error("Error registering this device for push notifications:", error);
+            }
+          );
+        } else {
+          // A push is worthless without permission, so ask up front and put the
+          // control back where it was if the user says no. The row waits on the
+          // system prompt only, never on a save.
+          setPendingKey(key);
+          awaitingPushKeyRef.current = key;
           const granted = await requestSystemPermission();
+          setPendingKey(null);
           if (!granted) {
             rollback();
             return;
           }
+          awaitingPushKeyRef.current = null;
         }
-        const payload: UserUpdate = Object.fromEntries(
+      }
+
+      queuedWritesRef.current.set(
+        key,
+        Object.fromEntries(
           keys.flatMap((k) => [
             [k, nextEnabled],
             [preferenceToChannelKey[k], nextChannel],
           ])
-        );
-        const updatedUser = await savePreference(payload);
-        setPreferences(buildNotificationPreferencesState(updatedUser));
-        setChannels(buildNotificationChannelsState(updatedUser));
-      } catch (error) {
-        console.error("Error updating notification preference:", error);
-        rollback();
-        Alert.alert(
-          "Error",
-          error instanceof Error ? error.message : "Could not update notification preferences."
-        );
-      } finally {
-        setPendingKey(null);
-      }
+        )
+      );
+      await flushWrites(key, keys);
     },
-    [channels, preferences, requestSystemPermission, savePreference, user]
+    [canPush, channels, flushWrites, preferences, requestSystemPermission, user]
   );
+
+  useEffect(() => {
+    setDeliveryRef.current = setDelivery;
+  }, [setDelivery]);
 
   const toggles = useMemo<NotificationToggleDescriptor[]>(
     () =>
       TOGGLE_ORDER.map((key) => ({
         key,
-        label: TOGGLE_COPY[key].label,
-        icon: TOGGLE_COPY[key].icon,
-        delivery: preferences[key] ? channels[preferenceToChannelKey[key]] : "off",
+        label: NOTIFICATION_LABELS[key],
+        icon: TOGGLE_ICONS[key],
+        // Push only reads as selected when a push could actually arrive.
+        delivery: !preferences[key]
+          ? "off"
+          : channels[preferenceToChannelKey[key]] === "push" && !canPush
+            ? "off"
+            : channels[preferenceToChannelKey[key]],
       })),
-    [channels, preferences]
+    [canPush, channels, preferences]
   );
 
   return {
@@ -425,5 +483,6 @@ export const useNotificationPreferences = (): NotificationPreferencesController 
     requestSystemPermission,
     isEmailVerificationRequired,
     dismissEmailVerificationRequired: useCallback(() => setIsEmailVerificationRequired(false), []),
+    pushHelpDialog: pushFlow.helpDialog,
   };
 };

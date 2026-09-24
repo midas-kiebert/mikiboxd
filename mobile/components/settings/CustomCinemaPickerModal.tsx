@@ -58,6 +58,10 @@ export default function CustomCinemaPickerModal({
     });
   }, []);
 
+  const handleOnlyCinema = useCallback((cinemaId: number) => {
+    setSelectedIds(new Set([cinemaId]));
+  }, []);
+
   const handleSelectCinemas = useCallback((cinemaIds: readonly number[]) => {
     setSelectedIds((current) => {
       const next = new Set(current);
@@ -99,6 +103,7 @@ export default function CustomCinemaPickerModal({
               cinemas={cinemaList}
               selectedIds={selectedIds}
               onToggleCinema={handleToggleCinema}
+              onOnlyCinema={handleOnlyCinema}
               onSelectCinemas={handleSelectCinemas}
               onDeselectCinemas={handleDeselectCinemas}
             />

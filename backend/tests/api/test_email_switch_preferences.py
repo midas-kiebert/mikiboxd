@@ -8,7 +8,7 @@ notification channel already pointed at email, and the watchlist digest if
 it was on, are switched to push/off automatically rather than left silently
 routing to (or gated behind) an address nobody has confirmed yet — and both
 are restored automatically once the new address is confirmed, whether by the
-`/users/verify-email` link or by a social sign-in that proves the same
+`/verify-email` link or by a social sign-in that proves the same
 address.
 """
 
@@ -138,8 +138,8 @@ def test_verifying_new_email_restores_previous_channels_and_digest(
     assert r.status_code == 200, r.text
 
     token = generate_email_verification_token(email=new_email)
-    verify_response = client.get(
-        f"{settings.API_V1_STR}/users/verify-email", params={"token": token}
+    verify_response = client.post(
+        f"{settings.API_V1_STR}/users/verify-email", json={"token": token}
     )
     assert verify_response.status_code == 200
 
@@ -195,8 +195,8 @@ def test_second_email_change_while_unverified_does_not_clobber_original_snapshot
 
     # Verifying the final address restores the *original* pre-change state.
     token = generate_email_verification_token(email=second_new_email)
-    verify_response = client.get(
-        f"{settings.API_V1_STR}/users/verify-email", params={"token": token}
+    verify_response = client.post(
+        f"{settings.API_V1_STR}/users/verify-email", json={"token": token}
     )
     assert verify_response.status_code == 200
 
@@ -234,8 +234,8 @@ def test_email_change_with_no_email_preferences_is_a_no_op(
     assert after_change.unverified_email_saved_digest_enabled is False
 
     token = generate_email_verification_token(email=new_email)
-    verify_response = client.get(
-        f"{settings.API_V1_STR}/users/verify-email", params={"token": token}
+    verify_response = client.post(
+        f"{settings.API_V1_STR}/users/verify-email", json={"token": token}
     )
     assert verify_response.status_code == 200
 

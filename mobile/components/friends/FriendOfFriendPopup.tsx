@@ -15,10 +15,10 @@ import type { UserWithFriendStatus } from "shared";
 
 import InlineFriendRequestButtons from "@/components/friends/InlineFriendRequestButtons";
 import { ThemedText } from "@/components/themed-text";
+import PersonAvatar from "@/components/ui/PersonAvatar";
 import { useFriendStatus } from "@/hooks/useFriendStatus";
 import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useThemeColors } from "@/hooks/use-theme-color";
-import { getAvatarColors, getAvatarInitial } from "@/utils/avatar-color";
 import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
 const FADE_IN_MS = 190;
@@ -160,7 +160,6 @@ function PopupCardBody({
   );
   const user = liveUser ?? seed;
   const name = user.display_name?.trim() || "This user";
-  const avatarColors = getAvatarColors(user.id, colors);
 
   // Everything overlaying the page comes down before the push: this popup,
   // and whatever the host has open behind it. That route renders
@@ -178,11 +177,14 @@ function PopupCardBody({
 
   return (
     <>
-      <View style={[styles.avatar, { backgroundColor: avatarColors.primary }]}>
-        <ThemedText style={[styles.avatarText, { color: avatarColors.secondary }]}>
-          {getAvatarInitial(name)}
-        </ThemedText>
-      </View>
+      <PersonAvatar
+        userId={user.id}
+        name={name}
+        avatarUrl={user.avatar_url}
+        size={56}
+        fontSize={22}
+        style={styles.avatar}
+      />
       <ThemedText style={styles.name} numberOfLines={2}>
         {name}
       </ThemedText>
@@ -192,7 +194,7 @@ function PopupCardBody({
           which the notice below then says instead. */}
       {isFriend ? null : (
         <ThemedText style={styles.hint}>
-          You&apos;re not friends yet — you can see them on this showtime through someone
+          You&apos;re not friends yet — you can see them on this screening through someone
           you both know.
         </ThemedText>
       )}

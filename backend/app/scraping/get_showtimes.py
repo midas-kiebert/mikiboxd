@@ -1,4 +1,6 @@
+import asyncio
 from datetime import datetime
+from typing import Any
 
 import aiohttp
 import requests
@@ -18,6 +20,39 @@ class ShowtimeResponse(BaseModel):
     ticketUrl: str | None
     venueName: str
     subtitles: list[str] | None
+    # When Cineville itself created/last changed the event. Only the bulk fetch
+    # fills these; they feed the publish-timing log (`CinevilleEvent`).
+    createdAt: str | None = None
+    updatedAt: str | None = None
+
+
+class CinevilleEventRecord(BaseModel):
+    """One event from the bulk event listing, before it is grouped by film."""
+
+    id: str
+    productionId: str | None
+    venueId: str
+    venueName: str
+    title: str | None
+    startDate: str
+    endDate: str | None
+    ticketUrl: str | None
+    subtitles: list[str] | None
+    isHidden: bool
+    createdAt: str
+    updatedAt: str
+
+    def to_showtime(self) -> ShowtimeResponse:
+        return ShowtimeResponse(
+            id=self.id,
+            startDate=self.startDate,
+            endDate=self.endDate,
+            ticketUrl=self.ticketUrl,
+            venueName=self.venueName,
+            subtitles=self.subtitles,
+            createdAt=self.createdAt,
+            updatedAt=self.updatedAt,
+        )
 
 
 class Venue(BaseModel):
@@ -145,6 +180,100 @@ async def get_showtimes_json_async(
     return _parse_showtimes_response(
         response_json=response_json,
         productionId=productionId,
+    )
+
+
+CINEVILLE_API_BASE = "https://api.cineville.nl"
+EVENTS_PAGE_LIMIT = 1000
+# A sweep is ~12 pages today; the cap only guards against a pagination cursor
+# that never ends.
+EVENTS_MAX_PAGES = 100
+
+
+async def _get_venue_names_async(session: aiohttp.ClientSession) -> dict[str, str]:
+    url = f"{CINEVILLE_API_BASE}/venues?page[limit]=1000"
+    async with session.get(url, timeout=aiohttp.ClientTimeout(total=20)) as response:
+        response.raise_for_status()
+        payload = await response.json()
+    return {venue["id"]: venue["name"] for venue in payload["_embedded"]["venues"]}
+
+
+def _bulk_event_record(
+    event: dict[str, Any], venue_names: dict[str, str]
+) -> CinevilleEventRecord:
+    attributes = event.get("attributes") or {}
+    hint = event.get("productionHint") or {}
+    return CinevilleEventRecord(
+        id=event["id"],
+        productionId=event.get("productionId"),
+        venueId=event["venueId"],
+        venueName=venue_names.get(event["venueId"], event["venueId"]),
+        title=hint.get("title"),
+        startDate=event["startDate"],
+        endDate=event.get("endDate"),
+        ticketUrl=truncate_ticket_link(event.get("ticketingUrl")),
+        subtitles=event.get("subtitles") or attributes.get("subtitles"),
+        isHidden=bool(event.get("isHidden")),
+        createdAt=event["createdAt"],
+        updatedAt=event["updatedAt"],
+    )
+
+
+async def get_all_events_async(
+    session: aiohttp.ClientSession,
+    *,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    page_delay_seconds: float = 0.0,
+) -> list[CinevilleEventRecord]:
+    """Every Cineville event starting in [start, end), in a few paged requests.
+
+    `start` defaults to now and `end` to open-ended, i.e. the upcoming
+    programme; times are UTC. The backfill script passes a past window.
+
+    Replaces one `get_showtimes_json_async` call per film: the per-film fan-out
+    was ~600 requests a run plus ~800 rate-limited retries, and still lost ~35
+    films a run to 429s. The listing is fetched without the embedded venue
+    (which tripled the payload) and venue names are read once from /venues.
+
+    All or nothing: any page that fails after retries raises
+    `CinevilleFetchError`, so a partial listing can never be mistaken for
+    screenings having disappeared.
+    """
+    try:
+        venue_names = await _get_venue_names_async(session)
+    except (aiohttp.ClientError, asyncio.TimeoutError, KeyError) as e:
+        raise CinevilleFetchError(f"Cineville venues fetch failed: {e}") from e
+
+    start_filter = {"gte": (start or datetime.utcnow()).isoformat()}
+    if end is not None:
+        start_filter["lt"] = end.isoformat()
+    payload = {"startDate": start_filter, "sort": {"startDate": "asc"}}
+    url: str | None = (
+        f"{CINEVILLE_API_BASE}/events/search?page[limit]={EVENTS_PAGE_LIMIT}"
+    )
+    records: list[CinevilleEventRecord] = []
+    for page in range(1, EVENTS_MAX_PAGES + 1):
+        if url is None:
+            return records
+        response_json = await post_json_with_retry(
+            session=session,
+            url=url,
+            headers={"Content-Type": "application/json"},
+            payload=payload,
+            timeout=aiohttp.ClientTimeout(total=60),
+            context=f"events page {page}",
+        )
+        records.extend(
+            _bulk_event_record(event, venue_names)
+            for event in response_json["_embedded"]["events"]
+        )
+        next_link = (response_json.get("_links") or {}).get("next")
+        url = f"{CINEVILLE_API_BASE}{next_link['href']}" if next_link else None
+        if url is not None and page_delay_seconds:
+            await asyncio.sleep(page_delay_seconds)
+    raise CinevilleFetchError(
+        f"Cineville events listing did not end after {EVENTS_MAX_PAGES} pages"
     )
 
 

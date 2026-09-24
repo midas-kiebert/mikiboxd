@@ -406,6 +406,7 @@ def to_public(
     session: Session,
     user_id: ViewerId,
     visibility_modes: Mapping[int, VisibilityMode] | None = None,
+    viewer_states: Mapping[int, ShowtimeViewerState] | None = None,
 ) -> ShowtimePublic:
     """
     Converts a Showtime object to a ShowtimePublic object: the screening itself,
@@ -418,19 +419,23 @@ def to_public(
         user_id (ViewerId): Who to annotate for. None leaves `viewer` unset,
             which is how the response says nobody was asking — see
             `app.core.viewer`.
+        viewer_states (Mapping[int, ShowtimeViewerState] | None): Viewer blocks
+            already built for a whole page by
+            `converters.showtime_page.viewer_states_for_showtimes`. Converting
+            a list without it means building each one here, which is nineteen
+            queries a row — see that module.
     Returns:
         ShowtimePublic: The converted showtime, with or without viewer state.
-    Raises:
-        ValidationError: If the showtime does not match the expected model.
     """
-    Showtime.model_validate(showtime)
     movie = movie_converters.to_in_showtime(showtime.movie)
     cinema = cinema_converters.to_public(
         cinema=showtime.cinema,
     )
 
     viewer: ShowtimeViewerState | None = None
-    if user_id is not None:
+    if viewer_states is not None and showtime.id in viewer_states:
+        viewer = viewer_states[showtime.id]
+    elif user_id is not None:
         shared = _in_movie_viewer_state(
             session=session,
             showtime_id=showtime.id,
@@ -468,6 +473,7 @@ def to_in_movie_public(
     session: Session,
     user_id: ViewerId,
     visibility_modes: Mapping[int, VisibilityMode] | None = None,
+    viewer_states: Mapping[int, ShowtimeInMovieViewerState] | None = None,
 ) -> ShowtimeInMoviePublic:
     """
     Converts a Showtime object to a ShowtimeInMoviePublic object: a screening
@@ -478,28 +484,32 @@ def to_in_movie_public(
         session (Session): The SQLAlchemy session for database operations.
         user_id (ViewerId): Who to annotate for; None leaves `viewer` unset —
             see `app.core.viewer`.
+        viewer_states (Mapping[int, ShowtimeInMovieViewerState] | None): Viewer
+            blocks already built for a whole page by
+            `converters.showtime_page.in_movie_viewer_states_for_showtimes`.
+            Converting a list without it means building each one here, which is
+            several queries a row — see that module.
     Returns:
         ShowtimeInMoviePublic: The converted showtime, with or without viewer state.
-    Raises:
-        ValidationError: If the showtime does not match the expected model.
     """
-    Showtime.model_validate(showtime)
     cinema = cinema_converters.to_public(
         cinema=showtime.cinema,
     )
+
+    viewer: ShowtimeInMovieViewerState | None = None
+    if viewer_states is not None and showtime.id in viewer_states:
+        viewer = viewer_states[showtime.id]
+    elif user_id is not None:
+        viewer = _in_movie_viewer_state(
+            session=session,
+            showtime_id=showtime.id,
+            user_id=user_id,
+            visibility_modes=visibility_modes,
+        )
 
     return ShowtimeInMoviePublic(
         **showtime.model_dump(),
         cinema=cinema,
         seat_availability=seat_availability_service.to_public(showtime),
-        viewer=(
-            _in_movie_viewer_state(
-                session=session,
-                showtime_id=showtime.id,
-                user_id=user_id,
-                visibility_modes=visibility_modes,
-            )
-            if user_id is not None
-            else None
-        ),
+        viewer=viewer,
     )

@@ -50,7 +50,7 @@ export default function IntroFriendsPage({ onDone }: { onDone: () => void }) {
     <IntroPageShell
       icon="group-add"
       title="Add your friends"
-      message="See each other's showtimes, send invites, and keep track of who's going where."
+      message="See each other's screenings, send invites, and keep track of who's going where."
       primaryLabel="Continue"
       onPrimary={onDone}
     >

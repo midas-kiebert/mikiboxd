@@ -13,12 +13,12 @@ import type { UserWithFriendStatus } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import PersonAvatar from "@/components/ui/PersonAvatar";
 import FriendVisibilityControl from "@/components/friends/FriendVisibilityControl";
 import { useFriendActions } from "@/hooks/useFriendActions";
 import { useFriendStatusSharing } from "@/hooks/useFriendStatusSharing";
 import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useThemeColors } from "@/hooks/use-theme-color";
-import { getAvatarColors, getAvatarInitial } from "@/utils/avatar-color";
 import { triggerImpactHaptic, triggerSelectionHaptic } from "@/utils/long-press";
 
 type FriendCardProps = {
@@ -66,7 +66,6 @@ export default function FriendCard({ user, showStatusBadge = false }: FriendCard
   );
 
   const friendName = getFriendName(user);
-  const avatarColors = getAvatarColors(user.id, colors);
 
   const handleConfirmRemoveFriend = () => {
     setIsRemoveDialogVisible(false);
@@ -138,6 +137,50 @@ export default function FriendCard({ user, showStatusBadge = false }: FriendCard
     setIsRemoveDialogVisible(true);
   };
 
+  // Two labelled buttons beside the name ("Decline", "Accept ✓") left a
+  // narrow card — the intro's friend search — with only a few letters of the
+  // name and "Sent you a request". Two go on their own row under it instead;
+  // a single one ("Add", "Cancel") still fits beside it.
+  const areActionsBelow = actions.length > 1;
+
+  const actionButtons = actions.map((action) => {
+    const isPrimary = action.kind === "primary";
+    return (
+      <TouchableOpacity
+        key={action.label}
+        style={[
+          styles.actionButton,
+          isPrimary ? styles.actionPrimary : styles.actionGhost,
+          areActionsBelow && styles.actionButtonBelow,
+        ]}
+        onPress={(event) => {
+          event.stopPropagation();
+          action.onPress();
+        }}
+        disabled={isBusy}
+        activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityLabel={`${action.label} ${friendName}`}
+      >
+        {action.icon ? (
+          <MaterialIcons
+            name={action.icon}
+            size={15}
+            color={isPrimary ? colors.pillActiveText : colors.textSecondary}
+          />
+        ) : null}
+        <ThemedText
+          style={[
+            styles.actionText,
+            isPrimary ? styles.actionTextPrimary : styles.actionTextGhost,
+          ]}
+        >
+          {action.label}
+        </ThemedText>
+      </TouchableOpacity>
+    );
+  });
+
   const header = (
     <TouchableOpacity
       style={styles.header}
@@ -145,11 +188,14 @@ export default function FriendCard({ user, showStatusBadge = false }: FriendCard
       onPress={handleOpenFriendShowtimes}
       disabled={!canOpenFriendShowtimes}
     >
-      <View style={[styles.avatar, { backgroundColor: avatarColors.primary }]}>
-        <ThemedText style={[styles.avatarText, { color: avatarColors.secondary }]}>
-          {getAvatarInitial(friendName)}
-        </ThemedText>
-      </View>
+      <PersonAvatar
+        userId={user.id}
+        name={friendName}
+        avatarUrl={user.avatar_url}
+        size={38}
+        fontSize={16}
+        style={styles.avatar}
+      />
       <View style={styles.info}>
         <ThemedText style={styles.name} numberOfLines={1} ellipsizeMode="tail">
           {friendName}
@@ -164,39 +210,7 @@ export default function FriendCard({ user, showStatusBadge = false }: FriendCard
         ) : null}
       </View>
       <View style={styles.actions}>
-        {actions.map((action) => {
-          const isPrimary = action.kind === "primary";
-          return (
-            <TouchableOpacity
-              key={action.label}
-              style={[styles.actionButton, isPrimary ? styles.actionPrimary : styles.actionGhost]}
-              onPress={(event) => {
-                event.stopPropagation();
-                action.onPress();
-              }}
-              disabled={isBusy}
-              activeOpacity={0.8}
-              accessibilityRole="button"
-              accessibilityLabel={`${action.label} ${friendName}`}
-            >
-              {action.icon ? (
-                <MaterialIcons
-                  name={action.icon}
-                  size={15}
-                  color={isPrimary ? colors.pillActiveText : colors.textSecondary}
-                />
-              ) : null}
-              <ThemedText
-                style={[
-                  styles.actionText,
-                  isPrimary ? styles.actionTextPrimary : styles.actionTextGhost,
-                ]}
-              >
-                {action.label}
-              </ThemedText>
-            </TouchableOpacity>
-          );
-        })}
+        {areActionsBelow ? null : actionButtons}
         {user.is_friend ? (
           <TouchableOpacity
             style={styles.iconButton}
@@ -222,6 +236,7 @@ export default function FriendCard({ user, showStatusBadge = false }: FriendCard
   const cardContent = (
     <>
       {header}
+      {areActionsBelow ? <View style={styles.actionsBelow}>{actionButtons}</View> : null}
       {user.is_friend ? (
         <>
           <View style={styles.divider} />
@@ -240,7 +255,7 @@ export default function FriendCard({ user, showStatusBadge = false }: FriendCard
       visible={isRemoveDialogVisible}
       icon="person-remove-alt-1"
       title={`Remove ${friendName}?`}
-      message="You will no longer see each other's showtimes, and neither of you can send invites until you are friends again."
+      message="You will no longer see each other's screenings, and neither of you can send invites until you are friends again."
       confirmLabel="Remove"
       cancelLabel="Cancel"
       onConfirm={handleConfirmRemoveFriend}
@@ -331,6 +346,14 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       paddingHorizontal: 12,
       borderRadius: 10,
       borderWidth: 1,
+    },
+    actionsBelow: {
+      flexDirection: "row",
+      gap: 8,
+    },
+    // Sharing the row equally, so neither answer looks like the default.
+    actionButtonBelow: {
+      flex: 1,
     },
     actionPrimary: {
       backgroundColor: colors.tint,

@@ -188,3 +188,63 @@ def test_delete_friend_request_not_found(
         friendship_crud.delete_friend_request(
             session=db_transaction, sender_id=sender.id, receiver_id=receiver.id
         )
+
+
+def test_create_friendship_clears_requests_in_both_directions(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+):
+    """Both users requesting each other must not leave a request open once friends.
+
+    Accepting one request used to delete only that direction, so the reverse
+    request survived and showed forever as pending between two friends.
+    """
+    user1 = user_factory()
+    user2 = user_factory()
+
+    friendship_crud.create_friend_request(
+        session=db_transaction, sender_id=user1.id, receiver_id=user2.id
+    )
+    friendship_crud.create_friend_request(
+        session=db_transaction, sender_id=user2.id, receiver_id=user1.id
+    )
+
+    friendship_crud.create_friendship(
+        session=db_transaction, user_id=user1.id, friend_id=user2.id
+    )
+
+    assert not friendship_crud.has_sent_friend_request(
+        session=db_transaction, sender_id=user1.id, receiver_id=user2.id
+    )
+    assert not friendship_crud.has_sent_friend_request(
+        session=db_transaction, sender_id=user2.id, receiver_id=user1.id
+    )
+
+
+def test_create_friendship_leaves_unrelated_requests(
+    *,
+    db_transaction: Session,
+    user_factory: Callable[..., User],
+):
+    user1 = user_factory()
+    user2 = user_factory()
+    other = user_factory()
+
+    friendship_crud.create_friend_request(
+        session=db_transaction, sender_id=other.id, receiver_id=user2.id
+    )
+    friendship_crud.create_friend_request(
+        session=db_transaction, sender_id=user1.id, receiver_id=other.id
+    )
+
+    friendship_crud.create_friendship(
+        session=db_transaction, user_id=user1.id, friend_id=user2.id
+    )
+
+    assert friendship_crud.has_sent_friend_request(
+        session=db_transaction, sender_id=other.id, receiver_id=user2.id
+    )
+    assert friendship_crud.has_sent_friend_request(
+        session=db_transaction, sender_id=user1.id, receiver_id=other.id
+    )

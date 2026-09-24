@@ -12,6 +12,7 @@ import { FiMail } from "react-icons/fi"
 import { Button } from "@/components/ui/button"
 import { Field } from "@/components/ui/field"
 import { InputGroup } from "@/components/ui/input-group"
+import { defaultFeedParams } from "@/features/showtimes/feed-params"
 import useCustomToast from "@/hooks/useCustomToast"
 import { emailPattern, handleError } from "@/utils"
 import { type ApiError, LoginService } from "shared"
@@ -27,6 +28,7 @@ export const Route = createFileRoute("/recover-password")({
     if (await isLoggedIn()) {
       throw redirect({
         to: "/",
+        search: defaultFeedParams,
       })
     }
   },

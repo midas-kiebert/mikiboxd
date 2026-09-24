@@ -56,6 +56,11 @@ class NewPassword(SQLModel):
     new_password: str = Field(min_length=1, max_length=255)
 
 
+# Request body for POST /users/verify-email
+class EmailVerification(SQLModel):
+    token: str
+
+
 # Request body for POST /login/social-token
 class SocialLoginRequest(SQLModel):
     provider: SocialProvider

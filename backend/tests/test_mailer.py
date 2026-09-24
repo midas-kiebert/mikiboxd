@@ -10,7 +10,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.core.enums import DigestFrequency
+from app.core.config import settings
+from app.core.enums import DigestFrequency, Environment
 from app.mailer import (
     DigestSource,
     _html_to_plain_text,
@@ -20,6 +21,61 @@ from app.mailer import (
     _watchlist_digest_text,
     generate_watchlist_digest_email,
 )
+
+
+# ---------------------------------------------------------------------------
+# Settings.emails_enabled — the local-safety gate
+#
+# A local backend is routinely pointed at a copy of the production database,
+# real users' email addresses included, and local .env carries real prod SMTP
+# creds so devs can test the full send path against staging. Before this gate,
+# SMTP_HOST/EMAILS_FROM_EMAIL being set was enough on its own to enable real
+# sends from such a setup; now LOCAL is refused regardless of SMTP config.
+#
+# The gate is bypassed under TESTING (which the whole suite runs with, per
+# conftest) — the test suite is already isolated from real delivery by
+# `send_email` raising under TESTING and by tests mocking `send_email`
+# directly, and plenty of existing fixtures assert against that mock while
+# only ever running with ENVIRONMENT=local. So these tests turn TESTING off
+# to exercise the actual real-local-dev-run scenario the gate targets.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def smtp_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "SMTP_HOST", "smtp.example.com")
+    monkeypatch.setattr(settings, "EMAILS_FROM_EMAIL", "noreply@example.com")
+
+
+def test_emails_disabled_on_local_even_with_smtp_configured(
+    monkeypatch: pytest.MonkeyPatch, smtp_configured: None
+) -> None:
+    monkeypatch.setattr(settings, "ENVIRONMENT", Environment.LOCAL)
+    monkeypatch.setattr(settings, "TESTING", False)
+
+    assert settings.emails_enabled is False
+
+
+@pytest.mark.parametrize("environment", [Environment.STAGING, Environment.PRODUCTION])
+def test_emails_enabled_off_local_with_smtp_configured(
+    monkeypatch: pytest.MonkeyPatch,
+    smtp_configured: None,
+    environment: Environment,
+) -> None:
+    monkeypatch.setattr(settings, "ENVIRONMENT", environment)
+
+    assert settings.emails_enabled is True
+
+
+@pytest.mark.parametrize("environment", [Environment.STAGING, Environment.PRODUCTION])
+def test_emails_disabled_off_local_without_smtp_host(
+    monkeypatch: pytest.MonkeyPatch, environment: Environment
+) -> None:
+    monkeypatch.setattr(settings, "ENVIRONMENT", environment)
+    monkeypatch.setattr(settings, "SMTP_HOST", None)
+    monkeypatch.setattr(settings, "EMAILS_FROM_EMAIL", "noreply@example.com")
+
+    assert settings.emails_enabled is False
 
 
 def _entry(
@@ -317,3 +373,23 @@ def test_runs_of_blank_lines_collapse_to_one():
     text = _html_to_plain_text("<p>A</p><div></div><div></div><p>B</p>")
 
     assert text == "A\n\nB"
+
+
+def test_notification_email_carries_a_per_recipient_unsubscribe_link():
+    from app.mailer import (
+        UNSUBSCRIBE_LINK_PLACEHOLDER,
+        generate_friend_request_email,
+    )
+
+    email = generate_friend_request_email(heading="Sam sent you a friend request")
+    assert UNSUBSCRIBE_LINK_PLACEHOLDER in email.html_content
+
+    personal = email.with_unsubscribe(
+        link="https://api.example/unsub?token=abc",
+        label="Unsubscribe from friend request emails",
+    )
+
+    assert UNSUBSCRIBE_LINK_PLACEHOLDER not in personal.html_content
+    assert "https://api.example/unsub?token=abc" in personal.html_content
+    assert "Unsubscribe from friend request emails" in personal.html_content
+    assert "Manage notification preferences" in personal.html_content

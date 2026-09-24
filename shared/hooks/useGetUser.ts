@@ -1,9 +1,8 @@
 import { useQuery, UseQueryResult } from "@tanstack/react-query";
 import { UsersService, UsersGetUserResponse } from "../client";
-import { UUID } from "crypto";
 
 type useGetUserProps = {
-    userId: UUID;
+    userId: string;
 };
 
 export function useGetUser(

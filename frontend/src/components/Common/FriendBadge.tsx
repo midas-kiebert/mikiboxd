@@ -1,4 +1,4 @@
-import { Route as ShowtimesRoute } from "@/routes/_layout/$userId/showtimes"
+import { friendFeedSearch } from "@/features/showtimes/feed-params"
 import type { Responsive } from "@/types"
 /**
  * Shared web layout/presentation component: Friend Badge.
@@ -23,8 +23,8 @@ const FriendBadge = ({
   // Read flow: prepare derived values/handlers first, then return component JSX.
   return (
     <Link
-      to={ShowtimesRoute.to}
-      params={{ userId: `${friend.id}` }}
+      to="/"
+      search={friendFeedSearch(`${friend.id}`)}
       style={{ display: "inline-block" }}
       onClick={(e) => e.stopPropagation()}
     >

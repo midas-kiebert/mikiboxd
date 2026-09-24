@@ -29,6 +29,7 @@ import type { Language } from "shared/client";
 import { useFetchLetterboxdLists } from "shared/hooks/useLetterboxdLists";
 
 import { useThemeColors } from "@/hooks/use-theme-color";
+import { sameLanguages, useFeedDefaults } from "@/hooks/useFeedDefaults";
 import { getDaySelectionLabel } from "@/components/filters/day-filter-utils";
 import { getPresetForRange } from "@/components/filters/time-filter-presets";
 import { formatTimeRangeChipLabel, formatRuntimeRangeChipLabel } from "@/components/filters/time-range-utils";
@@ -42,8 +43,6 @@ import type { OpenCinemaModalOptions } from "@/components/filters/CinemaFilterMo
 import { triggerImpactHaptic } from "@/utils/long-press";
 
 type ActiveFilterChipsProps = {
-  groupByMovie: boolean;
-  setGroupByMovie: (v: boolean) => void;
   watchlistOnly: boolean;
   setWatchlistOnly: (v: boolean) => void;
   watchlistExclude?: boolean;
@@ -211,8 +210,6 @@ const RUNTIME_LABEL: Record<string, string> = {
 const LANGUAGE_LABEL: Record<Language, string> = { nl: "Dutch", en: "English" };
 
 export default function ActiveFilterChips({
-  groupByMovie,
-  setGroupByMovie,
   watchlistOnly,
   setWatchlistOnly,
   watchlistExclude = false,
@@ -273,19 +270,13 @@ export default function ActiveFilterChips({
     return map;
   }, [letterboxdLists]);
 
+  const { defaultLanguages } = useFeedDefaults();
+
   const chips = useMemo<Chip[]>(() => {
     const result: Chip[] = [];
 
-    if (groupByMovie) {
-      result.push({
-        key: "group-by-movie",
-        // Not "Grouped by movie": the row it sits in is a row of things done
-        // to the movie list, so what it is grouped by is not in question.
-        label: "Grouped",
-        accessibilityLabel: "Grouped by movie",
-        onRemove: () => setGroupByMovie(false),
-      });
-    }
+    // No chip for the feed style: it is a view, not a filter, and clearing
+    // never changes it (as on the website).
 
     if (showStatusFilter && selectedShowtimeFilter !== "all") {
       const label = STATUS_LABEL[selectedShowtimeFilter];
@@ -406,19 +397,20 @@ export default function ActiveFilterChips({
       });
     }
 
-    if (selectedLanguages.length > 0) {
+    // The default language is where the feed rests, not a filter — clearing
+    // puts it back rather than off — so it earns no chip.
+    if (selectedLanguages.length > 0 && !sameLanguages(selectedLanguages, defaultLanguages)) {
       const labels = selectedLanguages.map((language) => LANGUAGE_LABEL[language]);
       result.push({
         key: "languages",
         label: summarizeValues(labels),
         accessibilityLabel: `Languages: ${labels.join(", ")}`,
-        onRemove: () => setSelectedLanguages([]),
+        onRemove: () => setSelectedLanguages([...defaultLanguages]),
       });
     }
 
     return result;
   }, [
-    groupByMovie,
     watchlistOnly,
     watchlistExclude,
     hideWatched,
@@ -435,7 +427,7 @@ export default function ActiveFilterChips({
     selectedTimeRanges,
     selectedRuntimeRanges,
     selectedLanguages,
-    setGroupByMovie,
+    defaultLanguages,
     setWatchlistOnly,
     setWatchlistExclude,
     setHideWatched,

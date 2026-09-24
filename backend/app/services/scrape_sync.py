@@ -14,13 +14,18 @@ from app.models.showtime_source_presence import ShowtimeSourcePresence
 from app.models.user import User
 from app.models.watched_selection import WatchedSelection
 from app.models.watchlist_selection import WatchlistSelection
+from app.services import listing_log as listing_log_service
 from app.utils import now_amsterdam_naive
 
 # A showtime is only soft-deleted after it has been missing for this many
-# consecutive successful runs. At the 6-hourly scrape cadence this means a
-# showtime must be absent for ~18h before removal, which absorbs a single
-# flaky scrape (e.g. a transient Cineville rate-limit) without dropping films.
+# consecutive successful runs *and* for at least MISSING_MIN_ABSENCE. The streak
+# absorbs a single flaky scrape; the absence floor keeps the grace period in
+# hours rather than runs, so scraping more often doesn't delete faster. (At the
+# old 6-hourly cadence three misses meant 12-18h; Monday's half-hourly runs
+# would have cut that to 1.5h, and a screening a cinema hides for an afternoon
+# would take every user's selection on it down with it.)
 MISSING_STREAK_TO_DEACTIVATE = 3
+MISSING_MIN_ABSENCE = timedelta(hours=12)
 MIN_BASELINE_FOR_RATIO_GUARD = 10
 MIN_OBSERVED_RATIO = 0.30
 ORPHAN_DELETE_CUTOFF_DAYS = 1
@@ -48,6 +53,9 @@ def consume_recovered_presence_count() -> int:
 class ObservedPresence:
     source_event_key: str
     showtime_id: int
+    # When the source itself says it created the listing (Cineville does; the
+    # cinema sites don't), for the publish-timing log.
+    source_created_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -196,12 +204,26 @@ def record_failed_run(
     session.commit()
 
 
-def _latest_success_observed_count(
+def latest_completed_run_started_at(
+    *, session: Session, source_stream: str
+) -> datetime | None:
+    """When the stream's last run that got through (success or degraded) started."""
+    return session.exec(
+        select(func.max(col(ScrapeRun.started_at))).where(
+            ScrapeRun.source_stream == source_stream,
+            col(ScrapeRun.status).in_(
+                [ScrapeRunStatus.SUCCESS, ScrapeRunStatus.DEGRADED]
+            ),
+        )
+    ).one()
+
+
+def _latest_success_run(
     *,
     session: Session,
     source_stream: str,
     exclude_run_id: int,
-) -> int | None:
+) -> ScrapeRun | None:
     stmt = (
         select(ScrapeRun)
         .where(
@@ -213,10 +235,7 @@ def _latest_success_observed_count(
         .order_by(col(ScrapeRun.started_at).desc())
         .limit(1)
     )
-    run = session.exec(stmt).first()
-    if run is None:
-        return None
-    return run.observed_showtime_count
+    return session.exec(stmt).first()
 
 
 def _upsert_observed_presence(
@@ -226,7 +245,8 @@ def _upsert_observed_presence(
     observed: ObservedPresence,
     run_id: int,
     seen_at,
-) -> int | None:
+) -> tuple[int | None, bool]:
+    """Record one observation; returns (showtime id it was remapped from, is new)."""
     stmt = select(ShowtimeSourcePresence).where(
         ShowtimeSourcePresence.source_stream == source_stream,
         ShowtimeSourcePresence.source_event_key == observed.source_event_key,
@@ -247,7 +267,7 @@ def _upsert_observed_presence(
                 active=True,
             )
         )
-        return None
+        return None, True
 
     previous_showtime_id = existing.showtime_id
     if existing.missing_streak > 0:
@@ -258,8 +278,8 @@ def _upsert_observed_presence(
     existing.missing_streak = 0
     existing.active = True
     if previous_showtime_id != observed.showtime_id:
-        return previous_showtime_id
-    return None
+        return previous_showtime_id, False
+    return None, False
 
 
 def _stamp_scrape_source(
@@ -298,11 +318,15 @@ def _mark_missing_for_unseen(
         )
     )
     presences = list(session.exec(stmt).all())
+    absent_since_cutoff = now_amsterdam_naive() - MISSING_MIN_ABSENCE
     for presence in presences:
         if presence.source_event_key in seen_keys:
             continue
         presence.missing_streak += 1
-        if presence.missing_streak >= MISSING_STREAK_TO_DEACTIVATE:
+        if (
+            presence.missing_streak >= MISSING_STREAK_TO_DEACTIVATE
+            and presence.last_seen_at <= absent_since_cutoff
+        ):
             presence.active = False
 
 
@@ -489,10 +513,22 @@ def record_success_run(
     started = started_at or now_amsterdam_naive()
     finished = now_amsterdam_naive()
 
-    # Deduplicate by event key; last write wins.
-    deduped: dict[str, int] = {}
+    # Deduplicate by event key; last write wins, except that the earliest
+    # source creation time is kept (Cineville can list one screening twice).
+    deduped: dict[str, ObservedPresence] = {}
     for presence in observed_presences:
-        deduped[presence.source_event_key] = presence.showtime_id
+        previous = deduped.get(presence.source_event_key)
+        created_at = presence.source_created_at
+        if previous is not None and previous.source_created_at is not None:
+            created_at = min(
+                previous.source_created_at,
+                created_at or previous.source_created_at,
+            )
+        deduped[presence.source_event_key] = ObservedPresence(
+            source_event_key=presence.source_event_key,
+            showtime_id=presence.showtime_id,
+            source_created_at=created_at,
+        )
     seen_keys = set(deduped.keys())
     observed_count = len(seen_keys)
 
@@ -509,10 +545,13 @@ def record_success_run(
     assert run.id is not None
     run_id = run.id
 
-    previous_success_count = _latest_success_observed_count(
+    previous_success = _latest_success_run(
         session=session,
         source_stream=source_stream,
         exclude_run_id=run_id,
+    )
+    previous_success_count = (
+        previous_success.observed_showtime_count if previous_success else None
     )
 
     degraded_reason: str | None = None
@@ -540,19 +579,31 @@ def record_success_run(
         degraded_reason = suspicious_reason
 
     remapped_showtime_ids: set[int] = set()
-    for source_event_key, showtime_id in deduped.items():
-        remapped_old_id = _upsert_observed_presence(
+    new_listings: list[ObservedPresence] = []
+    for observed in deduped.values():
+        remapped_old_id, is_new = _upsert_observed_presence(
             session=session,
             source_stream=source_stream,
-            observed=ObservedPresence(
-                source_event_key=source_event_key,
-                showtime_id=showtime_id,
-            ),
+            observed=observed,
             run_id=run_id,
             seen_at=finished,
         )
         if remapped_old_id is not None:
             remapped_showtime_ids.add(remapped_old_id)
+        if is_new:
+            new_listings.append(observed)
+
+    # A stream's first-ever run sees its whole programme as "new"; with no
+    # earlier run there is no window to place those listings in, so skip them.
+    if previous_success is not None:
+        session.flush()
+        listing_log_service.record_first_seen(
+            session=session,
+            source_stream=source_stream,
+            new_listings=new_listings,
+            first_seen_at=finished,
+            window_start=previous_success.started_at,
+        )
 
     deleted_showtimes: list[DeletedShowtimeInfo] = []
     if degraded_reason is None:

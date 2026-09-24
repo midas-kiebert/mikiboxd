@@ -130,7 +130,8 @@ def test_exact_capacity_is_not_undercut_by_a_later_thinner_reading() -> None:
     _read(showtime, SeatAvailability(71, False, "Parisienzaal", "eagerly", capacity=75))
     # A later reading from a platform that can't see the total (or a smaller
     # seats_left, e.g. the room filling up) must not shrink the known total.
-    _read(showtime, _zelite(10, False))
+    # Same room: a reading from another room is a move, which resets it.
+    _read(showtime, _zelite(10, False, room="Parisienzaal"))
     assert showtime.seats_capacity == 75
 
 
@@ -213,16 +214,60 @@ def test_manual_override_requires_a_matching_cinema_key(monkeypatch) -> None:
     assert showtime.seats_capacity == 5
 
 
-def test_platform_exact_capacity_beats_a_manual_override() -> None:
-    """If a platform ever does hand back the real total, that's live ground
-    truth and should win over a possibly-stale manually-entered number."""
+def test_manual_override_beats_a_platform_exact_capacity(monkeypatch) -> None:
+    """Cinemas almost never change a room's seat count, and when one does the
+    overrides file is edited by hand — so the override wins even over a total
+    the platform reports itself."""
+    monkeypatch.setattr(
+        seat_availability_service,
+        "_capacity_overrides",
+        lambda: {"filmhallen": {"Parisienzaal": 70}},
+    )
     showtime = _showtime()
     _apply_reading(
         showtime=showtime,
-        availability=SeatAvailability(71, False, "Parisienzaal", "eagerly", capacity=75),
+        availability=SeatAvailability(60, False, "Parisienzaal", "eagerly", capacity=75),
         cinema_key="filmhallen",
     )
-    assert showtime.seats_capacity == 75
+    assert showtime.seats_capacity == 70
+
+
+def test_manual_override_lowers_a_larger_stored_capacity(monkeypatch) -> None:
+    """A number already on the showtime — an older running max, another room's
+    size — never outvotes the override. Showtime 1920505 read "49/128" in
+    LAB111's 56-seat LAB 2 because the old rule took the larger of the two."""
+    monkeypatch.setattr(
+        seat_availability_service,
+        "_capacity_overrides",
+        lambda: {"lab111": {"LAB 2": 56}},
+    )
+    showtime = _showtime()
+    showtime.room = "LAB 2"
+    showtime.seats_capacity = 128
+    _apply_reading(
+        showtime=showtime,
+        availability=_zelite(49, False, room="LAB 2"),
+        cinema_key="lab111",
+    )
+    assert showtime.seats_capacity == 56
+
+
+def test_a_reading_above_the_manual_override_keeps_the_override(monkeypatch) -> None:
+    """More seats left than the override says the room holds means the
+    override is stale; that is logged for a human, not silently corrected."""
+    monkeypatch.setattr(
+        seat_availability_service,
+        "_capacity_overrides",
+        lambda: {"lab111": {"LAB 2": 56}},
+    )
+    showtime = _showtime()
+    _apply_reading(
+        showtime=showtime,
+        availability=_zelite(60, False, room="LAB 2"),
+        cinema_key="lab111",
+    )
+    assert showtime.seats_left == 60
+    assert showtime.seats_capacity == 56
 
 
 def test_room_is_filled_in_from_the_reading_and_not_blanked() -> None:

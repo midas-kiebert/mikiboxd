@@ -1,6 +1,6 @@
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import httpx
 import requests
@@ -156,6 +156,9 @@ def _pick_best_tmdb_candidate(
 
 
 class EyeScraper(BaseCinemaScraper):
+    # One page fetch per film (~90) on top of the programme query.
+    min_run_interval = timedelta(hours=3)
+
     def __init__(self) -> None:
         self.cinema_key = CINEMA_KEY
         with get_db_context() as session:

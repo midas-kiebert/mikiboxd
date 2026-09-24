@@ -38,6 +38,20 @@ npx eas build --platform ios --profile production
 
 For the first build, let EAS manage certificates/profiles automatically when prompted.
 
+### Pre-release test build against staging
+
+To test a release candidate before the backend ships, build it against staging:
+
+```bash
+npx eas build --platform ios --profile staging-device
+```
+
+It is the `production-device` build with `EXPO_PUBLIC_API_URL` pointed at
+`https://api.staging.mikino.nl`, and it shows an orange STAGING badge top-right.
+Same bundle id, so it installs over the store app. A prod session isn't valid on
+staging, so sign out of the store app first. Links it shares still point at `mikino.nl`, so test
+link flows on the real build after the backend deploy.
+
 ## 4. Submit to TestFlight
 
 After build completes:

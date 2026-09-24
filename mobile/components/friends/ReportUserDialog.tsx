@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Animated, Modal, StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import type { UserReportReason } from "shared";
+import { REPORT_REASON_OPTIONS } from "shared/moderation/report-reasons";
 
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColors } from "@/hooks/use-theme-color";
@@ -25,13 +26,6 @@ import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 const FADE_IN_MS = 140;
 const FADE_OUT_MS = 120;
 
-const REPORT_REASON_OPTIONS: { value: UserReportReason; label: string }[] = [
-  { value: "objectionable_username", label: "Objectionable username" },
-  { value: "impersonation", label: "Impersonation" },
-  { value: "repeated_unwanted_contact", label: "Repeated unwanted requests or invites" },
-  { value: "spam", label: "Spam" },
-  { value: "other", label: "Something else" },
-];
 
 type ReportUserDialogProps = {
   visible: boolean;

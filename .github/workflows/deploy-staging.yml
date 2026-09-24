@@ -28,6 +28,10 @@ jobs:
           FIRST_SUPERUSER=admin@example.com
           FIRST_SUPERUSER_PASSWORD=${{ secrets.FIRST_SUPERUSER_PASSWORD }}
           EMAILS_FROM_EMAIL=${{ secrets.EMAILS_FROM_EMAIL }}
+          # Staging runs on prod's users: mail only reaches these test inboxes
+          # (comma-separated, "@domain" allowed). Set in the repo's Actions
+          # variables; empty means staging emails nobody but the admin inboxes.
+          NON_PROD_EMAIL_ALLOWLIST=${{ vars.NON_PROD_EMAIL_ALLOWLIST }}
           POSTGRES_USER=${{ secrets.POSTGRES_USER }}
           POSTGRES_DB=${{ secrets.POSTGRES_DB }}
           POSTGRES_SERVER=db
@@ -37,7 +41,7 @@ jobs:
           TELEGRAM_USER_ID=${{ secrets.TELEGRAM_USER_ID }}
           TMDB_KEY=${{ secrets.TMDB_KEY }}
           SCRAPE_MONITOR_API_KEY=${{ secrets.SCRAPE_MONITOR_API_KEY }}
-          FRONTEND_HOST=https://dashboard.staging.mikino.nl
+          FRONTEND_HOST=https://staging.mikino.nl
           PUBLIC_HOST=https://staging.mikino.nl
           API_HOST=https://api.staging.mikino.nl
           POSTGRES_TESTING_SERVER=db
@@ -56,11 +60,14 @@ jobs:
           SMTP_PORT=587
           # SENTRY_DSN=${{ secrets.SENTRY_DSN }}
           GOOGLE_CLIENT_IDS=431188931459-qmiraea4nmnafn3c2akg8vhjch35virq.apps.googleusercontent.com,431188931459-nmhhqnre4ib6eul5quf421n6b6unu3f3.apps.googleusercontent.com,431188931459-bk25fu3s4ahsc0i7lkffkgn8cfebn4ru.apps.googleusercontent.com
+          VITE_GOOGLE_CLIENT_ID=431188931459-qmiraea4nmnafn3c2akg8vhjch35virq.apps.googleusercontent.com
+          APPLE_WEB_CLIENT_ID=com.midaskiebert.mikino.web
+          APPLE_WEB_REDIRECT_URI=https://staging.mikino.nl/login
           EOF
       - run: docker compose -f docker-compose.yml --project-name mikiboxd-staging build
       - name: Stop staging app containers before the database copy
-        # User-generated tables are truncated and reloaded below; the previous
-        # deploy's backend and scheduler would otherwise act on a half-synced
+        # The database is dropped and replaced with prod's below; the previous
+        # deploy's backend and scheduler would otherwise act on a half-restored
         # database while it happens.
         run: docker compose -f docker-compose.yml --project-name mikiboxd-staging stop backend scheduler frontend adminer
       - name: Start staging database
@@ -74,150 +81,44 @@ jobs:
             echo "waiting for staging db... ($i)"; sleep 2
           done
           echo "staging db did not become healthy" >&2; exit 1
-      - name: Copy user-generated data from production into staging
-        # Only account/user data is synced here, not content: movie, showtime,
-        # cinema, city, and everything the scraper owns (cinemaroomcapacity,
-        # deletedshowtime, showtimesourcepresence, scraperun, scraperecap,
-        # tmdblookupcache, letterboxdlist, letterboxdlistfilm) are left exactly as
-        # staging's own scraper already has them, and the database is never
-        # dropped/recreated, so that data is never cleared by a deploy.
+      - name: Mirror the production database into staging
+        # Staging becomes an exact copy of prod at deploy time — users,
+        # statuses, notifications *and* content — and dev's migrations then
+        # run on top in prestart (prod's head is always an ancestor of dev's:
+        # see the alembic merge-point rule). Copying only the user tables over
+        # staging's own scraped screenings, as this used to, left statuses and
+        # notifications pointing at whatever screening had the same id here
+        # (22 of 57 distinct statuses were on the wrong screening, 2026-09-24).
         #
-        # Each listed table is truncated in staging and reloaded from
-        # production one row at a time, inside a per-row exception handler —
-        # see `copy_table_common_columns` below — so a row whose
-        # showtime_id/movie_id/cinema_id doesn't exist in staging's
-        # independently-scraped content just fails that one row and the rest
-        # of the table's sync continues. pushtoken is truncated only, never
-        # copied: production device tokens must never reach staging.
-        #
-        # Not a plain pg_dump: dev migrates ahead of prod by design, so a
-        # table's columns can differ between the two databases at deploy
-        # time — prod may be missing a column staging has just added, or
-        # still have one staging just dropped. pg_dump has no way to copy
-        # only the columns two databases actually have in common (even
-        # --column-inserts still names every column of the *source* table,
-        # so a column dropped on staging still crashes the whole copy — this
-        # took down the entire `user` table, and everything that referenced
-        # it, on 2026-09-01). `copy_table_common_columns` computes the
-        # column intersection per table and copies only those, so a
-        # migration adding or dropping a column here never breaks a deploy —
-        # the new/dropped column is just absent from this sync until prod
-        # catches up (a merge to master), same as it always implicitly was
-        # for columns pg_dump could still handle.
+        # A fresh database, not a restore over the old one: restoring over an
+        # existing schema silently skipped tables and dropped FKs (2026-07-25).
+        # pushtoken keeps its schema but no rows — prod's device tokens must
+        # never reach staging; phones re-register when the staging app opens.
+        # Email to prod's users is stopped in the app by
+        # NON_PROD_EMAIL_ALLOWLIST, not here.
         run: |
           set -euo pipefail
-          # Order matters now that each table is copied (and FK-checked) on
-          # its own: `letterboxd` must land before `user` (notify_watchlist_
-          # digest_list_id/letterboxd_username reference it) and before
-          # `watchlistselection`/`watchedselection`, or every row with a
-          # foreign key into it fails as "skipped" even though the
-          # referenced row exists on both sides — it just hadn't been
-          # copied yet. Every other listed table depends on `user`, so
-          # anything is fine after that.
-          USER_DATA_TABLES=(
-            letterboxd
-            user user_login_email userblock userreport
-            friendship friendrequest
-            userletterboxdlist
-            cinemaselection cinemapreset savedpreset
-            notification
-            watchlistselection watchedselection showtimeselection
-            showtimeping showtimepinglink showtimereport
-            showtimevisibilitysetting showtimevisibilityeffective
-            soldoutwatch
-            watchlistdigestqueueentry watchlistdigestnotifiedmovie
-            analyticsevent
-          )
-          QUOTED_TABLES=()
-          for t in "${USER_DATA_TABLES[@]}"; do
-            QUOTED_TABLES+=("\"$t\"")
-          done
-          QUOTED_TABLES+=("pushtoken")
+          DUMP=/tmp/prod-mirror.dump
+          docker exec mikiboxd-db-1 pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+            -Fc --no-owner --no-acl --exclude-table-data=pushtoken > "$DUMP"
+          docker cp "$DUMP" mikiboxd-staging-db-1:$DUMP
+          rm -f "$DUMP"
 
-          docker exec mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-            -v ON_ERROR_STOP=1 \
-            -c "TRUNCATE TABLE $(IFS=,; echo "${QUOTED_TABLES[*]}") CASCADE;"
+          docker exec mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 \
+            -c "DROP DATABASE IF EXISTS \"$POSTGRES_DB\" WITH (FORCE);" \
+            -c "CREATE DATABASE \"$POSTGRES_DB\";"
+          docker exec mikiboxd-staging-db-1 pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+            --no-owner --no-acl --single-transaction --exit-on-error $DUMP
+          docker exec mikiboxd-staging-db-1 rm -f $DUMP
 
-          copy_table_common_columns() {
-            local table="$1"
-            local cols
-            cols=$(comm -12 \
-              <(docker exec mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -c \
-                  "SELECT column_name FROM information_schema.columns WHERE table_name='$table' ORDER BY column_name;" | sort) \
-              <(docker exec mikiboxd-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -c \
-                  "SELECT column_name FROM information_schema.columns WHERE table_name='$table' ORDER BY column_name;" | sort) \
-              | paste -sd, -)
-
-            if [ -z "$cols" ]; then
-              echo "::warning::$table has no columns in common between production and staging; skipping"
-              return
-            fi
-
-            local tsv="/tmp/reseed_${table}.tsv"
-            docker exec mikiboxd-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-              -c "\\copy (SELECT $cols FROM \"$table\") TO STDOUT" > "$tsv"
-            docker cp "$tsv" "mikiboxd-staging-db-1:$tsv"
-            rm -f "$tsv"
-
-            # A plain \copy into the real table is all-or-nothing per call —
-            # one bad row would lose the whole table — so the data lands in
-            # an unconstrained scratch table first, and only the row-by-row
-            # loop below (inside its own BEGIN/EXCEPTION block) touches the
-            # real table. `r` must be typed `tmp_copy%ROWTYPE`, not the
-            # generic `RECORD`: PL/pgSQL can't dereference a bare RECORD's
-            # fields, since temp tables (and their row types) are created and
-            # torn down within this one session. Chained -c flags (not a
-            # heredoc) so every statement — including the temp table and the
-            # DO block — runs in that one session/connection: a heredoc's
-            # closing marker can't be indented to match this YAML block
-            # without breaking either the heredoc or the block scalar.
-            docker exec -i mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 \
-              -c "CREATE TEMP TABLE tmp_copy AS SELECT $cols FROM \"$table\" WITH NO DATA;" \
-              -c "\\copy tmp_copy FROM '$tsv'" \
-              -c "DO \$do\$ DECLARE r tmp_copy%ROWTYPE; copied int := 0; skipped int := 0; BEGIN FOR r IN SELECT * FROM tmp_copy LOOP BEGIN INSERT INTO \"$table\" ($cols) SELECT (r).*; copied := copied + 1; EXCEPTION WHEN OTHERS THEN skipped := skipped + 1; END; END LOOP; RAISE NOTICE '$table: copied %, skipped %', copied, skipped; END \$do\$;" \
-              -c "DROP TABLE tmp_copy;"
-
-            docker exec mikiboxd-staging-db-1 rm -f "$tsv"
-          }
-
-          for t in "${USER_DATA_TABLES[@]}"; do
-            # A failure copying one table (docker hiccup, a table that
-            # genuinely doesn't exist on one side) must not stop every table
-            # after it from being attempted too.
-            copy_table_common_columns "$t" || echo "::warning::Failed to copy $t from production, continuing"
-          done
-
-          # Rows land with production's own serial ids, but the sequence
-          # backing an id column isn't touched by INSERT — it stays wherever
-          # staging's own history had left it. Once that counter is behind
-          # the ids just copied in, the first INSERT after this reseed on
-          # such a table collides with an already-copied row ("duplicate key
-          # value violates unique constraint ..._pkey"), exactly the crash
-          # that broke every login through analyticsevent on 2026-09-02.
-          # Every serial-PK'd table in USER_DATA_TABLES needs its sequence
-          # bumped to match; tables with a UUID PK (user, friendship, ...)
-          # have no sequence and are skipped automatically by the NULL check.
-          for t in "${USER_DATA_TABLES[@]}"; do
-            # letterboxd's PK is letterboxd_username (text), not id — asking
-            # pg_get_serial_sequence for a column a table doesn't have raises
-            # ("column \"id\" of relation \"letterboxd\" does not exist"),
-            # which under set -e took down this whole step (and, because the
-            # step after it is what starts the app back up, left the app
-            # stopped) on 2026-09-01. Checking information_schema first skips
-            # every table that has no "id" column at all instead of asking
-            # Postgres to error on it.
-            has_id_column=$(docker exec mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -c \
-              "SELECT 1 FROM information_schema.columns WHERE table_name='$t' AND column_name='id';")
-            if [ "$has_id_column" != "1" ]; then
-              continue
-            fi
-            seq=$(docker exec mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -c \
-              "SELECT pg_get_serial_sequence('$t', 'id');")
-            if [ -n "$seq" ]; then
-              docker exec mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -c \
-                "SELECT setval('$seq', COALESCE((SELECT MAX(id) FROM \"$t\"), 1));"
-            fi
-          done
+          # Belt and braces on --exclude-table-data.
+          tokens=$(docker exec mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA \
+            -c "SELECT count(*) FROM pushtoken;")
+          if [ "$tokens" != "0" ]; then
+            docker exec mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 \
+              -c "TRUNCATE pushtoken;"
+          fi
+          echo "staging now mirrors prod at $(docker exec mikiboxd-staging-db-1 psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA -c 'SELECT version_num FROM alembic_version;')"
       - name: Restart the staging app
         # Runs even if the data copy above failed partway: that step's job is
         # to sync data into an already-stopped app, not to gate whether the

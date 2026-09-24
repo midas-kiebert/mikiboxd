@@ -35,7 +35,7 @@ type RemoveInterestedElsewhereDialogProps = {
 const TITLE = "Clear your other “interested” marks?";
 const MESSAGE =
   "You're going to this showing. Want to remove “interested” from these other " +
-  "showings of the same movie?";
+  "showings of the same film?";
 
 export default function RemoveInterestedElsewhereDialog({
   visible,
@@ -181,7 +181,7 @@ export default function RemoveInterestedElsewhereDialog({
                 <MaterialIcons name="check" size={14} color={colors.pillActiveText} />
               ) : null}
             </View>
-            <ThemedText style={styles.dontAskText}>Don't ask me again</ThemedText>
+            <ThemedText style={styles.dontAskText}>Don&apos;t ask me again</ThemedText>
           </TouchableOpacity>
           <View style={styles.actions}>
             <TouchableOpacity

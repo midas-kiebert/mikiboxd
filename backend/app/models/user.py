@@ -37,7 +37,10 @@ class _UserBase(SQLModel):
     notify_on_friend_requests: bool = Field(default=True)
     notify_on_showtime_ping: bool = Field(default=True)
     notify_on_invite_response: bool = Field(default=True)
-    notify_on_interest_reminder: bool = Field(default=True)
+    # Off by default: the one notification that fires about something the user
+    # did themselves rather than something that happened to them, and so the
+    # one most likely to feel like noise. A feature tip offers it instead.
+    notify_on_interest_reminder: bool = Field(default=False)
     # "A showtime you're interested in is nearly sold out." Defaults on: it is
     # only ever sent once per showtime, and only for one someone already said
     # they cared about.
@@ -47,6 +50,10 @@ class _UserBase(SQLModel):
     # wanted by different people — one hurries you along while you can still
     # act, the other tells you not to bother.
     notify_on_sold_out: bool = Field(default=True)
+    # "A sold-out showtime you're interested in has tickets again." Its own
+    # preference and its own settings row: it is the one seat notice that
+    # asks you to act fast, and the one someone may want while muting the rest.
+    notify_on_tickets_available: bool = Field(default=True)
     # A friend nudging you about a showtime you're already GOING/INTERESTED on,
     # or invited to and haven't dismissed — distinct from `notify_on_showtime_ping`
     # (the invite itself). This preference is deliberately dual-purpose: it also
@@ -75,6 +82,9 @@ class _UserBase(SQLModel):
     notify_channel_sold_out: NotificationChannel = Field(
         default=NotificationChannel.PUSH
     )
+    notify_channel_tickets_available: NotificationChannel = Field(
+        default=NotificationChannel.PUSH
+    )
     notify_channel_showtime_reminder: NotificationChannel = Field(
         default=NotificationChannel.PUSH
     )
@@ -88,6 +98,10 @@ class _UserBase(SQLModel):
     # Master switch. Which lists/cinemas/frequency to follow is configured per
     # `WatchlistDigestSource` row rather than here — a user may have several.
     notify_watchlist_digest_enabled: bool = Field(default=False)
+    # Whether the Letterboxd profile picture read on each sync may be shown as
+    # this account's avatar. Off by default: connecting Letterboxd to follow a
+    # watchlist is not consent to show its picture to other users.
+    use_letterboxd_avatar: bool = Field(default=False)
 
 
 # Properties to receive via API on creation (admin/superuser use — exposes all fields)
@@ -124,6 +138,7 @@ class UserUpdate(SQLModel):
     notify_on_interest_reminder: bool | None = Field(default=None)
     notify_on_seat_alert: bool | None = Field(default=None)
     notify_on_sold_out: bool | None = Field(default=None)
+    notify_on_tickets_available: bool | None = Field(default=None)
     notify_on_showtime_reminder: bool | None = Field(default=None)
     notify_channel_friend_showtime_match: NotificationChannel | None = Field(
         default=None
@@ -134,8 +149,14 @@ class UserUpdate(SQLModel):
     notify_channel_interest_reminder: NotificationChannel | None = Field(default=None)
     notify_channel_seat_alert: NotificationChannel | None = Field(default=None)
     notify_channel_sold_out: NotificationChannel | None = Field(default=None)
+    notify_channel_tickets_available: NotificationChannel | None = Field(default=None)
     notify_channel_showtime_reminder: NotificationChannel | None = Field(default=None)
     notify_watchlist_digest_enabled: bool | None = Field(default=None)
+    use_letterboxd_avatar: bool | None = Field(default=None)
+    # True records that the app has now asked how this account wants to be
+    # notified. Never reaches the database as-is — `me_service.update_me` turns
+    # it into `User.app_notifications_prompted_at`.
+    app_notifications_prompted: bool | None = Field(default=None)
     # Legacy compat only: these three lived on User itself before the digest
     # rework moved them onto `WatchlistDigestSource` (see
     # b4d6f8a0c2e4_add_watchlist_digest_sources). A client built against that
@@ -190,6 +211,11 @@ class User(_UserBase, table=True):
         default=None, sa_column=Column(JSONB, nullable=True)
     )
     unverified_email_saved_digest_enabled: bool = Field(default=False)
+    # When the app last asked this account how it wants to be notified (the
+    # intro's notifications page). None means the app never has — an account
+    # made on the website, say — and the app then runs that one page on its
+    # own the first time the account signs in there.
+    app_notifications_prompted_at: datetime | None = Field(default=None)
     # Moderation: blocks POST /showtimes/{id}/report. None expiry + banned=True
     # means indefinite; a past expiry is treated as no-longer-banned.
     report_banned: bool = Field(default=False)

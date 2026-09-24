@@ -104,10 +104,22 @@ export default function CinemaPresetTip() {
     });
   }, []);
 
+  const handleOnlyCinema = useCallback((cinemaId: number) => {
+    setSelectedIds(new Set([cinemaId]));
+  }, []);
+
   const handleSelectCinemas = useCallback((cinemaIds: readonly number[]) => {
     setSelectedIds((current) => {
       const next = new Set(current);
       cinemaIds.forEach((id) => next.add(id));
+      return next;
+    });
+  }, []);
+
+  const handleDeselectCinemas = useCallback((cinemaIds: readonly number[]) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      cinemaIds.forEach((id) => next.delete(id));
       return next;
     });
   }, []);
@@ -131,7 +143,7 @@ export default function CinemaPresetTip() {
         tipId="cinema-presets"
         icon="check-circle"
         title="Cinemas saved"
-        message={`Your showtimes now come from ${savedCinemaCount} cinema${
+        message={`Your screenings now come from ${savedCinemaCount} cinema${
           savedCinemaCount === 1 ? "" : "s"
         }. Open the cinema filter any time to change them.`}
         actionLabel="Done"
@@ -179,7 +191,9 @@ export default function CinemaPresetTip() {
           cinemas={cinemaList}
           selectedIds={selectedIds}
           onToggleCinema={handleToggleCinema}
+          onOnlyCinema={handleOnlyCinema}
           onSelectCinemas={handleSelectCinemas}
+          onDeselectCinemas={handleDeselectCinemas}
         />
       </ScrollView>
     </FeatureTipModal>

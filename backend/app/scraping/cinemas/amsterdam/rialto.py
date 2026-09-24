@@ -9,7 +9,10 @@ from app.api.deps import get_db_context
 from app.crud import cinema as cinema_crud
 from app.models.movie import MovieCreate
 from app.models.showtime import ShowtimeCreate
-from app.scraping.base_cinema_scraper import BaseCinemaScraper
+from app.scraping.base_cinema_scraper import (
+    PER_FILM_SCRAPER_INTERVAL,
+    BaseCinemaScraper,
+)
 from app.scraping.logger import logger
 from app.scraping.seat_availability import normalize_room
 from app.scraping.subtitles import parse_subtitle_label
@@ -116,6 +119,8 @@ class RialtoDePijpScraper(BaseCinemaScraper):
     performance, not per film); each show's own detail page carries all the
     film metadata we need, so every listed show is fetched independently.
     """
+
+    min_run_interval = PER_FILM_SCRAPER_INTERVAL
 
     cinema_key = "rialto-de-pijp"
     TICKETS_BASE_URL = "https://tickets-depijp.rialtofilm.nl"
@@ -304,6 +309,8 @@ class RialtoVUScraper(BaseCinemaScraper):
     performance, so films are deduplicated before their detail pages are
     fetched.
     """
+
+    min_run_interval = PER_FILM_SCRAPER_INTERVAL
 
     cinema_key = "rialto-vu"
     BASE_URL = "https://griffioen.vu.nl"

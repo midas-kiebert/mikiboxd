@@ -1,0 +1,246 @@
+/*
+ * The first-run intro dialog (`IntroDialog.tsx`). Buttons, fields and links
+ * are the auth pages' (`Auth/auth.css`); this is the dialog's own layout.
+ */
+
+.in-dialog {
+  max-height: min(760px, calc(100vh - 32px));
+  overflow: hidden;
+  border-radius: 16px !important;
+}
+
+.in-chrome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px 0;
+}
+
+.in-progress {
+  display: flex;
+  gap: 6px;
+}
+
+.in-dot {
+  width: 24px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--chakra-colors-app-card-border);
+  transition: background-color 200ms ease;
+}
+
+.in-dot--on {
+  background: var(--chakra-colors-app-tint);
+}
+
+.in-skip {
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--chakra-colors-fg-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.in-skip:hover {
+  background: var(--chakra-colors-bg-subtle);
+  color: var(--chakra-colors-fg);
+}
+
+.in-page {
+  display: flex;
+  flex-direction: column;
+  max-height: min(710px, calc(100vh - 82px));
+  padding: 20px 20px 20px;
+  animation: in-enter 220ms cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+@keyframes in-enter {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .in-page {
+    animation: none;
+  }
+}
+
+.in-title {
+  margin: 0;
+  color: var(--chakra-colors-fg);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.in-message {
+  margin: 6px 0 0;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.in-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  margin-top: 18px;
+}
+
+.in-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.in-count {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.in-link-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.in-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 420px;
+  overflow-y: auto;
+  margin-right: -8px;
+  padding-right: 8px;
+}
+
+.in-affix {
+  display: flex;
+  align-items: stretch;
+}
+
+.in-affix__prefix {
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid var(--chakra-colors-app-card-border);
+  border-right: 0;
+  border-radius: 10px 0 0 10px;
+  background: var(--chakra-colors-bg-subtle);
+  color: var(--chakra-colors-fg-muted);
+  font-size: 14px;
+}
+
+.in-affix .au-input {
+  border-radius: 0 10px 10px 0;
+}
+
+.in-help {
+  margin: 0;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.in-help strong {
+  color: var(--chakra-colors-fg);
+}
+
+.in-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.in-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.in-step__icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+
+.in-step__icon--orange {
+  background: var(--chakra-colors-app-orange\.primary);
+  color: var(--chakra-colors-app-orange\.secondary);
+}
+
+.in-step__icon--green {
+  background: var(--chakra-colors-app-green\.primary);
+  color: var(--chakra-colors-app-green\.secondary);
+}
+
+.in-step__icon--blue {
+  background: var(--chakra-colors-app-blue\.primary);
+  color: var(--chakra-colors-app-blue\.secondary);
+}
+
+.in-step__title {
+  display: block;
+  color: var(--chakra-colors-fg);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.in-step__message {
+  display: block;
+  margin-top: 2px;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 13px;
+}
+
+.in-title:focus {
+  outline: none;
+}
+
+/* The Letterboxd picture question: the avatar friends would see, centred. */
+.in-avatar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0 4px;
+  text-align: center;
+}
+
+/* Why the picture question found nothing: a quiet card, not an error. */
+.in-note {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--chakra-colors-border);
+  border-radius: 12px;
+  text-align: left;
+}
+
+.in-backdrop {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}

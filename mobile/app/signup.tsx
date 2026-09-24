@@ -18,6 +18,7 @@ import { ThemedText } from '@/components/themed-text';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import { completeLogin } from '@/utils/complete-login';
 import { markIntroPending } from '@/utils/intro';
+import { shouldValidateUsernameWhileTyping } from '@/utils/username-live-validation';
 import { EMAIL_PATTERN, PASSWORD_MIN_LENGTH } from '@/constants/auth';
 
 type SignUpForm = UserRegister & {
@@ -43,8 +44,12 @@ export default function SignUpScreen() {
     control,
     handleSubmit,
     getValues,
+    trigger,
     formState: { errors, isSubmitting },
   } = useForm<SignUpForm>({
+    // Checked when a field is left and live from then on, as on the website,
+    // rather than only once "Create account" is pressed.
+    mode: 'onTouched',
     // Default empty values keep every input controlled from the first render.
     defaultValues: {
       display_name: '',
@@ -140,7 +145,14 @@ export default function SignUpScreen() {
               placeholder="How friends will find you"
               error={errors.display_name?.message}
               onBlur={onBlur}
-              onChangeText={onChange}
+              onChangeText={(text) => {
+                onChange(text);
+                // Before the field has been left once, `onTouched` would stay
+                // quiet; an impossible character is worth flagging right away.
+                if (errors.display_name || shouldValidateUsernameWhileTyping(text)) {
+                  void trigger('display_name');
+                }
+              }}
               value={value ?? ''}
               autoCapitalize="none"
               autoCorrect={false}

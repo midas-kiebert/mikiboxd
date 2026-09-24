@@ -4,8 +4,7 @@
  *
  * On/off and the delivery channel are separate fields on the backend but a
  * single decision for the user, so they are one segmented control rather than a
- * switch plus a second row. That keeps the whole list short enough to sit
- * inside the notification-permission tip as well as in Settings.
+ * switch plus a second row, which keeps the whole list short.
  *
  * Presentational: all state and writes live in `useNotificationPreferences`.
  */
@@ -55,6 +54,7 @@ export default function NotificationPreferenceList({
     setDelivery,
     isEmailVerificationRequired,
     dismissEmailVerificationRequired,
+    pushHelpDialog,
   } = controller;
 
   return (
@@ -63,6 +63,7 @@ export default function NotificationPreferenceList({
         visible={isEmailVerificationRequired}
         onClose={dismissEmailVerificationRequired}
       />
+      {pushHelpDialog}
       {toggles.map((toggle, index) => {
         const isOff = toggle.delivery === "off";
         const isDisabled = !isReady || pendingKey === toggle.key;

@@ -1,6 +1,7 @@
 from uuid import UUID
 
-from sqlmodel import Session, col, select
+from sqlalchemy import func
+from sqlmodel import Session, col, delete, select
 
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.models.friendship import FriendRequest, Friendship
@@ -31,6 +32,13 @@ def create_friendship(
     reverse_friendship = Friendship(user_id=friend_id, friend_id=user_id)
     session.add(friendship)
     session.add(reverse_friendship)
+    # Both users may have sent each other a request before either accepted;
+    # once they are friends neither request can still be acted on.
+    delete_friend_requests_between(
+        session=session,
+        user_id=user_id,
+        other_user_id=friend_id,
+    )
     session.flush()
     showtime_visibility_crud.rebuild_effective_visibility_for_owner(
         session=session,
@@ -107,7 +115,16 @@ def set_friendship_status_sharing(
     """Set whether the owner shares their status with a friend by default.
 
     Raises NoResultFound if the friendship does not exist.
+
+    Takes a row lock on the owner first. The rebuild below deletes and
+    re-inserts *every* effective-visibility row the owner has, whichever
+    friend changed, so two of these in flight at once — flipping a few
+    friends in quick succession — raced over the same rows and one failed
+    (deadlock or duplicate key). Locking the owner queues them instead.
     """
+    session.exec(
+        select(User.id).where(col(User.id) == owner_id).with_for_update()
+    ).one()
     friendship = session.exec(
         select(Friendship).where(
             Friendship.user_id == owner_id,
@@ -152,6 +169,21 @@ def create_friend_request(
     return friend_request
 
 
+def delete_friend_requests_between(
+    *,
+    session: Session,
+    user_id: UUID,
+    other_user_id: UUID,
+) -> None:
+    """Delete any pending friend requests between two users, in both directions."""
+    session.exec(  # type: ignore[call-overload]
+        delete(FriendRequest).where(
+            col(FriendRequest.sender_id).in_([user_id, other_user_id]),
+            col(FriendRequest.receiver_id).in_([user_id, other_user_id]),
+        )
+    )
+
+
 def get_received_friend_requests_with_sender(
     *,
     session: Session,
@@ -169,6 +201,24 @@ def get_received_friend_requests_with_sender(
         .offset(offset)
     )
     return list(session.exec(stmt).all())  # type: ignore[return-value]
+
+
+def count_received_friend_requests(
+    *,
+    session: Session,
+    receiver_id: UUID,
+) -> int:
+    """How many friend requests are outstanding in to this user.
+
+    Feeds the app-icon badge, which unlike the in-app bell counts *pending*
+    requests rather than unseen ones — see ``push_notifications.badge_count``.
+    """
+    stmt = (
+        select(func.count())
+        .select_from(FriendRequest)
+        .where(FriendRequest.receiver_id == receiver_id)
+    )
+    return int(session.exec(stmt).one() or 0)
 
 
 def has_sent_friend_request(
@@ -196,6 +246,44 @@ def has_sent_friend_request(
         )
     ).one_or_none()
     return request is not None
+
+
+def get_sent_friend_request_receiver_ids(
+    *,
+    session: Session,
+    sender_id: UUID,
+) -> set[UUID]:
+    """Everyone this user has an outstanding friend request out to.
+
+    `has_sent_friend_request` for all of them at once: annotating a page of
+    people with their request status asks the same question once per person,
+    which is a query per person when asked one at a time.
+    """
+    return set(
+        session.exec(
+            select(FriendRequest.receiver_id).where(
+                col(FriendRequest.sender_id) == sender_id
+            )
+        ).all()
+    )
+
+
+def get_received_friend_request_sender_ids(
+    *,
+    session: Session,
+    receiver_id: UUID,
+) -> set[UUID]:
+    """Everyone with an outstanding friend request in to this user.
+
+    The other direction of `get_sent_friend_request_receiver_ids`.
+    """
+    return set(
+        session.exec(
+            select(FriendRequest.sender_id).where(
+                col(FriendRequest.receiver_id) == receiver_id
+            )
+        ).all()
+    )
 
 
 def delete_friendship(

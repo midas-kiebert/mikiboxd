@@ -237,14 +237,16 @@ export function useShowtimeSeatAvailability({
   showtimeId: number | null;
   enabled?: boolean;
 }): UseQueryResult<ShowtimeSeatAvailabilityPublic | null, Error> {
-  return useQuery<ShowtimeSeatAvailabilityPublic | null, Error>({
+  const isActive = enabled && showtimeId !== null;
+  const result = useQuery<ShowtimeSeatAvailabilityPublic | null, Error>({
     queryKey: showtimeSeatAvailabilityQueryKey(showtimeId),
-    enabled: enabled && showtimeId !== null,
+    enabled: isActive,
     queryFn: () =>
       ShowtimesService.getSeatAvailability({ showtimeId: showtimeId as number }),
     staleTime: SEAT_AVAILABILITY_STALE_TIME_MS,
     gcTime: SEAT_AVAILABILITY_GC_TIME_MS,
-    refetchOnMount: "always",
+    // Replaced by the effect below, which also covers a showtime change.
+    refetchOnMount: false,
     refetchInterval: enabled
       ? (query) =>
           query.state.data?.checking
@@ -253,4 +255,19 @@ export function useShowtimeSeatAvailability({
       : false,
     refetchIntervalInBackground: false,
   });
+
+  // Fetched afresh every time a showtime is opened, not only when the cached
+  // value is stale. The cache is usually seeded from a list row moments
+  // earlier, and a row never offers the check button — only this endpoint
+  // knows the budget and cooldown behind it. Without the refetch a sheet opened
+  // on a freshly seeded row would sit on that value. `refetchOnMount` was not
+  // enough: it fires on mount only, and the app's sheet and the web's docked
+  // panel both stay mounted while their showtime changes.
+  const { refetch } = result;
+  useEffect(() => {
+    if (!isActive) return;
+    void refetch();
+  }, [isActive, showtimeId, refetch]);
+
+  return result;
 }

@@ -14,16 +14,23 @@ import { routeTree } from "./routeTree.gen"
 
 import { ApiError, OpenAPI, installAuthRefreshInterceptor } from "shared"
 import { setStorage, storage } from "shared/storage"
+import { getSignedIn, setSignedIn } from "./auth/session"
 import { CustomProvider } from "./components/ui/provider"
 
 // The generated API client expects async storage helpers, so we adapt browser localStorage here.
+//
+// Writes to `access_token` also drive the session store, so login, social
+// login, logout and the 401 handler all reach `useIsSignedIn()` through the one
+// path they already share — no screen has to remember to announce a sign-in.
 setStorage({
   getItem: async (key: string) => localStorage.getItem(key),
   setItem: async (key: string, value: string) => {
     localStorage.setItem(key, value)
+    if (key === "access_token") setSignedIn(value !== "")
   },
   removeItem: async (key: string) => {
     localStorage.removeItem(key)
+    if (key === "access_token") setSignedIn(false)
   },
 })
 
@@ -42,6 +49,11 @@ const router = createRouter({
 })
 
 const handleAuthFailure = () => {
+  // A guest never had a session to lose, so a 401 on a query that should have
+  // been gated must not throw them out of the page they are browsing. Only an
+  // expired session sends anyone to the login form.
+  if (!getSignedIn()) return
+  setSignedIn(false)
   router.navigate({ to: "/login" })
 }
 
@@ -52,6 +64,7 @@ installAuthRefreshInterceptor(handleAuthFailure)
 // Centralized API error handling keeps auth redirects consistent for every query/mutation.
 const handleApiError = async (error: Error) => {
   if (error instanceof ApiError && error.status === 401) {
+    if (!getSignedIn()) return
     await storage.removeItem("access_token")
     await storage.removeItem("refresh_token")
     handleAuthFailure()

@@ -186,8 +186,10 @@ export default function AppBottomSheet({
   // Read from `handleSheetChange`, which gorhom holds by identity — a ref so
   // the warm-up ending does not hand it a new callback.
   const isWarmingUpRef = useRef(isWarmingUp);
+  const visibleRef = useRef(visible);
   useEffect(() => {
     isWarmingUpRef.current = isWarmingUp;
+    visibleRef.current = visible;
   });
 
   const handleSheetChange = useCallback(
@@ -196,6 +198,13 @@ export default function AppBottomSheet({
       // completion and must not reach `onClose`.
       if (isWarmingUpRef.current) {
         onWarmUpSheetChange(index);
+        return;
+      }
+      // Open while its owner says it is closed: something presented it that
+      // was not the user (a warm-up's present arriving after the warm-up had
+      // finished). Put it straight back rather than leave it on screen.
+      if (index >= 0 && !visibleRef.current) {
+        requestAnimationFrame(() => bottomSheetModalRef.current?.close());
         return;
       }
       if (index === -1) {
@@ -251,6 +260,12 @@ export default function AppBottomSheet({
       // biggest cost an open can carry. See `./sheet-warm-up`.
       enableDismissOnClose={false}
       enableDynamicSizing={false}
+      // No rubber-band past the top snap point. With it, pulling up on a sheet
+      // whose content is too short to scroll (a guest's showtime sheet, the
+      // filters with the list at its top) lifted the whole sheet off the bottom
+      // of the screen on iOS, leaving a gap under it, and on the filters it
+      // fought the list's own scroll and bounced it back to the top.
+      enableOverDrag={false}
       stackBehavior="push"
       keyboardBehavior={keyboardBehavior}
       animationConfigs={isWarmingUp ? INSTANT_ANIMATION_CONFIG : SHEET_ANIMATION_CONFIG}
@@ -283,6 +298,9 @@ export default function AppBottomSheet({
   );
 }
 
+/** Far enough right of any screen that a warming sheet can't be touched. */
+const WARM_UP_OFFSCREEN_X = 100000;
+
 const createStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     sheetBackground: {
@@ -296,5 +314,11 @@ const createStyles = (colors: ThemeColors) =>
     // The warm-up: mounted and laid out, but neither on screen nor able to
     // take a touch — it covers most of the screen while it runs, and it runs
     // during startup, which is exactly when someone is already tapping.
-    warmingUp: { opacity: 0, pointerEvents: "none" },
+    // `pointerEvents` here is not enough on its own: gorhom's hosting
+    // container sets `pointerEvents="box-none"` as a prop, which beats the
+    // style on Android, so a warm-up that stalls open (as it does under the
+    // login screen, with the tabs frozen underneath) swallowed every tap on
+    // it. Shifting it off screen takes it out of hit-testing on both
+    // platforms while leaving its layout — the point of warming — intact.
+    warmingUp: { opacity: 0, pointerEvents: "none", transform: [{ translateX: WARM_UP_OFFSCREEN_X }] },
   });

@@ -19,6 +19,9 @@ type ShowtimesFilters = {
     watchedOnly?: boolean;
     selectedStatuses?: GoingStatus[];
     friendsOnly?: boolean;
+    onlyYou?: boolean;
+    /** Only these friends' going/interested marks. */
+    friendIds?: string[];
     allCinemas?: boolean;
     selectedListIds?: string[];
     excludeListIds?: string[];
@@ -41,6 +44,18 @@ type useFetchMainPageShowtimesProps = {
     snapshotTime?: string;
     filters?: ShowtimesFilters;
     enabled?: boolean;
+    /**
+     * How long a filter combination's rows may be reused before they are
+     * fetched again. Zero — the default, and what the app passes — means every
+     * return to a combination re-requests it.
+     *
+     * The website raises it: its filters are switches you flick back and
+     * forth, and each flick is a whole page of rows, so re-requesting a set
+     * fetched seconds ago put a loading screen in front of rows already in
+     * hand. The window is short enough that a friend marking themselves going
+     * shows up on the next look either way.
+     */
+    staleTime?: number;
 };
 
 export function useFetchMainPageShowtimes(
@@ -50,6 +65,7 @@ export function useFetchMainPageShowtimes(
         snapshotTime,
         filters = {},
         enabled = true,
+        staleTime = 0,
     } : useFetchMainPageShowtimesProps
 ): UseInfiniteQueryResult<InfiniteData<ShowtimesGetMainPageShowtimesResponse>, Error>{
     const queryClient = useQueryClient();
@@ -114,7 +130,7 @@ export function useFetchMainPageShowtimes(
             if (requested === undefined || lastPage.length < requested) return undefined;
             return allPages.reduce((total, page) => total + page.length, 0);
         },
-        staleTime: 0,
+        staleTime,
         gcTime: 5 * 60 * 1000, // 5 minutes
     });
 

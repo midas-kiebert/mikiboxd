@@ -178,6 +178,10 @@ services:
       dockerfile: frontend/Dockerfile
       args:
         - VITE_API_URL=https://api.${DOMAIN?Variable not set}
+        # Web Apple/Google sign-in; each button is hidden while its ID is empty.
+        - VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID-}
+        - VITE_APPLE_SERVICES_ID=${APPLE_WEB_CLIENT_ID-}
+        - VITE_APPLE_REDIRECT_URI=${APPLE_WEB_REDIRECT_URI-}
         - NODE_ENV=production
     labels:
       - traefik.enable=true
@@ -186,23 +190,29 @@ services:
 
       - traefik.http.services.${STACK_NAME?Variable not set}-frontend.loadbalancer.server.port=80
 
-      - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-http.rule=Host(`dashboard.${DOMAIN?Variable not set}`)
-      - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-http.entrypoints=http
+      # The site answers on the root domain only. `www.` and `dashboard.` redirect there
+      # (path and query kept), so there is one origin for Sign in with Apple's
+      # return URL, for localStorage, and for the session.
+      - traefik.http.middlewares.${STACK_NAME?Variable not set}-canonical-host.redirectregex.regex=^https?://(?:www|dashboard)\.[^/]+/(.*)
+      - traefik.http.middlewares.${STACK_NAME?Variable not set}-canonical-host.redirectregex.replacement=https://${DOMAIN?Variable not set}/$${1}
+      - traefik.http.middlewares.${STACK_NAME?Variable not set}-canonical-host.redirectregex.permanent=true
 
-      - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-https.rule=Host(`dashboard.${DOMAIN?Variable not set}`)
+      - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-http.rule=Host(`dashboard.${DOMAIN?Variable not set}`) || Host(`www.${DOMAIN?Variable not set}`)
+      - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-http.entrypoints=http
+      - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-http.middlewares=${STACK_NAME?Variable not set}-canonical-host
+
+      - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-https.rule=Host(`dashboard.${DOMAIN?Variable not set}`) || Host(`www.${DOMAIN?Variable not set}`)
       - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-https.entrypoints=https
       - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-https.tls=true
       - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-https.tls.certresolver=le
+      - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-https.middlewares=${STACK_NAME?Variable not set}-canonical-host
 
-      # Enable redirection for HTTP and HTTPS
-      - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-http.middlewares=https-redirect
-
-      # Root domain
-      - traefik.http.routers.${STACK_NAME?Variable not set}-root-http.rule=Host(`${DOMAIN?Variable not set}`) || Host(`www.${DOMAIN?Variable not set}`)
+      # Root domain: the site itself
+      - traefik.http.routers.${STACK_NAME?Variable not set}-root-http.rule=Host(`${DOMAIN?Variable not set}`)
       - traefik.http.routers.${STACK_NAME?Variable not set}-root-http.entrypoints=http
       - traefik.http.routers.${STACK_NAME?Variable not set}-root-http.middlewares=https-redirect
 
-      - traefik.http.routers.${STACK_NAME?Variable not set}-root-https.rule=Host(`${DOMAIN?Variable not set}`) || Host(`www.${DOMAIN?Variable not set}`)
+      - traefik.http.routers.${STACK_NAME?Variable not set}-root-https.rule=Host(`${DOMAIN?Variable not set}`)
       - traefik.http.routers.${STACK_NAME?Variable not set}-root-https.entrypoints=https
       - traefik.http.routers.${STACK_NAME?Variable not set}-root-https.tls=true
       - traefik.http.routers.${STACK_NAME?Variable not set}-root-https.tls.certresolver=le

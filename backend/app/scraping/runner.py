@@ -12,7 +12,7 @@ from typing import Any
 from sqlmodel import Session, col, delete, select
 
 from app.api.deps import get_db_context
-from app.mailer import send_email
+from app.mailer import RECAP_EMAIL_TO, send_email
 from app.models.cinema import Cinema
 from app.models.movie import Movie
 from app.models.scrape_recap import ScrapeRecap
@@ -54,7 +54,6 @@ from app.services.unidentified_listings import (
 )
 from app.utils import now_amsterdam_naive
 
-RECAP_EMAIL_TO = "scraper.mikino@midaskiebert.nl"
 RECAP_AGGREGATION_WINDOW = timedelta(hours=24)
 RECAP_RETENTION_WINDOW = timedelta(days=7)
 STAGE_PATTERN = re.compile(r"(^|\s)stage=([^|]+)")
@@ -62,6 +61,9 @@ TMDB_LOW_CONFIDENCE_THRESHOLD = 80.0
 TMDB_RECAP_ATTACHMENT_MAX_ITEMS = 300
 TMDB_RESOLUTION_AUDIT_DIR_NAME = "tmp_tmdb_resolution_audit"
 TMDB_MARKDOWN_CANDIDATE_LIMIT = 5
+LETTERBOXD_BACKFILL_INTERVAL = timedelta(hours=6)
+
+_last_letterboxd_backfill_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -1545,7 +1547,6 @@ def send_daily_recap() -> bool:
         )
         run_metrics: list[RecapRunMetrics] = []
         legacy_run_html: list[str] = []
-        attachments: list[dict[str, Any]] = []
         for recap in recaps:
             metrics = _recap_metrics_or_none(recap)
             if metrics is not None:
@@ -1555,14 +1556,18 @@ def send_daily_recap() -> bool:
                     f"<h3>Run {escape(recap.started_at.isoformat())} &rarr; "
                     f"{escape(recap.finished_at.isoformat())}</h3>{recap.html}"
                 )
-            for attachment in json.loads(recap.attachments_json):
-                attachments.append(
-                    {
-                        "filename": attachment["filename"],
-                        "data": base64.b64decode(attachment["data_b64"]),
-                        "mime_type": attachment["mime_type"],
-                    }
-                )
+        # Only the latest run's diagnostic files are attached: they are ~0.5 MB
+        # a run and mostly repeat one another, so attaching all ~20 of a day's
+        # runs made a 10 MB email. Earlier runs' files stay downloadable from the
+        # admin scrape monitor for a week.
+        attachments = [
+            {
+                "filename": attachment["filename"],
+                "data": base64.b64decode(attachment["data_b64"]),
+                "mime_type": attachment["mime_type"],
+            }
+            for attachment in json.loads(recaps[-1].attachments_json)
+        ]
         html = (
             f"<h1>Daily scrape recap — {len(recaps)} run(s) in the last 24h</h1>"
             + render_recap_html(run_metrics, legacy_run_html=legacy_run_html)
@@ -1587,6 +1592,24 @@ def send_daily_recap() -> bool:
         )
         session.commit()
     logger.info("Sent daily scrape recap covering %s run(s).", len(sent_ids))
+    return True
+
+
+def _letterboxd_backfill_due(now: datetime) -> bool:
+    """Whether this run should retry the films still missing Letterboxd data.
+
+    The scrape runs up to every half hour, but Letterboxd blocks readily (403 streaks
+    put us in a cooldown most days), so the backfill keeps the 6-hourly rhythm
+    it had when the scrape itself ran that often. Tracked in-process: after a
+    scheduler restart the first run backfills.
+    """
+    global _last_letterboxd_backfill_at
+    if (
+        _last_letterboxd_backfill_at is not None
+        and now - _last_letterboxd_backfill_at < LETTERBOXD_BACKFILL_INTERVAL
+    ):
+        return False
+    _last_letterboxd_backfill_at = now
     return True
 
 
@@ -1655,15 +1678,16 @@ def run() -> None:
                 f"error={cleanup_error}"
             )
             logger.error("Failed during Cineville conflict cleanup", exc_info=True)
-        logger.info("Starting Letterboxd slug/poster backfill...")
-        letterboxd_backfill_summary = backfill_missing_letterboxd_data()
-        logger.info(
-            "Letterboxd backfill done (candidates=%s updated=%s skipped=%s failed=%s).",
-            letterboxd_backfill_summary.candidates,
-            letterboxd_backfill_summary.updated,
-            letterboxd_backfill_summary.skipped,
-            letterboxd_backfill_summary.failed,
-        )
+        if _letterboxd_backfill_due(started_at):
+            logger.info("Starting Letterboxd slug/poster backfill...")
+            letterboxd_backfill_summary = backfill_missing_letterboxd_data()
+            logger.info(
+                "Letterboxd backfill done (candidates=%s updated=%s skipped=%s failed=%s).",
+                letterboxd_backfill_summary.candidates,
+                letterboxd_backfill_summary.updated,
+                letterboxd_backfill_summary.skipped,
+                letterboxd_backfill_summary.failed,
+            )
     except Exception as e:
         fatal_error = e
         summary.errors.append(str(e))

@@ -40,6 +40,8 @@ export type SpotlightRect = {
 /** Breathing room between the highlighted control and the ring around it. */
 const HOLE_PADDING = 8;
 const HOLE_BORDER_RADIUS = 14;
+// Light enough that the sheet being explained is still readable behind it.
+const SPOTLIGHT_DIM_COLOR = "rgba(0, 0, 0, 0.6)";
 /** Gap between the hole and the caption card. */
 const CAPTION_GAP = 18;
 const CAPTION_SIDE_MARGIN = 20;
@@ -274,59 +276,24 @@ export default function SpotlightOverlay({
           {/*
            * The four panes above stop flush against the hole's square bounding
            * box, leaving its corners fully see-through — squared off rather than
-           * matching the rounded ring. These four pieces plug just the corners:
-           * each is exactly radius x radius, dim-colored, with only the corner
-           * nearest the hole's center rounded off, which (since the piece's side
-           * equals the radius) carves out precisely the quarter-circle the ring
-           * traces, and leaves the rest dim.
+           * matching the rounded ring. These plug just the corners with the dim
+           * area *outside* the ring's curve (see `CornerPlug`).
            */}
-          <View
-            style={[
-              styles.dim,
-              {
-                top: hole.top,
-                left: hole.left,
-                width: HOLE_BORDER_RADIUS,
-                height: HOLE_BORDER_RADIUS,
-                borderBottomRightRadius: HOLE_BORDER_RADIUS,
-              },
-            ]}
+          <CornerPlug corner="topLeft" top={hole.top} left={hole.left} />
+          <CornerPlug
+            corner="topRight"
+            top={hole.top}
+            left={hole.left + hole.width - HOLE_BORDER_RADIUS}
           />
-          <View
-            style={[
-              styles.dim,
-              {
-                top: hole.top,
-                left: hole.left + hole.width - HOLE_BORDER_RADIUS,
-                width: HOLE_BORDER_RADIUS,
-                height: HOLE_BORDER_RADIUS,
-                borderBottomLeftRadius: HOLE_BORDER_RADIUS,
-              },
-            ]}
+          <CornerPlug
+            corner="bottomLeft"
+            top={hole.top + hole.height - HOLE_BORDER_RADIUS}
+            left={hole.left}
           />
-          <View
-            style={[
-              styles.dim,
-              {
-                top: hole.top + hole.height - HOLE_BORDER_RADIUS,
-                left: hole.left,
-                width: HOLE_BORDER_RADIUS,
-                height: HOLE_BORDER_RADIUS,
-                borderTopRightRadius: HOLE_BORDER_RADIUS,
-              },
-            ]}
-          />
-          <View
-            style={[
-              styles.dim,
-              {
-                top: hole.top + hole.height - HOLE_BORDER_RADIUS,
-                left: hole.left + hole.width - HOLE_BORDER_RADIUS,
-                width: HOLE_BORDER_RADIUS,
-                height: HOLE_BORDER_RADIUS,
-                borderTopLeftRadius: HOLE_BORDER_RADIUS,
-              },
-            ]}
+          <CornerPlug
+            corner="bottomRight"
+            top={hole.top + hole.height - HOLE_BORDER_RADIUS}
+            left={hole.left + hole.width - HOLE_BORDER_RADIUS}
           />
           <Animated.View
             pointerEvents="none"
@@ -399,12 +366,60 @@ export default function SpotlightOverlay({
   );
 }
 
+/** Thick enough that the ring below covers its whole radius x radius square. */
+const CORNER_PLUG_BORDER = HOLE_BORDER_RADIUS;
+
+type Corner = "topLeft" | "topRight" | "bottomLeft" | "bottomRight";
+
+/**
+ * One corner of the hole, dimmed outside the ring's curve only.
+ *
+ * The shape wanted is a square minus a quarter circle, which a filled View with
+ * one rounded corner cannot make: rounding a corner removes the fill *outside*
+ * the curve, so the old plugs drew dim quarter discs reaching into the hole
+ * (the "circles cut out of the corners"). Instead: a radius x radius clip, and
+ * inside it a thick-bordered circle whose inner edge is exactly the ring's
+ * curve. Its border is the dim area; its middle stays clear.
+ */
+function CornerPlug({ corner, top, left }: { corner: Corner; top: number; left: number }) {
+  const isLeft = corner === "topLeft" || corner === "bottomLeft";
+  const isTop = corner === "topLeft" || corner === "topRight";
+  const outerRadius = HOLE_BORDER_RADIUS + CORNER_PLUG_BORDER;
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: "absolute",
+        top,
+        left,
+        width: HOLE_BORDER_RADIUS,
+        height: HOLE_BORDER_RADIUS,
+        overflow: "hidden",
+      }}
+    >
+      <View
+        style={{
+          position: "absolute",
+          // The circle's centre sits on the clip's inner corner (towards the
+          // middle of the hole), which is where the ring's curve is centred.
+          left: isLeft ? HOLE_BORDER_RADIUS - outerRadius : -outerRadius,
+          top: isTop ? HOLE_BORDER_RADIUS - outerRadius : -outerRadius,
+          width: outerRadius * 2,
+          height: outerRadius * 2,
+          borderRadius: outerRadius,
+          borderWidth: CORNER_PLUG_BORDER,
+          borderColor: SPOTLIGHT_DIM_COLOR,
+        }}
+      />
+    </View>
+  );
+}
+
 const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
   StyleSheet.create({
-    // Light enough that the sheet being explained is still readable behind it.
     dim: {
       position: "absolute",
-      backgroundColor: "rgba(0, 0, 0, 0.6)",
+      backgroundColor: SPOTLIGHT_DIM_COLOR,
     },
     ring: {
       position: "absolute",

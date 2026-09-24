@@ -20,10 +20,10 @@ import { TMDB_AMBIGUITIES_QUERY_KEY } from "./TmdbAmbiguities"
 const AdminNav = () => (
   <Stack direction="row" gap={2} mb={6}>
     <Button asChild size="sm" variant="outline">
-      <Link to="/admin/movies">Movies</Link>
+      <Link to="/admin/movies">Films</Link>
     </Button>
     <Button asChild size="sm" variant="outline">
-      <Link to="/admin/showtimes">Showtimes</Link>
+      <Link to="/admin/showtimes">Screenings</Link>
     </Button>
     <Button asChild size="sm" variant="outline">
       <Link to="/admin/reports">Reports</Link>
@@ -41,7 +41,14 @@ const TmdbAmbiguityNotice = () => {
   })
   if (!ambiguities || ambiguities.length === 0) return null
   return (
-    <Box borderWidth="1px" borderColor="orange.muted" bg="orange.subtle" borderRadius="md" p={3} mb={6}>
+    <Box
+      borderWidth="1px"
+      borderColor="orange.muted"
+      bg="orange.subtle"
+      borderRadius="md"
+      p={3}
+      mb={6}
+    >
       <Text>
         {ambiguities.length === 1
           ? "1 TMDB lookup matched several films equally well."

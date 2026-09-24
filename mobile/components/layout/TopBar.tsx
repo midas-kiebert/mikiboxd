@@ -1,6 +1,7 @@
 /**
  * Mobile layout/navigation component: Top Bar.
  */
+import { useState } from "react";
 import { Image, Linking, TouchableOpacity, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
@@ -36,6 +37,8 @@ type TopBarProps = {
   linkUrl?: string;
   /** Single-letter avatar shown left of the title (e.g. a friend's initial), tinted by accentColor. */
   avatarInitial?: string;
+  /** The same person's actual picture, shown over the initial when it loads. */
+  avatarUrl?: string | null;
   /** Icon shown left of the title (e.g. a tab's own icon), matching the title's color. */
   icon?: IconSymbolName;
 };
@@ -49,10 +52,15 @@ export default function TopBar({
   onTitleSuffixPress,
   linkUrl,
   avatarInitial,
+  avatarUrl,
   icon,
 }: TopBarProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const router = useRouter();
+  // Remembers the URL that failed rather than a flag seeded from the first
+  // render: the friend page mounts before its fetch lands, so `avatarUrl`
+  // starts null and the picture has to be able to arrive later.
+  const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
   // Reused top bar keeps the app title layout consistent across tab screens.
   const colors = useThemeColors();
   const styles = createStyles(colors);
@@ -172,6 +180,13 @@ export default function TopBar({
                 <Text style={[styles.avatarInitial, accentColor ? { color: accentColor.text } : null]}>
                   {avatarInitial}
                 </Text>
+                {avatarUrl && avatarUrl !== failedAvatarUrl ? (
+                  <Image
+                    source={{ uri: avatarUrl }}
+                    style={StyleSheet.absoluteFill}
+                    onError={() => setFailedAvatarUrl(avatarUrl)}
+                  />
+                ) : null}
               </View>
             ) : null}
             <Text
@@ -291,6 +306,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderRadius: 11,
       alignItems: "center",
       justifyContent: "center",
+      overflow: "hidden",
     },
     avatarInitial: {
       fontSize: 11,

@@ -139,7 +139,7 @@ function MovieCard({ movie, onPress, showCinema = true }: MovieCardProps) {
           <View style={styles.showtimesSection}>
             <View style={styles.showtimesBody}>
               {visibleShowtimes.length === 0 ? (
-                <ThemedText style={styles.noShowtimesText}>No upcoming showtimes</ThemedText>
+                <ThemedText style={styles.noShowtimesText}>No upcoming screenings</ThemedText>
               ) : (
                 <View style={styles.showtimeList}>
                   {visibleShowtimes.map((showtime) => (

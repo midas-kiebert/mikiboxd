@@ -1,7 +1,7 @@
 /**
  * Feature tips — small dismissible cards that point at a feature the user has
- * not discovered yet (Letterboxd sync, cinema/filter presets, notification
- * permission). Only one is ever on screen at a time; see `FeatureTipsHost`.
+ * not discovered yet (Letterboxd sync, cinema/filter presets, notifications).
+ * Only one is ever on screen at a time; see `FeatureTipsHost`.
  *
  * There are three independent ways to silence a tip:
  *  - the master switch in Settings hides all of them,
@@ -30,22 +30,49 @@ import { MeService } from 'shared';
 
 export type FeatureTipId =
   | 'verify-email'
+  | 'invite'
+  | 'sold-out'
+  | 'friend-request'
   | 'watchlist-digest'
   | 'letterboxd-username'
+  | 'letterboxd-avatar'
   | 'add-friends'
   | 'cinema-presets'
   | 'filter-presets'
-  | 'notification-permission';
+  | 'interest-reminders'
+  | 'cineville-pass';
 
 const FEATURE_TIP_IDS: readonly FeatureTipId[] = [
   'verify-email',
+  'invite',
+  'sold-out',
+  'friend-request',
   'watchlist-digest',
   'letterboxd-username',
+  'letterboxd-avatar',
   'add-friends',
   'cinema-presets',
   'filter-presets',
-  'notification-permission',
+  'interest-reminders',
+  'cineville-pass',
 ];
+
+/**
+ * Tips answering something that just happened while the app was closed — an
+ * invite, a sold-out screening, a friend request — that the user never heard
+ * about because that notification is off or cannot reach them. They are only
+ * ever eligible for events since the app was last in use (see
+ * `utils/away-events`), so each one is offered once per thing missed.
+ *
+ * That already limits how often they appear, so the random chance and the
+ * cooldown do not apply. "Don't show again" and the Settings switch still do:
+ * these are suggestions, just well-timed ones.
+ */
+export const EVENT_TIP_IDS: ReadonlySet<FeatureTipId> = new Set<FeatureTipId>([
+  'invite',
+  'sold-out',
+  'friend-request',
+]);
 
 /**
  * Tips that are not suggestions but unfinished business, and so are exempt from
@@ -97,14 +124,21 @@ const TIP_COOLDOWN_MS: Record<FeatureTipId, number> = {
   // Never consulted — see ALWAYS_SHOW_TIP_IDS — but the map is exhaustive so
   // that adding a tip id is a compile error until its cadence is decided.
   'verify-email': 0,
+  // Never consulted either — see EVENT_TIP_IDS.
+  'invite': 0,
+  'sold-out': 0,
+  'friend-request': 0,
   'cinema-presets': ONE_DAY_MS,
   'add-friends': ONE_DAY_MS,
-  'notification-permission': ONE_DAY_MS,
   'letterboxd-username': THREE_DAYS_MS,
+  'letterboxd-avatar': THREE_DAYS_MS,
   'filter-presets': THREE_DAYS_MS,
   // The quietest of the lot: a niche convenience the user has lived without,
   // and one the backend only offers at all once it is switched on there.
   'watchlist-digest': A_WEEK_MS,
+  // Low-priority conveniences, offered rarely.
+  'interest-reminders': A_WEEK_MS,
+  'cineville-pass': A_WEEK_MS,
 };
 
 /**
@@ -180,6 +214,12 @@ type FeatureTipsState = {
    */
   rollDone: boolean;
   activeTipId: FeatureTipId | null;
+  /**
+   * The user refused the notification permission this session. Nothing about
+   * notifications is suggested again until the next launch: a tip right after
+   * "Don't allow" only reads as the app not taking no for an answer.
+   */
+  pushDeniedThisSession: boolean;
 };
 
 let state: FeatureTipsState = {
@@ -192,6 +232,7 @@ let state: FeatureTipsState = {
   lastShownAt: {},
   rollDone: false,
   activeTipId: null,
+  pushDeniedThisSession: false,
 };
 
 const subscribers = new Set<() => void>();
@@ -238,6 +279,18 @@ const persistLastShownAt = (lastShownAt: Partial<Record<FeatureTipId, number>>):
   SecureStore.setItemAsync(LAST_SHOWN_STORAGE_KEY, JSON.stringify(lastShownAt)).catch(() => {});
 };
 
+/** Tips that ask the user to turn a notification on. */
+const NOTIFICATION_TIP_IDS: ReadonlySet<FeatureTipId> = new Set<FeatureTipId>([
+  ...EVENT_TIP_IDS,
+  'interest-reminders',
+]);
+
+/** Called whenever the OS notification prompt is refused. */
+export const notePushDenied = (): void => {
+  if (state.pushDeniedThisSession) return;
+  update({ pushDeniedThisSession: true });
+};
+
 const isInCooldown = (id: FeatureTipId): boolean => {
   const lastShown = state.lastShownAt[id];
   return lastShown !== undefined && Date.now() - lastShown < TIP_COOLDOWN_MS[id];
@@ -281,9 +334,9 @@ export const dismissTipForever = (id: FeatureTipId): void => {
 
 /**
  * Closing the dialog when there is nothing left for it to remind the user
- * about (e.g. the notification-permission tip, closed while permission is
- * already granted): just hides it, leaving no reminder in the bell and not
- * adding to the "hidden tips" count in Settings — there is nothing to undo.
+ * about (e.g. a notification tip whose suggestion was just taken up): just
+ * hides it, leaving no reminder in the bell and not adding to the "hidden
+ * tips" count in Settings — there is nothing to undo.
  */
 export const closeTip = (id: FeatureTipId): void => {
   update({
@@ -431,10 +484,18 @@ export const rollForFeatureTip = (candidates: readonly FeatureTipCandidate[]): v
       !ALWAYS_SHOW_TIP_IDS.has(candidate.id) &&
       !state.dismissedForever.has(candidate.id) &&
       !state.hiddenThisSession.has(candidate.id) &&
-      !isInCooldown(candidate.id)
+      !(state.pushDeniedThisSession && NOTIFICATION_TIP_IDS.has(candidate.id)) &&
+      (EVENT_TIP_IDS.has(candidate.id) || !isInCooldown(candidate.id))
   );
 
-  if (winner && Math.random() < (TIP_SHOW_CHANCE_BY_ID[winner.id] ?? TIP_SHOW_CHANCE)) {
+  // Event tips are already rationed by the events themselves (see EVENT_TIP_IDS).
+  const chance =
+    winner === undefined
+      ? 0
+      : EVENT_TIP_IDS.has(winner.id)
+        ? 1
+        : (TIP_SHOW_CHANCE_BY_ID[winner.id] ?? TIP_SHOW_CHANCE);
+  if (winner && Math.random() < chance) {
     const lastShownAt = { ...state.lastShownAt, [winner.id]: Date.now() };
     update({ rollDone: true, activeTipId: winner.id, lastShownAt });
     persistLastShownAt(lastShownAt);
@@ -442,6 +503,33 @@ export const rollForFeatureTip = (candidates: readonly FeatureTipCandidate[]): v
     return;
   }
   update({ rollDone: true });
+};
+
+/**
+ * The app came back to the foreground after the session's one roll: offer an
+ * event tip for whatever happened while it was away, if nothing else is on
+ * screen. Candidates in priority order, like `rollForFeatureTip`. Only event
+ * tips take part — the rest stay at one attempt per launch.
+ */
+export const rollForEventTip = (candidates: readonly FeatureTipCandidate[]): void => {
+  if (!state.isLoaded || !state.enabled || state.pushDeniedThisSession) return;
+  const isShowing = (id: FeatureTipId | null) => id !== null && !state.hiddenThisSession.has(id);
+  if (isShowing(state.activeTipId) || isShowing(state.forcedTipId)) return;
+  // New events, so a tip closed earlier this session may speak again.
+  const hiddenThisSession = new Set(
+    [...state.hiddenThisSession].filter((id) => !EVENT_TIP_IDS.has(id))
+  );
+  const winner = candidates.find(
+    (candidate) =>
+      candidate.isEligible &&
+      EVENT_TIP_IDS.has(candidate.id) &&
+      !state.dismissedForever.has(candidate.id)
+  );
+  if (!winner) return;
+  const lastShownAt = { ...state.lastShownAt, [winner.id]: Date.now() };
+  update({ hiddenThisSession, activeTipId: winner.id, lastShownAt });
+  persistLastShownAt(lastShownAt);
+  trackTipShown(winner.id);
 };
 
 /**

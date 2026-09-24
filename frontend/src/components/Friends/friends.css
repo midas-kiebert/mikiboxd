@@ -1,0 +1,285 @@
+/*
+ * The Friends page (`FriendsPage.tsx`, `InviteCard.tsx`).
+ *
+ * Plain classes over Chakra's own theme variables, the idiom of
+ * `Activity/activity.css`, whose header and segmented control this page's
+ * mirror so the two app tabs read as one site. The rows themselves are
+ * Chakra (`FriendRow.tsx`), since their controls are shared with the feed's
+ * friend header.
+ */
+
+/* ---- Header -------------------------------------------------------------- */
+
+.fr-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px 24px;
+  margin-bottom: 20px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--chakra-colors-border);
+}
+
+.fr-head__titles {
+  min-width: 0;
+}
+
+.fr-head__title {
+  margin: 0;
+  color: var(--chakra-colors-fg);
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.fr-head__description {
+  margin: 6px 0 0;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+/* Friends / Find people: one setting, drawn as a segmented control. */
+.fr-modes {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--chakra-colors-border);
+  border-radius: 12px;
+  background: var(--chakra-colors-bg-subtle);
+}
+
+.fr-modes__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--chakra-colors-fg-muted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.fr-modes__option:hover {
+  color: var(--chakra-colors-fg);
+}
+
+.fr-modes__option[aria-selected="true"] {
+  background: var(--chakra-colors-app-green\.primary);
+  color: var(--chakra-colors-app-green\.secondary);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+}
+
+.fr-modes__option:focus-visible {
+  outline: 2px solid var(--chakra-colors-app-tint);
+  outline-offset: 1px;
+}
+
+.fr-modes__icon {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+}
+
+/* Nudged down to meet the icon: see `components/ui/icon-label.tsx`. */
+.fr-modes__label {
+  position: relative;
+  top: 1px;
+}
+
+/* ---- Sections ------------------------------------------------------------ */
+
+.fr-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.fr-section__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 0 2px;
+}
+
+.fr-section__title {
+  color: var(--chakra-colors-fg-muted);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.fr-section__count {
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--chakra-colors-bg-subtle);
+  color: var(--chakra-colors-fg-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+
+/*
+ * A pending request is the one thing on the page waiting on you, so its
+ * heading carries the app's "needs you" colour.
+ */
+.fr-section__head--call .fr-section__title {
+  color: var(--chakra-colors-app-orange\.secondary);
+}
+
+.fr-section__head--call .fr-section__count {
+  background: var(--chakra-colors-app-orange\.primary);
+  color: var(--chakra-colors-app-orange\.secondary);
+}
+
+.fr-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ---- Empty states -------------------------------------------------------- */
+
+.fr-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 28px 16px;
+  border: 1px solid var(--chakra-colors-app-card-border);
+  border-radius: 14px;
+  background: var(--chakra-colors-app-card-background);
+  text-align: center;
+}
+
+.fr-empty__title {
+  margin: 0;
+  color: var(--chakra-colors-fg);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.fr-empty__body {
+  margin: 0;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.fr-empty__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 9px 18px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--chakra-colors-app-tint);
+  color: var(--chakra-colors-app-pill-active-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 120ms ease;
+}
+
+.fr-empty__action:hover {
+  filter: brightness(1.08);
+}
+
+.fr-empty__action:focus-visible {
+  outline: 2px solid var(--chakra-colors-app-tint);
+  outline-offset: 2px;
+}
+
+.fr-empty__action svg {
+  width: 17px;
+  height: 17px;
+}
+
+.fr-empty__action-label {
+  position: relative;
+  top: 1px;
+}
+
+/* ---- Invite card --------------------------------------------------------- */
+
+.fr-invite {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 16px;
+  border: 1px solid var(--chakra-colors-app-card-border);
+  border-radius: 14px;
+  background: var(--chakra-colors-app-card-background);
+  text-align: center;
+}
+
+.fr-invite__title {
+  margin: 0;
+  color: var(--chakra-colors-fg);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.fr-invite__username {
+  margin: 0;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.fr-invite__text {
+  margin: 0;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.fr-invite__link {
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--chakra-colors-border);
+  border-radius: 10px;
+  background: var(--chakra-colors-bg-subtle);
+  color: var(--chakra-colors-fg);
+  font: inherit;
+  font-size: 12px;
+  text-overflow: ellipsis;
+}
+
+.fr-invite__link:focus-visible {
+  outline: 2px solid var(--chakra-colors-app-tint);
+  outline-offset: 1px;
+}
+
+.fr-invite__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.fr-invite__qr {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 4px 0;
+  border: 1px solid var(--chakra-colors-border-muted);
+  border-radius: 12px;
+  background: #ffffff;
+}

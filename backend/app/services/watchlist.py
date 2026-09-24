@@ -5,13 +5,17 @@ from sqlmodel import Session
 from app.crud import movie as movies_crud
 from app.crud import user as users_crud
 from app.crud import watchlist as watchlist_crud
-from app.exceptions.scraper_exceptions import LetterboxdTemporarilyUnavailable
+from app.exceptions.scraper_exceptions import (
+    LetterboxdTemporarilyUnavailable,
+    ScraperStructureError,
+)
 from app.exceptions.user_exceptions import (
     LetterboxdUsernameNotSet,
     UserNotFound,
 )
 from app.exceptions.watchlist_exceptions import WatchlistSyncTooSoon
 from app.models.user import User
+from app.scraping.letterboxd.watchlist import check_account
 from app.scraping.letterboxd.watchlist import get_watchlist as scrape_watchlist
 from app.services.letterboxd_sync import is_within_cooldown
 from app.utils import now_amsterdam_naive
@@ -57,7 +61,16 @@ def sync_watchlist(
     user.letterboxd.last_watchlist_sync_attempt = now_amsterdam_naive()
     session.commit()
 
-    result = scrape_watchlist(user.letterboxd_username)
+    try:
+        result = scrape_watchlist(user.letterboxd_username)
+    except ScraperStructureError:
+        # A username with no account behind it fails exactly like this, so
+        # the failure is the moment to find out which it was. Stored for the
+        # settings warning; the sync still fails as before.
+        if check_account(user.letterboxd_username).exists is False:
+            user.letterboxd.account_not_found = True
+            session.commit()
+        raise
     if not result.is_complete:
         # The stored rows are replaced wholesale below, so a partial scrape
         # would drop films the user still has on their watchlist.
@@ -92,5 +105,12 @@ def sync_watchlist(
             movie_id=movie.id if movie else None,
         )
 
+    # Left alone rather than cleared when the scrape found no avatar: a page
+    # whose markup Letterboxd changed underneath us should not read as
+    # everyone having removed their picture.
+    if result.avatar_url is not None:
+        user.letterboxd.avatar_url = result.avatar_url
     user.letterboxd.last_watchlist_sync = now_amsterdam_naive()
+    # A watchlist that loaded belongs to an account that exists.
+    user.letterboxd.account_not_found = False
     session.commit()

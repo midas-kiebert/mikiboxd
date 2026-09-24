@@ -30,9 +30,11 @@ import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-util
 import FriendAgendaOptions from '@/components/friends/FriendAgendaOptions';
 import NonFriendProfile from '@/components/friends/NonFriendProfile';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { useFeedDefaults } from '@/hooks/useFeedDefaults';
 import { useThemeColors } from '@/hooks/use-theme-color';
 import { getAvatarColors, getAvatarInitial } from '@/utils/avatar-color';
-import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
+import { isInheritFiltersParam, usePageFilters } from '@/hooks/usePageFilters';
+import { CinemaSelectionScope } from '@/hooks/useCinemaSelection';
 import { useFetchSelectedCinemas } from 'shared/hooks/useFetchSelectedCinemas';
 import { buildSnapshotTime, useSnapshotRefresh } from '@/utils/reset-infinite-query';
 
@@ -171,7 +173,9 @@ function FriendShowtimesContent({
     setCinemaEditPresetId(null);
   }, []);
   const [snapshotTime, setSnapshotTime] = useState(() => buildSnapshotTime());
+  const { inheritFilters } = useLocalSearchParams<{ inheritFilters?: string | string[] }>();
 
+  // Page-scoped: empty unless opened from a feed (see usePageFilters).
   const {
     watchlistOnly,
     appliedWatchlistOnly,
@@ -195,8 +199,11 @@ function FriendShowtimesContent({
     setSelectedLanguages,
     sessionCinemaIds,
     setSessionCinemaIds,
-  } = useSharedTabFilters();
+    cinemaScope,
+  } = usePageFilters(isInheritFiltersParam(inheritFilters));
   const { data: preferredCinemaIds } = useFetchSelectedCinemas();
+  // Clearing puts language back to its default, not off (see useFeedDefaults).
+  const { defaultLanguages } = useFeedDefaults();
   const effectiveCinemaIds = sessionCinemaIds ?? preferredCinemaIds;
 
   const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
@@ -251,6 +258,7 @@ function FriendShowtimesContent({
     [topBarAvatarColors]
   );
   const topBarAvatarInitial = useMemo(() => getAvatarInitial(topBarTitle), [topBarTitle]);
+  const topBarAvatarUrl = friend?.avatar_url ?? null;
 
   const debouncedSearchQuery = useDebouncedValue(searchQuery, SEARCH_DEBOUNCE_MS);
   // Clearing the field drops the results immediately — waiting out the
@@ -311,9 +319,8 @@ function FriendShowtimesContent({
   const { refreshing, handleRefresh } = useSnapshotRefresh({ setSnapshotTime, isFetching });
 
   const handleLoadMore = () => {
-    if (hasNextPage && !isFetchingNextPage) {
-      fetchNextPage();
-    }
+    if (!hasNextPage || isFetchingNextPage) return false;
+    return fetchNextPage();
   };
 
   const handleClearAll = () => {
@@ -327,7 +334,7 @@ function FriendShowtimesContent({
     setSelectedTimeRanges([]);
     setSelectedListIds([]);
     setExcludeListIds([]);
-    setSelectedLanguages([]);
+    setSelectedLanguages([...defaultLanguages]);
     if (preferredCinemaIds) setSessionCinemaIds(preferredCinemaIds);
   };
 
@@ -370,6 +377,7 @@ function FriendShowtimesContent({
           showBackButton
           accentColor={topBarAccentColor}
           avatarInitial={topBarAvatarInitial}
+          avatarUrl={topBarAvatarUrl}
         />
         <NonFriendProfile user={friend} />
       </TopSafeAreaView>
@@ -377,11 +385,12 @@ function FriendShowtimesContent({
   }
 
   return (
-    <>
+    <CinemaSelectionScope.Provider value={cinemaScope}>
       <ShowtimesScreen
         topBarTitle={topBarTitle}
         topBarAccentColor={topBarAccentColor}
         topBarAvatarInitial={topBarAvatarInitial}
+        topBarAvatarUrl={topBarAvatarUrl}
         topBarShowBackButton
         showtimes={showtimes}
         isLoading={isLoading}
@@ -401,8 +410,6 @@ function FriendShowtimesContent({
           <ActiveFilterChips
             onOpenFilters={() => setFiltersModalVisible(true)}
             onOpenCinemaModal={openCinemaModal}
-            groupByMovie={false}
-            setGroupByMovie={NOOP_GROUP_BY_MOVIE}
             watchlistOnly={effectiveWatchlistOnly}
             setWatchlistOnly={setWatchlistOnly}
             watchlistExclude={effectiveWatchlistExclude}
@@ -440,7 +447,7 @@ function FriendShowtimesContent({
             sharesStatus={friend.shares_status ?? true}
           />
         }
-        emptyText="No showtimes in this agenda"
+        emptyText="No screenings in this agenda"
         emptyExtra={searchFieldFallback}
         openModalOptions={showtimeModalOptions}
       />
@@ -487,7 +494,7 @@ function FriendShowtimesContent({
         onClose={closeCinemaModal}
         initialEditPresetId={cinemaEditPresetId}
       />
-    </>
+    </CinemaSelectionScope.Provider>
   );
 }
 

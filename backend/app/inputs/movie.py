@@ -5,7 +5,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from app.core.enums import GoingStatus, Language, SearchField, TimeOfDay
 from app.utils import now_amsterdam_naive
@@ -38,12 +38,32 @@ class Filters(BaseModel):
     # Narrows `selected_statuses` to friends' selections only, dropping the
     # viewer's own — for a feed about what *other people* are doing.
     friends_only: bool = False
+    # The other way round: only the viewer's own selections — their agenda.
+    # Wins over `friends_only` if a client somehow sends both.
+    only_you: bool = False
+    # Only these friends' selections: one friend is that friend's agenda, a few
+    # is "what are these people up to". Wins over `only_you` and
+    # `friends_only`, and implies going/interested when no status is given —
+    # see `_friends_imply_statuses`.
+    friend_ids: list[UUID] | None = None
     # A feed already scoped to "everyone" or "everyone but me" (e.g. the
     # Activity screen's All/Friends pages) — never narrow it to the viewer's
     # usual cinemas, since that would silently hide people at cinemas the
     # viewer never picked. See `_skips_cinema_default`.
     all_cinemas: bool = False
     selected_languages: list[Language] | None = None
+
+    @model_validator(mode="after")
+    def _friends_imply_statuses(self) -> "Filters":
+        """Picking friends means their plans, whatever the status filter says.
+
+        Every status clause is gated on `selected_statuses`, so without this a
+        friend filter with no status picked would filter nothing at all. NOT_GOING
+        is never a plan, so it is left out, as the friend agenda page did.
+        """
+        if self.friend_ids and not self.selected_statuses:
+            self.selected_statuses = [GoingStatus.GOING, GoingStatus.INTERESTED]
+        return self
 
 
 def parse_time_ranges(value: str) -> TimeRange:
@@ -107,6 +127,20 @@ def get_filters(
         Query(
             alias="friends_only",
             description="With selected_statuses, match only friends' selections, not the viewer's own",
+        ),
+    ] = False,
+    friend_ids: Annotated[
+        list[UUID] | None,
+        Query(
+            alias="friend_ids",
+            description="Only showtimes these friends are going to or interested in (as far as they let the viewer see)",
+        ),
+    ] = None,
+    only_you: Annotated[
+        bool,
+        Query(
+            alias="only_you",
+            description="With selected_statuses, match only the viewer's own selections — their agenda",
         ),
     ] = False,
     all_cinemas: Annotated[
@@ -193,6 +227,8 @@ def get_filters(
         runtime_max=runtime_max,
         selected_statuses=selected_statuses,
         friends_only=friends_only,
+        only_you=only_you,
+        friend_ids=friend_ids,
         all_cinemas=all_cinemas,
         list_ids=selected_list_ids,
         exclude_list_ids=exclude_list_ids,

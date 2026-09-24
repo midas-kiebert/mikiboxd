@@ -7,7 +7,7 @@ Every route here requires get_current_active_superuser — see the existing
 import datetime as dt
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi import status as http_status
 
 from app.api.deps import SessionDep, get_current_active_superuser
@@ -28,6 +28,7 @@ from app.schemas.admin import (
     UserReportBanUpdate,
 )
 from app.schemas.analytics_dashboard import AnalyticsOverview
+from app.schemas.publish_timing import PublishTimingResponse, PublishTimingSource
 from app.schemas.scrape_monitor import (
     ScrapeMonitorResponse,
     ScrapeRecapDetail,
@@ -41,6 +42,7 @@ from app.schemas.showtime_report import ShowtimeReportAdminView, ShowtimeReportU
 from app.schemas.tmdb_ambiguity import TmdbAmbiguityReviewUpdate, TmdbAmbiguityView
 from app.schemas.user_report import UserReportAdminView, UserReportUpdate
 from app.services import analytics_dashboard as analytics_dashboard_service
+from app.services import publish_timing as publish_timing_service
 from app.services import scrape_monitor as scrape_monitor_service
 from app.services import seat_availability as seat_availability_service
 from app.services import tmdb_ambiguities as tmdb_ambiguities_service
@@ -361,6 +363,20 @@ def get_scrape_recap_attachment(
 
 
 # --- TMDB ambiguities -----------------------------------------------------
+
+
+@router.get("/scrape/publish-timing", response_model=PublishTimingResponse)
+def get_publish_timing(
+    *,
+    session: SessionDep,
+    source: PublishTimingSource = PublishTimingSource.CINEVILLE,
+    days: int = Query(default=56, ge=1, le=365),
+    cinema_id: int | None = None,
+) -> PublishTimingResponse:
+    """When cinemas publish new screenings, per weekday/hour, and how late we saw them."""
+    return publish_timing_service.get_publish_timing(
+        session=session, source=source, days=days, cinema_id=cinema_id
+    )
 
 
 @router.get("/tmdb-ambiguities", response_model=list[TmdbAmbiguityView])

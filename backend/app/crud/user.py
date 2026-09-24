@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from logging import getLogger
@@ -7,7 +8,7 @@ from uuid import UUID
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql.elements import ColumnElement
-from sqlmodel import Session, Time, case, cast, col, delete, or_, select
+from sqlmodel import Session, Time, cast, col, delete, or_, select
 
 from app.core.enums import (
     GoingStatus,
@@ -957,44 +958,39 @@ def get_showtime_going_status(
     return selection.going_status if selection else GoingStatus.NOT_GOING
 
 
-def is_user_going_to_movie(
+def get_going_status_for_movies(
     *,
     session: Session,
-    movie_id: int,
+    movie_ids: Sequence[int],
     user_id: UUID,
     snapshot_time: datetime,
-) -> GoingStatus:
-    """
-    Check if a user is going to a movie by checking their future showtime selections.
-
-    Parameters:
-        session (Session): The database session.
-        movie_id (int): The ID of the movie to check.
-        user_id (UUID): The ID of the user to check.
-        snapshot_time (datetime): The time to consider for the showtime selections.
-    """
+) -> dict[int, GoingStatus]:
+    """The viewer's best status (GOING beats INTERESTED beats NOT_GOING) among
+    their own future selections of each movie's showtimes, for a whole page of
+    cards in one query."""
+    if len(movie_ids) == 0:
+        return {}
     stmt = (
-        select(ShowtimeSelection)
+        select(col(Showtime.movie_id), col(ShowtimeSelection.going_status))
+        .select_from(ShowtimeSelection)
         .join(Showtime, col(ShowtimeSelection.showtime_id) == col(Showtime.id))
         .where(
             col(ShowtimeSelection.user_id) == user_id,
-            col(Showtime.movie_id) == movie_id,
+            col(Showtime.movie_id).in_(movie_ids),
             col(Showtime.datetime) >= snapshot_time,
         )
-        .order_by(
-            case(
-                (ShowtimeSelection.going_status == GoingStatus.GOING, 0),
-                (ShowtimeSelection.going_status == GoingStatus.INTERESTED, 1),
-            )
-        )
-        .limit(1)
     )
-    result = session.exec(stmt).one_or_none()
-
-    if result is None:
-        return GoingStatus.NOT_GOING
-
-    return result.going_status
+    priority = {
+        GoingStatus.GOING: 0,
+        GoingStatus.INTERESTED: 1,
+        GoingStatus.NOT_GOING: 2,
+    }
+    best_by_movie_id: dict[int, GoingStatus] = {}
+    for movie_id, going_status in session.execute(stmt).all():
+        current = best_by_movie_id.get(movie_id)
+        if current is None or priority[going_status] < priority[current]:
+            best_by_movie_id[movie_id] = going_status
+    return best_by_movie_id
 
 
 def get_selected_cinemas_ids(

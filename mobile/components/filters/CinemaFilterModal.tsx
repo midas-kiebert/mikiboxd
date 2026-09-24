@@ -7,13 +7,16 @@
  * here, so the list is never a wall of preset cards standing between the user
  * and the cinemas.
  *
- * The footer carries two unequal jobs. Setting *your cinemas* — the selection
- * applied on startup — is something every user wants and nobody should have to
- * name, so it is one prominent tap with no dialog behind it. Saving a *named
- * preset* is a power feature most users never need, so it is a demoted text
- * button; it still opens a name dialog, but prefilled, so the field never
- * blocks the save. Applying without saving anything needs no button at all:
- * closing the sheet already commits the selection to the session.
+ * The footer's last row ends the visit. Apply is the filled button: it is what
+ * nearly every visit ends on, and nobody should set their preferred cinemas by
+ * mistake while looking for the way out (closing the sheet applies too). "Set
+ * as preferred cinemas" sits beside it, outlined. It needs no name — a
+ * selection that is one of your presets just becomes the preferred one, and
+ * anything else is saved as "My Cinemas" — but when a "My Cinemas" already
+ * exists it asks first, since saving would replace the cinemas in it (see
+ * `planSaveAsPreferred`). Saving a *named preset* is a power feature most
+ * users never need, so it is a demoted text button above; it still opens a
+ * name dialog, but prefilled, so the field never blocks the save.
  *
  * Editing a saved preset uses the same page with a different frame: a name
  * field above the list, and a footer holding nothing but Cancel and Save
@@ -49,11 +52,19 @@ import { useFetchSelectedCinemas } from "shared/hooks/useFetchSelectedCinemas";
 import { ThemedText } from "@/components/themed-text";
 import CinemaPickerList from "@/components/filters/CinemaPickerList";
 import { serializeCinemaIds, sortCinemaIds } from "@/components/filters/cinema-grouping";
+import { formatCinemaCount } from "@/utils/cinema-selection";
 import {
+  describeDemotePreferredPrompt,
+  describeReplacePreferredPrompt,
   findMyCinemasPreset,
   findNamedCinemaPresets,
   invalidateCinemaPresets,
   nextCinemaPresetName,
+  planPromotePreset,
+  planSaveAsPreferred,
+  promotePresetOverReserved,
+  saveSelectionAsPreferred,
+  suggestRenameForReservedPreset,
   useCinemaPresets,
 } from "@/components/filters/cinema-presets";
 import {
@@ -80,6 +91,12 @@ type CinemaFilterModalProps = {
    * Set by the cinema pill's dropdown, whose rows each carry a pencil.
    */
   initialEditPresetId?: string | null;
+  /**
+   * Warm the sheet at mount (see `sheet-warm-up`). Only for an owner that is
+   * going to stay mounted: gorhom orphans a sheet whose owner unmounts before
+   * its first open reports back, leaving it on screen for good.
+   */
+  warmUpOnMount?: boolean;
 };
 
 /** What the cinema pill's dropdown (and anything else opening this sheet) can ask for. */
@@ -87,7 +104,30 @@ export type OpenCinemaModalOptions = { editPresetId?: string };
 
 type CinemaModalPage = "selection" | "presets";
 
-const formatCinemaCount = (count: number) => `${count} cinema${count === 1 ? "" : "s"}`;
+/**
+ * One of the two questions about "My Cinemas", while it is being asked:
+ * "replace" — saving a new selection would overwrite it; "demote" — promoting
+ * another preset would leave it behind. See `planSaveAsPreferred`.
+ */
+type PreferredPrompt = (
+  | { kind: "replace"; cinemaIds: number[] }
+  | {
+      kind: "demote";
+      preset: CinemaPresetPublic;
+      /** Set when it came from the picker, whose selection then applies too. */
+      applyCinemaIds: number[] | null;
+    }
+) & {
+  reserved: CinemaPresetPublic;
+  /** Null until renaming is chosen; then the name being typed. */
+  renameTo: string | null;
+  error: string | null;
+};
+
+const preferredPromptError = (error: unknown) =>
+  error instanceof ApiError && error.status === 409
+    ? "You already have a preset with that name."
+    : "Could not save. Please try again.";
 
 const setsMatch = (left: Set<number>, right: Set<number>) => {
   if (left.size !== right.size) return false;
@@ -101,6 +141,7 @@ export default function CinemaFilterModal({
   onBack,
   initialPage = "selection",
   initialEditPresetId = null,
+  warmUpOnMount = true,
 }: CinemaFilterModalProps) {
   const colors = useThemeColors();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -140,6 +181,7 @@ export default function CinemaFilterModal({
   // result on the same frame instead of after the round trip. Holds the
   // selection it was tapped for, so editing the picker afterwards re-arms it.
   const [savedMyCinemasSignature, setSavedMyCinemasSignature] = useState<string | null>(null);
+  const [preferredPrompt, setPreferredPrompt] = useState<PreferredPrompt | null>(null);
   const [presetOrderIds, setPresetOrderIds] = useState<readonly string[]>([]);
 
   const { data: cinemas } = useFetchCinemas();
@@ -221,6 +263,7 @@ export default function CinemaFilterModal({
       setIsReplacingNamedPreset(false);
       setPresetPendingDeletion(null);
       setSavedMyCinemasSignature(null);
+      setPreferredPrompt(null);
     });
     // An edit already under way owns the picker and the page; this effect
     // re-runs whenever the cinema list settles, which would otherwise wipe it.
@@ -247,21 +290,22 @@ export default function CinemaFilterModal({
     return () => { isMounted = false; };
   }, [visible]);
 
-  // "Set as my cinemas": no name, no dialog, one round trip. The endpoint
-  // creates the user's preset row the first time and overwrites it after that,
-  // so this is the same button whether or not they have one yet.
+  // "Set as preferred cinemas" for a selection that is none of your presets:
+  // the backend writes it into the "My Cinemas" row, creating it if needed.
+  // With `renameReserved`, the old "My Cinemas" is renamed out of the way first.
   const saveMyCinemasMutation = useMutation({
-    mutationFn: (cinemaIds: number[]) =>
-      MeService.setCinemaSelections({ requestBody: cinemaIds }),
-    onSuccess: (_data, cinemaIds) => {
+    mutationFn: saveSelectionAsPreferred,
+    onSuccess: (_data, { cinemaIds }) => {
       // Applied straight away rather than at close: the user just declared
       // these their cinemas, and the feed behind the sheet should agree.
       setSessionCinemaIds(cinemaIds);
       invalidateCinemaPresets(queryClient);
       retireCinemaPresetTip();
     },
-    onError: () => {
+    onError: (_error, { renameReserved }) => {
       setSavedMyCinemasSignature(null);
+      // A failed rename is answered inside the prompt, which stays open.
+      if (renameReserved) return;
       Alert.alert("Could not save", "Your cinemas were not saved. Please try again.");
     },
   });
@@ -340,13 +384,20 @@ export default function CinemaFilterModal({
     },
   });
 
-  // Copies a preset's cinemas into the user's own row rather than handing the
-  // role over to it — see the backend's `apply_cinema_preset_as_favorite`.
+  // Hands the preferred role to that preset, under its own name; the old
+  // preferred row keeps its cinemas — see `apply_cinema_preset_as_favorite`.
   const useAsMyCinemasMutation = useMutation({
     mutationFn: (presetId: string) => MeService.setFavoriteCinemaPreset({ presetId }),
     onSuccess: () => {
       invalidateCinemaPresets(queryClient);
     },
+    onError: () => setSavedMyCinemasSignature(null),
+  });
+
+  // Promotes a preset over a preferred "My Cinemas" and deletes or keeps it.
+  const promoteOverReservedMutation = useMutation({
+    mutationFn: promotePresetOverReserved,
+    onSuccess: () => invalidateCinemaPresets(queryClient),
   });
 
   // The user's own cinemas are pinned above the list and never reordered, so
@@ -410,6 +461,10 @@ export default function CinemaFilterModal({
     });
   }, []);
 
+  const handleOnlyCinema = useCallback((cinemaId: number) => {
+    setLocalSelectedCinemaSet(new Set([cinemaId]));
+  }, []);
+
   const handleSelectCinemas = useCallback((cinemaIds: readonly number[]) => {
     setLocalSelectedCinemaSet((current) => {
       const next = new Set(current);
@@ -457,10 +512,39 @@ export default function CinemaFilterModal({
     deletePresetMutation.mutate(presetPendingDeletion.id);
   }, [deletePresetMutation, presetPendingDeletion]);
 
+  /**
+   * Make a saved preset the preferred one. Asks first when "My Cinemas" is
+   * preferred now, since it would otherwise be left behind as a stray preset.
+   * `applyCinemaIds`: from the picker, whose selection applies to the feed too.
+   */
+  const requestPromotePreset = useCallback((
+    preset: CinemaPresetPublic,
+    applyCinemaIds: number[] | null,
+  ) => {
+    const plan = planPromotePreset(presets, preset);
+    if (plan.kind === "confirm-demote") {
+      setPreferredPrompt({
+        kind: "demote",
+        preset,
+        applyCinemaIds,
+        reserved: plan.reserved,
+        renameTo: null,
+        error: null,
+      });
+      return;
+    }
+    if (applyCinemaIds) {
+      // Recorded before the request so the button reports "saved" this frame.
+      setSavedMyCinemasSignature(serializeCinemaIds(applyCinemaIds));
+      setSessionCinemaIds(applyCinemaIds);
+    }
+    useAsMyCinemasMutation.mutate(preset.id);
+  }, [presets, setSessionCinemaIds, useAsMyCinemasMutation]);
+
   const handleUseAsMyCinemas = useCallback((preset: CinemaPresetPublic) => {
     triggerSelectionHaptic();
-    useAsMyCinemasMutation.mutate(preset.id);
-  }, [useAsMyCinemasMutation]);
+    requestPromotePreset(preset, null);
+  }, [requestPromotePreset]);
 
   const handleStartEditPreset = useCallback((preset: CinemaPresetPublic) => {
     // "All cinemas" is the built-in fallback, not a saved row — nothing here
@@ -534,15 +618,110 @@ export default function CinemaFilterModal({
   const handleSaveMyCinemas = useCallback(() => {
     if (!canSaveMyCinemas) return;
     triggerSelectionHaptic();
+    const cinemaIds = sortCinemaIds(localSelectedCinemaSet);
+    const plan = planSaveAsPreferred(presets, cinemaIds);
+    if (plan.kind === "promote" || plan.kind === "confirm-demote") {
+      // Already one of your presets: it becomes the preferred one under its
+      // own name, rather than a copy of it landing in "My Cinemas".
+      requestPromotePreset(plan.preset, cinemaIds);
+      return;
+    }
+    if (plan.kind === "confirm-replace") {
+      setPreferredPrompt({ kind: "replace", cinemaIds, reserved: plan.reserved, renameTo: null, error: null });
+      return;
+    }
     // Recorded before the request so the button reports "saved" this frame.
     setSavedMyCinemasSignature(currentSelectionSignature);
-    saveMyCinemasMutation.mutate(sortCinemaIds(localSelectedCinemaSet));
+    saveMyCinemasMutation.mutate({ cinemaIds });
   }, [
     canSaveMyCinemas,
     currentSelectionSignature,
     localSelectedCinemaSet,
+    presets,
+    requestPromotePreset,
     saveMyCinemasMutation,
   ]);
+
+  const isPreferredPromptSaving = saveMyCinemasMutation.isPending || promoteOverReservedMutation.isPending;
+
+  const handleClosePreferredPrompt = useCallback(() => {
+    if (isPreferredPromptSaving) return;
+    setPreferredPrompt(null);
+  }, [isPreferredPromptSaving]);
+
+  /** After a demote lands: the picker's selection, if it came from there, applies too. */
+  const finishDemote = useCallback((prompt: Extract<PreferredPrompt, { kind: "demote" }>) => {
+    if (prompt.applyCinemaIds) {
+      setSavedMyCinemasSignature(serializeCinemaIds(prompt.applyCinemaIds));
+      setSessionCinemaIds(prompt.applyCinemaIds);
+    }
+    setPreferredPrompt(null);
+  }, [setSessionCinemaIds]);
+
+  const failPreferredPrompt = useCallback((error: unknown) => {
+    const message = preferredPromptError(error);
+    setPreferredPrompt((current) => (current ? { ...current, error: message } : current));
+  }, []);
+
+  /** Replace: overwrite "My Cinemas" with the selection. Demote: delete it. */
+  const handleDiscardReserved = useCallback(() => {
+    if (!preferredPrompt) return;
+    triggerImpactHaptic();
+    if (preferredPrompt.kind === "replace") {
+      setSavedMyCinemasSignature(serializeCinemaIds(preferredPrompt.cinemaIds));
+      saveMyCinemasMutation.mutate({ cinemaIds: preferredPrompt.cinemaIds });
+      setPreferredPrompt(null);
+      return;
+    }
+    const prompt = preferredPrompt;
+    promoteOverReservedMutation
+      .mutateAsync({
+        presetId: prompt.preset.id,
+        reserved: { presetId: prompt.reserved.id, action: "delete" },
+      })
+      .then(() => finishDemote(prompt))
+      .catch(failPreferredPrompt);
+  }, [preferredPrompt, saveMyCinemasMutation, promoteOverReservedMutation, finishDemote, failPreferredPrompt]);
+
+  const handleStartRenameReserved = useCallback(() => {
+    triggerSelectionHaptic();
+    setPreferredPrompt((current) =>
+      current ? { ...current, renameTo: suggestRenameForReservedPreset(presets), error: null } : current,
+    );
+  }, [presets]);
+
+  /** Keep the old "My Cinemas" as a preset under the typed name, then go ahead. */
+  const handleKeepReserved = useCallback(() => {
+    if (!preferredPrompt || preferredPrompt.renameTo === null) return;
+    const name = preferredPrompt.renameTo.trim();
+    if (!name) return;
+    const isSameName = name === preferredPrompt.reserved.name;
+    if (preferredPrompt.kind === "replace") {
+      // Replacing needs the name free for the new selection.
+      if (isSameName) {
+        setPreferredPrompt({ ...preferredPrompt, error: "Pick a different name for the old set." });
+        return;
+      }
+      triggerImpactHaptic();
+      saveMyCinemasMutation
+        .mutateAsync({
+          cinemaIds: preferredPrompt.cinemaIds,
+          renameReserved: { presetId: preferredPrompt.reserved.id, name },
+        })
+        .then(() => setPreferredPrompt(null))
+        .catch(failPreferredPrompt);
+      return;
+    }
+    triggerImpactHaptic();
+    const prompt = preferredPrompt;
+    promoteOverReservedMutation
+      .mutateAsync({
+        presetId: prompt.preset.id,
+        reserved: { presetId: prompt.reserved.id, action: "keep", name: isSameName ? null : name },
+      })
+      .then(() => finishDemote(prompt))
+      .catch(failPreferredPrompt);
+  }, [preferredPrompt, saveMyCinemasMutation, promoteOverReservedMutation, finishDemote, failPreferredPrompt]);
 
   const handleSavePreset = useCallback(() => {
     const trimmed = presetName.trim();
@@ -595,7 +774,7 @@ export default function CinemaFilterModal({
         // warming instead registers its portal after the Filters sheet's, once,
         // and every open after that is a single frame. It must therefore stay
         // *after* FiltersModal in FiltersModalProvider's JSX.
-        warmUpOnMount
+        warmUpOnMount={warmUpOnMount}
         // ~80 cinema chips are several hundred native views, so this sheet is
         // the reason AppBottomSheet defers content at all: it holds the chips
         // back until the sheet is up, and this keeps the panel there past that
@@ -623,7 +802,7 @@ export default function CinemaFilterModal({
                       falls back to. */}
                   <ThemedText style={styles.manageSectionTitle}>Your preferred cinemas</ThemedText>
                   <ThemedText style={styles.hintText}>
-                    Selected by default every time you open the app.
+                    The cinemas your feed starts with.
                   </ThemedText>
                   <View style={styles.manageCard}>
                     {myCinemasPreset ? (
@@ -826,11 +1005,15 @@ export default function CinemaFilterModal({
                     ) : null}
                   </View>
                 </View>
+                <ThemedText style={styles.pickerHint}>
+                  Long-press a cinema to select only that one.
+                </ThemedText>
 
                 <CinemaPickerList
                   cinemas={cinemaList}
                   selectedIds={localSelectedCinemaSet}
                   onToggleCinema={handleToggle}
+                  onOnlyCinema={handleOnlyCinema}
                   onSelectCinemas={handleSelectCinemas}
                   onDeselectCinemas={handleDeselectCinemas}
                 />
@@ -924,14 +1107,13 @@ export default function CinemaFilterModal({
                   </TouchableOpacity>
                 </View>
                 <View style={styles.footerPrimaryRow}>
-                  {/* The one action nearly every user wants, and the only one
-                      that needs no name: it writes the selection applied on
-                      startup, creating it the first time. */}
+                  {/* Writes the selection applied on startup. Outlined, never
+                      filled: Apply beside it is the button to reach for. */}
                   <TouchableOpacity
                     style={[
                       styles.footerButton,
                       canSaveMyCinemas
-                        ? styles.footerButtonHighlighted
+                        ? styles.footerButtonOutlined
                         : styles.footerButtonDisabled,
                     ]}
                     onPress={handleSaveMyCinemas}
@@ -950,12 +1132,16 @@ export default function CinemaFilterModal({
                         canSaveMyCinemas && styles.footerButtonTextHighlighted,
                       ]}
                       numberOfLines={1}
+                      // The narrowest phones: a point smaller beats an ellipsis.
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.85}
                     >
                       {isCurrentSelectionMyCinemas ? "These are your preferred cinemas" : "Set as preferred cinemas"}
                     </ThemedText>
                   </TouchableOpacity>
                   {/* Applies the picker's current selection to this session
-                      without touching the preferred-cinemas row above. */}
+                      without touching the preferred cinemas. The filled one,
+                      and closest to the thumb. */}
                   <TouchableOpacity
                     style={styles.applyButton}
                     onPress={handleApplySelection}
@@ -1059,6 +1245,38 @@ export default function CinemaFilterModal({
 
       <Modal
         transparent
+        visible={preferredPrompt !== null}
+        animationType="fade"
+        onRequestClose={handleClosePreferredPrompt}
+      >
+        <View style={styles.dialogBackdrop}>
+          <TouchableOpacity
+            style={styles.dialogBackdropPressable}
+            activeOpacity={1}
+            onPress={handleClosePreferredPrompt}
+          />
+          {preferredPrompt !== null ? (
+            <PreferredPromptCard
+              prompt={preferredPrompt}
+              isSaving={isPreferredPromptSaving}
+              styles={styles}
+              placeholderColor={colors.textSecondary}
+              onCancel={handleClosePreferredPrompt}
+              onDiscard={handleDiscardReserved}
+              onStartRename={handleStartRenameReserved}
+              onRenameChange={(value) =>
+                setPreferredPrompt((current) =>
+                  current ? { ...current, renameTo: value, error: null } : current,
+                )
+              }
+              onKeep={handleKeepReserved}
+            />
+          ) : null}
+        </View>
+      </Modal>
+
+      <Modal
+        transparent
         visible={presetPendingDeletion !== null}
         animationType="fade"
         onRequestClose={handleCancelDelete}
@@ -1111,6 +1329,143 @@ export default function CinemaFilterModal({
   );
 }
 
+/** The labels each "My Cinemas" question needs, in one shape. */
+const describePreferredPrompt = (prompt: PreferredPrompt) => {
+  if (prompt.kind === "replace") {
+    const copy = describeReplacePreferredPrompt(prompt.reserved);
+    return {
+      title: copy.title,
+      body: copy.body,
+      discardLabel: copy.replaceLabel,
+      isDiscardDestructive: false,
+      keepLabel: copy.renameLabel,
+      keepConfirmLabel: copy.renameConfirmLabel,
+      renamePlaceholder: copy.renamePlaceholder,
+    };
+  }
+  const copy = describeDemotePreferredPrompt(prompt.reserved, prompt.preset);
+  return {
+    title: copy.title,
+    body: copy.body,
+    discardLabel: copy.deleteLabel,
+    isDiscardDestructive: true,
+    keepLabel: copy.keepLabel,
+    keepConfirmLabel: copy.keepConfirmLabel,
+    renamePlaceholder: copy.renamePlaceholder,
+  };
+};
+
+/**
+ * The "My Cinemas" question card. Replace: overwrite it, or rename it and
+ * save. Demote: delete it, or keep it as a preset under a name of your choice.
+ */
+function PreferredPromptCard({
+  prompt,
+  isSaving,
+  styles,
+  placeholderColor,
+  onCancel,
+  onDiscard,
+  onStartRename,
+  onRenameChange,
+  onKeep,
+}: {
+  prompt: PreferredPrompt;
+  isSaving: boolean;
+  styles: ReturnType<typeof createStyles>;
+  placeholderColor: string;
+  onCancel: () => void;
+  onDiscard: () => void;
+  onStartRename: () => void;
+  onRenameChange: (value: string) => void;
+  onKeep: () => void;
+}) {
+  const copy = describePreferredPrompt(prompt);
+  const isRenaming = prompt.renameTo !== null;
+  const canKeep = !isSaving && Boolean(prompt.renameTo?.trim());
+  return (
+    <View style={styles.dialogCard}>
+      <View style={styles.dialogHeader}>
+        <ThemedText style={styles.dialogTitle}>{copy.title}</ThemedText>
+        <ThemedText style={styles.dialogSubtitle}>{copy.body}</ThemedText>
+      </View>
+      {isRenaming ? (
+        // Uncontrolled like the save dialog's field; mounted only once
+        // renaming is chosen, so it opens on the suggested name.
+        <TextInput
+          defaultValue={prompt.renameTo ?? ""}
+          onChangeText={onRenameChange}
+          placeholder={copy.renamePlaceholder}
+          placeholderTextColor={placeholderColor}
+          style={styles.dialogInput}
+          maxLength={80}
+          autoCapitalize="words"
+          autoCorrect={false}
+          selectTextOnFocus
+          autoFocus
+        />
+      ) : null}
+      {prompt.error ? <ThemedText style={styles.presetErrorText}>{prompt.error}</ThemedText> : null}
+      <View style={styles.dialogActions}>
+        <TouchableOpacity
+          style={[styles.dialogButton, styles.dialogButtonSecondary]}
+          onPress={onCancel}
+          activeOpacity={0.8}
+          disabled={isSaving}
+        >
+          <ThemedText style={[styles.dialogButtonText, styles.dialogButtonTextSecondary]}>
+            Cancel
+          </ThemedText>
+        </TouchableOpacity>
+        {isRenaming ? (
+          <TouchableOpacity
+            style={[styles.dialogButton, styles.dialogButtonPrimary, !canKeep && styles.dialogButtonDisabled]}
+            onPress={onKeep}
+            activeOpacity={0.8}
+            disabled={!canKeep}
+          >
+            <ThemedText style={[styles.dialogButtonText, styles.dialogButtonTextPrimary]}>
+              {isSaving ? "Saving..." : copy.keepConfirmLabel}
+            </ThemedText>
+          </TouchableOpacity>
+        ) : (
+          <>
+            <TouchableOpacity
+              style={[styles.dialogButton, styles.dialogButtonSecondary, isSaving && styles.dialogButtonDisabled]}
+              onPress={onStartRename}
+              activeOpacity={0.8}
+              disabled={isSaving}
+            >
+              <ThemedText style={[styles.dialogButtonText, styles.dialogButtonTextSecondary]}>
+                {copy.keepLabel}
+              </ThemedText>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.dialogButton,
+                copy.isDiscardDestructive ? styles.dialogButtonDestructive : styles.dialogButtonPrimary,
+                isSaving && styles.dialogButtonDisabled,
+              ]}
+              onPress={onDiscard}
+              activeOpacity={0.8}
+              disabled={isSaving}
+            >
+              <ThemedText
+                style={[
+                  styles.dialogButtonText,
+                  copy.isDiscardDestructive ? styles.dialogButtonTextDestructive : styles.dialogButtonTextPrimary,
+                ]}
+              >
+                {isSaving && copy.isDiscardDestructive ? "Deleting..." : copy.discardLabel}
+              </ThemedText>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+    </View>
+  );
+}
+
 const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =>
   StyleSheet.create({
     // The scroll box owns the full width between the header and the pinned
@@ -1145,8 +1500,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       alignItems: "center",
       justifyContent: "space-between",
       gap: 12,
-      marginBottom: 10,
+      marginBottom: 4,
     },
+    pickerHint: { fontSize: 11, color: colors.textSecondary, marginBottom: 10 },
     pickerHeaderActions: { flexDirection: "row", alignItems: "center", gap: 14 },
     selectionCount: { fontSize: 13, fontWeight: "600", color: colors.textSecondary },
     headerAction: { fontSize: 13, fontWeight: "700", color: colors.tint },
@@ -1159,11 +1515,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       borderTopColor: colors.divider,
       backgroundColor: colors.nestedModalBackground,
     },
-    // Preferred-cinemas button shares its row with the smaller Apply button,
-    // so it takes the leftover width instead of the full row. `center`, not
-    // `stretch`: Apply sets its own (shorter) vertical padding, and stretch
-    // would pull it up to the taller preferred button's height regardless.
-    footerPrimaryRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    // Preferred-cinemas button and Apply split the row; `stretch` keeps the
+    // two the same height whatever their contents.
+    footerPrimaryRow: { flexDirection: "row", alignItems: "stretch", gap: 8 },
     footerButton: {
       flexDirection: "row",
       alignItems: "center",
@@ -1177,20 +1531,21 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       backgroundColor: colors.cardBackground,
       flex: 1,
     },
-    // Applies the current selection to this session only — no account write,
-    // so it stays the tint-filled "go" action next to the quieter preferred
-    // button, but narrow since it names a much smaller commitment.
+    // Applies the current selection to this session only — no account write.
+    // The tint-filled "go" action, so it stays the obvious way out and nobody
+    // saves preferred cinemas by mistake — but only as wide as its one word,
+    // leaving the preferred button beside it room for its whole label.
     applyButton: {
       alignItems: "center",
       justifyContent: "center",
-      paddingHorizontal: 28,
-      paddingVertical: 9,
+      paddingHorizontal: 22,
+      paddingVertical: 11,
       borderRadius: 12,
       borderWidth: 1.5,
       borderColor: colors.tint,
       backgroundColor: colors.tint,
     },
-    applyButtonText: { fontSize: 13, fontWeight: "700", color: colors.pillActiveText },
+    applyButtonText: { fontSize: 14, fontWeight: "700", color: colors.pillActiveText },
     // The commit half of the editing footer: same filled treatment as Apply,
     // but it takes the wider share of the row since it is the reason the page
     // is open at all.
@@ -1213,10 +1568,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     // own border tone rather than the fill: a soft tint on the footer's
     // background has almost no edge of its own, which left the one primary
     // action in the modal reading as a flat patch of colour.
-    footerButtonHighlighted: {
-      backgroundColor: colors.green.primary,
-      borderColor: colors.green.border,
-    },
+    // The preferred-cinemas button when it has something to save: green ink
+    // and border, no fill, so it never outweighs Apply beside it.
+    footerButtonOutlined: { borderColor: colors.green.border, backgroundColor: "transparent" },
     footerButtonDisabled: { opacity: 0.5 },
     // Unlike `footerPrimaryRow` below it, these two are deliberately equal
     // weight: both stay plain text (no outline or fill) so neither reads as

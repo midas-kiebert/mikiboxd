@@ -51,6 +51,22 @@ def get_friend_invite_preview(
     return HTMLResponse(content=body)
 
 
+@router.get("/invite-context/{user_id}", include_in_schema=False)
+def get_friend_invite_context(
+    *, session: SessionDep, user_id: uuid.UUID
+) -> dict[str, str | None]:
+    """Unauthenticated: the inviter's name for the web install prompt.
+
+    Exposes nothing the invite link's share preview does not already show.
+    """
+    user = session.get(User, user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+    return {"display_name": user.display_name}
+
+
 @router.post("/request/{receiver_id}")
 def send_friend_request(
     *, session: SessionDep, current_user: CurrentUser, receiver_id: uuid.UUID

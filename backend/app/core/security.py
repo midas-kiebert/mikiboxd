@@ -212,6 +212,36 @@ def verify_watchlist_digest_unsubscribe_token(token: str) -> str | None:
     return str(sub) if sub is not None else None
 
 
+def generate_notification_unsubscribe_token(*, user_id: str, preference: str) -> str:
+    """Generate a JWT for the "unsubscribe" link in a notification email.
+
+    Scoped to one user and one preference (`notify_on_*` field name), so the
+    link turns off exactly the kind of email it arrived in and nothing else.
+    No expiry, like the digest's: the link must keep working however long the
+    email sits unread.
+    """
+    return jwt.encode(
+        {"sub": user_id, "pref": preference, "type": "notification_unsubscribe"},
+        settings.SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+
+
+def verify_notification_unsubscribe_token(token: str) -> tuple[str, str] | None:
+    """Decode an unsubscribe token into (user id, preference field name)."""
+    try:
+        decoded = jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
+    except jwt.exceptions.InvalidTokenError:
+        return None
+    if decoded.get("type") != "notification_unsubscribe":
+        return None
+    sub = decoded.get("sub")
+    preference = decoded.get("pref")
+    if not isinstance(sub, str) or not isinstance(preference, str):
+        return None
+    return sub, preference
+
+
 # -----------------------------------------------------------------------------
 # Social sign-in (Sign in with Apple / Google) token verification
 # -----------------------------------------------------------------------------
@@ -234,6 +264,16 @@ class InvalidSocialToken(Exception):
 class SocialClaims:
     sub: str
     email: str
+    # The client the token was issued to. For Apple this says whether the
+    # sign-in came from the app or the website, which decides the client ID
+    # its authorization code has to be exchanged with.
+    audience: str | None = None
+
+
+# Provider tokens are checked against this server's clock, which can trail the
+# provider's by a few seconds: a token issued "now" is then rejected as issued
+# in the future (`iat`), failing a sign-in that just succeeded at Google.
+_SOCIAL_TOKEN_LEEWAY_SECONDS = 60
 
 
 @lru_cache(maxsize=2)
@@ -251,6 +291,7 @@ def _decode_social_token(
             signing_key.key,
             algorithms=["RS256"],
             audience=audience,
+            leeway=_SOCIAL_TOKEN_LEEWAY_SECONDS,
         )
     except jwt.exceptions.PyJWTError as e:
         raise InvalidSocialToken(str(e)) from e
@@ -267,17 +308,20 @@ def _claims_from_payload(payload: dict[str, Any]) -> SocialClaims:
     sub = payload.get("sub")
     if not sub:
         raise InvalidSocialToken("Token is missing a subject claim")
-    return SocialClaims(sub=str(sub), email=str(email))
+    aud = payload.get("aud")
+    return SocialClaims(
+        sub=str(sub), email=str(email), audience=str(aud) if aud else None
+    )
 
 
 def verify_apple_identity_token(token: str) -> SocialClaims:
     """Verify a Sign in with Apple identity token and return its claims.
 
     Raises InvalidSocialToken if the token is invalid, expired, or its
-    audience doesn't match this app's bundle ID.
+    audience is neither the app's bundle ID nor the website's Services ID.
     """
     payload = _decode_social_token(
-        token, jwks_url=_APPLE_JWKS_URL, audience=settings.APPLE_CLIENT_ID
+        token, jwks_url=_APPLE_JWKS_URL, audience=settings.apple_client_ids
     )
     if payload.get("iss") != _APPLE_ISSUER:
         raise InvalidSocialToken("Unexpected issuer for Apple identity token")

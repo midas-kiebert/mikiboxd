@@ -60,6 +60,12 @@ type FeatureTipModalProps = {
   onAction?: () => void;
   isActionDisabled?: boolean;
   isActionBusy?: boolean;
+  /**
+   * A second, quieter answer under the main button — for a tip offering two
+   * real choices (push or email). Counts as interacting, like the action.
+   */
+  secondaryActionLabel?: string;
+  onSecondaryAction?: () => void;
   /** True when the action finishes the tip, so pressing it also closes. */
   closeOnAction?: boolean;
   /**
@@ -85,6 +91,8 @@ export default function FeatureTipModal({
   onAction,
   isActionDisabled = false,
   isActionBusy = false,
+  secondaryActionLabel,
+  onSecondaryAction,
   closeOnAction = false,
   hideDismissForever = false,
   onDismiss,
@@ -154,6 +162,13 @@ export default function FeatureTipModal({
     triggerSelectionHaptic();
     onAction?.();
   }, [close, closeOnAction, onAction, tipId]);
+
+  const handleSecondaryAction = useCallback(() => {
+    didInteract.current = true;
+    trackTipReaction(tipId, "interacted");
+    triggerSelectionHaptic();
+    onSecondaryAction?.();
+  }, [onSecondaryAction, tipId]);
 
   const handleToggleHelp = useCallback(() => {
     triggerSelectionHaptic();
@@ -241,6 +256,17 @@ export default function FeatureTipModal({
                   <ThemedText style={styles.actionText}>{actionLabel}</ThemedText>
                 )}
               </TouchableOpacity>
+              {secondaryActionLabel && onSecondaryAction ? (
+                <TouchableOpacity
+                  style={[styles.secondaryButton, isActionBusy && styles.actionButtonDisabled]}
+                  onPress={handleSecondaryAction}
+                  disabled={isActionBusy}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                >
+                  <ThemedText style={styles.secondaryText}>{secondaryActionLabel}</ThemedText>
+                </TouchableOpacity>
+              ) : null}
             </ScrollView>
 
             {/* Deliberately quiet: always reachable, but never competing with
@@ -387,6 +413,20 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     actionButtonDisabled: {
       opacity: 0.5,
+    },
+    secondaryButton: {
+      minHeight: 46,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.cardBorder,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: colors.pillBackground,
+    },
+    secondaryText: {
+      fontSize: 15,
+      fontWeight: "700",
+      color: colors.text,
     },
     actionText: {
       fontSize: 16,

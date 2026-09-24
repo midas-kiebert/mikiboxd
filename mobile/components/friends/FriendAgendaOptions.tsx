@@ -134,7 +134,7 @@ export default function FriendAgendaOptions({
         visible={isRemoveDialogVisible}
         icon="person-remove-alt-1"
         title={`Remove ${friendName}?`}
-        message="You will no longer see each other's showtimes, and neither of you can send invites until you are friends again."
+        message="You will no longer see each other's screenings, and neither of you can send invites until you are friends again."
         confirmLabel="Remove"
         cancelLabel="Cancel"
         onConfirm={handleConfirmRemove}

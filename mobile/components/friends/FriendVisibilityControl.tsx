@@ -54,14 +54,14 @@ const OPTIONS: readonly VisibilityOption[] = [
     label: "Always",
     icon: "visibility",
     tone: "green",
-    hint: "on every showtime you pick",
+    hint: "on every screening you pick",
   },
   {
     sharesStatus: false,
     label: "Only when invited",
     icon: "lock-outline",
     tone: "orange",
-    hint: "only on showtimes you invite them to",
+    hint: "only on screenings you invite them to",
   },
 ];
 
@@ -114,14 +114,14 @@ export default function FriendVisibilityControl({
       <View style={styles.labelRow}>
         <View style={styles.labelText}>
           <MaterialIcons name={selectedOption.icon} size={13} color={selectedTone.secondary} />
-          <ThemedText style={styles.label}>Can see your showtimes:</ThemedText>
+          <ThemedText style={styles.label}>Can see your screenings:</ThemedText>
         </View>
         {trailingAccessory}
       </View>
       <View
         style={[styles.track, disabled && styles.trackDisabled]}
         accessibilityRole="radiogroup"
-        accessibilityLabel="Who can see your showtimes"
+        accessibilityLabel="Who can see your screenings"
       >
         {/* The thumb travels against this inner row, which carries none of the
             track's padding, so a segment's measured x is the thumb's x. */}

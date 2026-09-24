@@ -1,0 +1,716 @@
+/*
+ * The Activity page (`ActivityPage.tsx`, `ActivityRow.tsx`, `ActivitySummary.tsx`).
+ *
+ * Plain classes over Chakra's own theme variables, like the card pieces in
+ * `Showtimes/cards/card-parts.css` whose tags, posters and faces the rows
+ * reuse. Every arrangement below is decided by the *list's* width, not the
+ * window's: `.ac-days` is a size container, so a row folds the same way
+ * whether the room went to the docked panel or was never there.
+ */
+
+/* ---- Header -------------------------------------------------------------- */
+
+.ac-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px 24px;
+  margin-bottom: 28px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--chakra-colors-border);
+}
+
+.ac-head__titles {
+  min-width: 0;
+}
+
+.ac-head__title {
+  margin: 0;
+  color: var(--chakra-colors-fg);
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.ac-head__description {
+  margin: 6px 0 0;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+/* All / You / Friends: one setting, drawn as a segmented control. */
+.ac-modes {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--chakra-colors-border);
+  border-radius: 12px;
+  background: var(--chakra-colors-bg-subtle);
+}
+
+.ac-modes__option {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--chakra-colors-fg-muted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.ac-modes__option:hover {
+  color: var(--chakra-colors-fg);
+}
+
+.ac-modes__option[aria-selected="true"] {
+  background: var(--chakra-colors-app-green\.primary);
+  color: var(--chakra-colors-app-green\.secondary);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+}
+
+.ac-modes__option:focus-visible {
+  outline: 2px solid var(--chakra-colors-app-tint);
+  outline-offset: 1px;
+}
+
+.ac-modes__icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* Nudged down to meet the icon: see `components/ui/icon-label.tsx`. */
+.ac-modes__label {
+  position: relative;
+  top: 1px;
+}
+
+/* ---- Days ---------------------------------------------------------------- */
+
+.ac-days {
+  container: ac / inline-size;
+}
+
+/*
+ * A day is its date in a gutter, pinned beside its rows while they scroll —
+ * a calendar's date column — rather than a heading line over them.
+ */
+.ac-day {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 0 20px;
+  padding: 18px 0;
+}
+
+.ac-day + .ac-day {
+  border-top: 1px solid var(--chakra-colors-border);
+}
+
+.ac-day:first-child {
+  padding-top: 0;
+}
+
+.ac-day__gutter {
+  position: sticky;
+  top: 20px;
+  display: flex;
+  align-self: start;
+  flex-direction: column;
+  padding-top: 10px;
+  color: var(--chakra-colors-fg);
+}
+
+.ac-day__label {
+  color: var(--chakra-colors-fg-muted);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+/* "Today" and "Tomorrow" are the ones to notice. */
+.ac-day__label--relative {
+  color: var(--chakra-colors-app-tint);
+  font-weight: 800;
+}
+
+.ac-day__date {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin-top: 1px;
+}
+
+.ac-day__num {
+  font-size: 34px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.5px;
+  line-height: 1.05;
+}
+
+.ac-day__month {
+  color: var(--chakra-colors-fg-muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.ac-day__weekday {
+  color: var(--chakra-colors-fg-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ac-day__count {
+  margin-top: 8px;
+  color: var(--chakra-colors-fg-subtle);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* A narrow list has no room for a gutter: the date becomes a heading line. */
+@container ac (max-width: 620px) {
+  .ac-day {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ac-day__gutter {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 8px;
+    padding: 0 4px 6px;
+  }
+
+  .ac-day__label {
+    font-size: 16px;
+  }
+
+  .ac-day__date {
+    margin: 0;
+  }
+
+  .ac-day__num {
+    font-size: 16px;
+    letter-spacing: 0;
+  }
+
+  .ac-day__count {
+    margin: 0 0 0 auto;
+  }
+}
+
+/* ---- Rows ---------------------------------------------------------------- */
+
+.ac-rows {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ac-rows__item {
+  position: relative;
+}
+
+/* Dashed between rows of one day, like the site's other dividers; inset so
+   it does not run into a hovered row's rounded corner. */
+.ac-rows__item + .ac-rows__item::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 12px;
+  left: 12px;
+  border-top: 1px dashed var(--chakra-colors-border);
+}
+
+/*
+ * The row: when | poster | film | where | who, one fact per column. The
+ * columns are fractions rather than fixed widths so that every row of the
+ * page lines its columns up with the others', whatever each one holds.
+ */
+.ac-row {
+  /* The moat each friend's face is cut out of: the row's own surface. */
+  --mk-ring: var(--chakra-colors-bg);
+  position: relative;
+  display: grid;
+  grid-template-areas: "time poster film where who";
+  grid-template-columns: 92px 46px minmax(0, 1.3fr) minmax(0, 0.9fr) minmax(
+      0,
+      1.15fr
+    );
+  align-items: center;
+  gap: 6px 18px;
+  padding: 12px 14px 12px 18px;
+  border-radius: 12px;
+  color: var(--chakra-colors-fg);
+  cursor: pointer;
+  transition: background-color 120ms ease, box-shadow 160ms ease;
+}
+
+.ac-row:hover {
+  --mk-ring: var(--chakra-colors-bg-subtle);
+  background-color: var(--chakra-colors-bg-subtle);
+}
+
+/*
+ * Selected: the row lifts off the page as a card — the panel's own white
+ * surface, a hairline edge and a soft shadow — so the row and the panel it
+ * opened read as the same kind of thing. It replaced a 2px ring in the brand
+ * tint, the brightest line on the page, which read as an alarm rather than a
+ * choice. Hover stays a flat wash, so the two never look alike.
+ */
+.ac-row[aria-pressed="true"],
+.ac-row[aria-pressed="true"]:hover {
+  --mk-ring: var(--chakra-colors-bg-panel);
+  background-color: var(--chakra-colors-bg-panel);
+  box-shadow: 0 0 0 1px var(--chakra-colors-border), 0 10px 24px -12px
+    rgb(0 0 0 / 0.28), 0 2px 5px rgb(0 0 0 / 0.05);
+}
+
+/* A shadow on a dark page never reads: a light edge carries it instead. */
+.dark .ac-row[aria-pressed="true"],
+.dark .ac-row[aria-pressed="true"]:hover {
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.16), 0 10px 24px -10px
+    rgb(0 0 0 / 0.7);
+}
+
+/* The dashed dividers stop at a lifted row rather than running into its edge. */
+.ac-rows__item:has(> .ac-row[aria-pressed="true"])::before,
+.ac-rows__item:has(> .ac-row[aria-pressed="true"]) + .ac-rows__item::before {
+  opacity: 0;
+}
+
+.ac-row:focus-visible {
+  outline: 2px solid var(--chakra-colors-app-tint);
+  outline-offset: -2px;
+}
+
+/* Your own status, in colour only: a bar down the row's edge, in the status's
+   ink. The gradient wash is the panel's alone. */
+.ac-row--toned::after {
+  content: "";
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 5px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--p-secondary);
+}
+
+/* When: the time leads, as in any agenda. */
+.ac-row__time {
+  display: flex;
+  grid-area: time;
+  align-self: start;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding-top: 0;
+}
+
+/* Sized to fill the poster's height with the lines under it — the space the
+   status badge used to take — not to match anything else on the row. */
+.ac-row__clock {
+  font-size: 30px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.3px;
+  line-height: 1.1;
+}
+
+.ac-row__end,
+.ac-row__soon {
+  color: var(--chakra-colors-fg-muted);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ac-row__soon {
+  color: var(--chakra-colors-app-tint);
+  font-weight: 700;
+}
+
+.ac-row__poster {
+  grid-area: poster;
+  align-self: start;
+}
+
+.ac-row__film {
+  grid-area: film;
+  min-width: 0;
+}
+
+.ac-row__title {
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ac-row__original {
+  overflow: hidden;
+  margin-top: 1px;
+  font-size: 12px;
+  font-style: italic;
+  opacity: 0.7;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ac-row__meta {
+  overflow: hidden;
+  margin-top: 4px;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Where: the cinema, then the room, subtitles, your seat, how full it is. */
+.ac-row__where {
+  display: flex;
+  grid-area: where;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ac-row__tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  min-width: 0;
+}
+
+.ac-row__tags:empty {
+  display: none;
+}
+
+.ac-row__seat {
+  color: var(--chakra-colors-app-green\.secondary);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+/* Who: a face stack per status, one line each. */
+.ac-row__who {
+  display: flex;
+  grid-area: who;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+}
+
+.ac-row__nobody {
+  color: var(--chakra-colors-fg-subtle);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ac-people {
+  display: flex;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.ac-people__faces {
+  flex-shrink: 0;
+  /* The status ring reaches 3.5px past each face; keep it in the hover box. */
+  padding: 3px;
+  margin: -3px;
+}
+
+.ac-people__face {
+  position: relative;
+  display: inline-flex;
+}
+
+/* Medium: where and who share a line under the film. */
+@container ac (max-width: 980px) {
+  .ac-row {
+    grid-template-areas:
+      "time poster film film"
+      "time poster where who";
+    grid-template-columns: 92px 46px minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+    row-gap: 10px;
+  }
+
+  .ac-row__where {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+}
+
+/* Narrow: one column beside the time, each fact on its own line. */
+@container ac (max-width: 620px) {
+  .ac-row {
+    grid-template-areas:
+      "time poster film"
+      "time poster where"
+      "time poster who";
+    grid-template-columns: 70px 40px minmax(0, 1fr);
+    column-gap: 12px;
+    row-gap: 8px;
+    padding: 12px 10px 12px 14px;
+  }
+
+  .ac-row__clock {
+    font-size: 24px;
+  }
+
+  .ac-row__where {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
+
+/* ---- Foot and empty ------------------------------------------------------ */
+
+.ac-end {
+  margin: 12px 0 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--chakra-colors-border);
+  color: var(--chakra-colors-fg-subtle);
+  font-size: 13px;
+  text-align: center;
+}
+
+.ac-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 72px 16px;
+  text-align: center;
+}
+
+.ac-empty__title {
+  margin: 0;
+  color: var(--chakra-colors-fg);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.ac-empty__body {
+  margin: 0;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 14px;
+}
+
+.ac-empty__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.ac-empty__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 12px;
+  background: var(--chakra-colors-app-tint);
+  color: var(--chakra-colors-app-pill-active-text);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.ac-empty__action:focus-visible {
+  outline: 2px solid var(--chakra-colors-app-tint);
+  outline-offset: 2px;
+}
+
+.ac-empty__action-label {
+  position: relative;
+  top: 1px;
+}
+
+/* ---- Side column summary (`ActivitySummary`) ---------------------------- */
+
+.ac-sum {
+  overflow: hidden;
+  border: 1px solid var(--chakra-colors-border);
+  border-radius: var(--chakra-radii-md);
+  background: var(--chakra-colors-bg-panel);
+  box-shadow: var(--chakra-shadows-sm);
+}
+
+.ac-sum__section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 10px 10px;
+}
+
+.ac-sum__section + .ac-sum__section {
+  border-top: 1px solid var(--chakra-colors-border-muted);
+}
+
+.ac-sum__heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0 6px 4px;
+  color: var(--chakra-colors-fg);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.ac-sum__count {
+  padding: 1px 7px 0;
+  border-radius: 999px;
+  background: var(--chakra-colors-app-blue\.primary);
+  color: var(--chakra-colors-app-blue\.secondary);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.ac-sum__plan,
+.ac-sum__friend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.ac-sum__plan:hover,
+.ac-sum__friend:hover {
+  background: var(--chakra-colors-bg-subtle);
+}
+
+.ac-sum__plan:focus-visible,
+.ac-sum__friend:focus-visible {
+  outline: 2px solid var(--chakra-colors-app-tint);
+  outline-offset: -2px;
+}
+
+.ac-sum__plan-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ac-sum__plan-title {
+  overflow: hidden;
+  color: var(--chakra-colors-fg);
+  font-size: 14px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ac-sum__plan-when {
+  overflow: hidden;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ac-sum__friends {
+  --mk-ring: var(--chakra-colors-bg-panel);
+  display: flex;
+  flex-direction: column;
+}
+
+.ac-sum__friend:hover {
+  --mk-ring: var(--chakra-colors-bg-subtle);
+}
+
+.ac-sum__friend-name {
+  position: relative;
+  top: 1px;
+  flex: 1;
+  overflow: hidden;
+  min-width: 0;
+  color: var(--chakra-colors-fg);
+  font-size: 14px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ac-sum__friend-counts {
+  position: relative;
+  top: 1px;
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ac-sum__going {
+  color: var(--chakra-colors-app-friend-going\.secondary);
+}
+
+.ac-sum__interested {
+  color: var(--chakra-colors-app-friend-interested\.secondary);
+}
+
+.dark .ac-sum__going {
+  color: #34d399;
+}
+
+.dark .ac-sum__interested {
+  color: #fb923c;
+}
+
+.ac-sum__note {
+  margin: 0;
+  padding: 2px 6px 4px;
+  color: var(--chakra-colors-fg-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ac-sum__hint {
+  margin: 0;
+  padding: 12px 16px 14px;
+  border-top: 1px dashed var(--chakra-colors-border);
+  color: var(--chakra-colors-fg-subtle);
+  font-size: 12px;
+  line-height: 1.5;
+}

@@ -4,6 +4,7 @@ from sqlmodel import Session
 
 from app.converters import movie as movie_converters
 from app.converters import showtime as showtime_converters
+from app.converters import showtime_page as showtime_page_converters
 from app.core.viewer import ViewerId
 from app.crud import movie as movies_crud
 from app.crud import showtime as showtime_crud
@@ -42,17 +43,13 @@ def get_movie_summaries(
         offset=offset,
         filters=filters,
     )
-    movies = [
-        movie_converters.to_summary_public(
-            movie=movie,
-            session=session,
-            current_user=user_id,
-            showtime_limit=showtime_limit,
-            filters=filters,
-        )
-        for movie in movies_db
-    ]
-    return movies
+    return movie_converters.summaries_for_page(
+        movies_db,
+        session=session,
+        current_user=user_id,
+        showtime_limit=showtime_limit,
+        filters=filters,
+    )
 
 
 def count_movie_summaries(
@@ -146,12 +143,27 @@ def get_movie_showtimes(
         current_user_id=current_user,
         letterboxd_username=letterboxd_username,
     )
+    visibility_modes = showtime_converters.viewer_visibility_modes(
+        session=session, showtimes=showtimes, user_id=current_user
+    )
+    viewer_states = (
+        showtime_page_converters.in_movie_viewer_states_for_showtimes(
+            session=session,
+            showtimes=showtimes,
+            user_id=current_user,
+            visibility_modes=visibility_modes,
+        )
+        if current_user is not None
+        else {}
+    )
 
     return [
         showtime_converters.to_in_movie_public(
             showtime=showtime,
             session=session,
             user_id=current_user,
+            visibility_modes=visibility_modes,
+            viewer_states=viewer_states,
         )
         for showtime in showtimes
     ]

@@ -1,11 +1,21 @@
 """The once-per-showtime "nearly sold out" and "sold out" notices."""
 
+from datetime import timedelta
 from uuid import uuid4
 
 from pytest_mock import MockerFixture
 
-from app.core.enums import GoingStatus, NotificationChannel, SeatAlertKind
+from app.core.enums import (
+    GoingStatus,
+    NotificationChannel,
+    NotificationType,
+    SeatAlertKind,
+)
 from app.services import push_notifications
+from app.utils import now_amsterdam_naive
+
+# Far enough out that no title carries a day word ("tonight", "on Friday").
+FAR_OFF = timedelta(days=10)
 
 
 def _selection(mocker, *, user_id, going_status=GoingStatus.INTERESTED):
@@ -46,7 +56,9 @@ def test_alerting_stamps_seat_alert_sent_at_so_it_cannot_repeat(
 ) -> None:
     session = mocker.MagicMock()
     user_id = uuid4()
-    showtime = mocker.MagicMock(id=1, movie_id=2)
+    showtime = mocker.MagicMock(
+        id=1, movie_id=2, datetime=now_amsterdam_naive() + FAR_OFF
+    )
     showtime.movie.title = "In the Mood for Love"
     showtime.cinema.name = "LAB111"
     selection = _selection(mocker, user_id=user_id)
@@ -100,7 +112,9 @@ def test_opted_out_recipients_receive_nothing(
     happens once per showtime by construction (the level floor never falls)."""
     session = mocker.MagicMock()
     user_id = uuid4()
-    showtime = mocker.MagicMock(id=1, movie_id=2)
+    showtime = mocker.MagicMock(
+        id=1, movie_id=2, datetime=now_amsterdam_naive() + FAR_OFF
+    )
     showtime.movie.title = "Movie"
     showtime.cinema.name = "Cinema"
     selection = _selection(mocker, user_id=user_id)
@@ -135,7 +149,9 @@ def test_sold_out_kind_uses_its_own_preference_stamp_and_wording(
     `sold_out_alert_sent_at`, and says "sold out" rather than "nearly"."""
     session = mocker.MagicMock()
     user_id = uuid4()
-    showtime = mocker.MagicMock(id=1, movie_id=2)
+    showtime = mocker.MagicMock(
+        id=1, movie_id=2, datetime=now_amsterdam_naive() + FAR_OFF
+    )
     showtime.movie.title = "Perfect Days"
     showtime.cinema.name = "Eye"
     selection = _selection(mocker, user_id=user_id)
@@ -188,3 +204,121 @@ def test_sold_out_kind_uses_its_own_preference_stamp_and_wording(
     sent_message = send_expo.call_args.args[0][0]
     assert sent_message["title"] == "Perfect Days is sold out"
     assert sent_message["data"]["type"] == "sold_out"
+
+
+def _tickets_available_setup(mocker: MockerFixture, *, recipients):
+    showtime = mocker.MagicMock(
+        id=1, movie_id=2, datetime=now_amsterdam_naive() + FAR_OFF
+    )
+    showtime.movie.title = "Perfect Days"
+    showtime.cinema.name = "Eye"
+    selections = [_selection(mocker, user_id=r.id) for r in recipients]
+    for selection in selections:
+        selection.tickets_available_alert_sent_at = None
+    mocker.patch(
+        "app.services.push_notifications.showtime_crud.get_seat_alert_candidates",
+        return_value=[(selection, showtime) for selection in selections],
+    )
+    mocker.patch(
+        "app.services.push_notifications.user_crud.get_users_by_ids",
+        return_value=recipients,
+    )
+    mocker.patch(
+        "app.services.push_notifications.push_token_crud.get_push_tokens_for_users",
+        return_value=[
+            mocker.MagicMock(user_id=r.id, token=f"ExponentPushToken[{r.id}]")
+            for r in recipients
+        ],
+    )
+    send_expo = mocker.patch(
+        "app.services.push_notifications._send_expo_messages",
+        return_value=[{"status": "ok"} for _ in recipients],
+    )
+    mocker.patch("app.services.push_notifications._handle_expo_results")
+    mocker.patch("app.services.push_notifications._badges_for", return_value={
+        r.id: 0 for r in recipients
+    })
+    upsert = mocker.patch(
+        "app.services.push_notifications.notification_crud.upsert_notification"
+    )
+    return showtime, selections, send_expo, upsert
+
+
+def test_tickets_available_uses_its_own_preference_and_the_released_type(
+    mocker: MockerFixture,
+) -> None:
+    """Read off `notify_on_tickets_available`, filed as the same
+    notification-centre entry and push type as a watch's released seats."""
+    recipient = mocker.MagicMock(
+        id=uuid4(),
+        notify_on_seat_alert=False,
+        notify_on_sold_out=False,
+        notify_on_tickets_available=True,
+        notify_channel_tickets_available=NotificationChannel.PUSH,
+    )
+    showtime, (selection,), send_expo, upsert = _tickets_available_setup(
+        mocker, recipients=[recipient]
+    )
+
+    sent_count = push_notifications.send_seat_alerts(
+        session=mocker.MagicMock(),
+        showtime_ids=[showtime.id],
+        kind=SeatAlertKind.TICKETS_AVAILABLE,
+    )
+
+    assert sent_count == 1
+    assert selection.tickets_available_alert_sent_at is not None
+    message = send_expo.call_args.args[0][0]
+    assert message["title"].startswith("Tickets available for Perfect Days")
+    assert message["data"]["type"] == "seats_released"
+    assert upsert.call_args.kwargs["type"] is NotificationType.SEATS_RELEASED
+
+
+def test_tickets_available_respects_the_opt_out(mocker: MockerFixture) -> None:
+    recipient = mocker.MagicMock(
+        id=uuid4(),
+        notify_on_tickets_available=False,
+        notify_channel_tickets_available=NotificationChannel.PUSH,
+    )
+    showtime, (selection,), send_expo, _ = _tickets_available_setup(
+        mocker, recipients=[recipient]
+    )
+
+    sent_count = push_notifications.send_seat_alerts(
+        session=mocker.MagicMock(),
+        showtime_ids=[showtime.id],
+        kind=SeatAlertKind.TICKETS_AVAILABLE,
+    )
+
+    assert sent_count == 0
+    send_expo.assert_not_called()
+    assert selection.tickets_available_alert_sent_at is None
+
+
+def test_tickets_available_skips_whoever_the_watch_already_told(
+    mocker: MockerFixture,
+) -> None:
+    watcher = mocker.MagicMock(
+        id=uuid4(),
+        notify_on_tickets_available=True,
+        notify_channel_tickets_available=NotificationChannel.PUSH,
+    )
+    other = mocker.MagicMock(
+        id=uuid4(),
+        notify_on_tickets_available=True,
+        notify_channel_tickets_available=NotificationChannel.PUSH,
+    )
+    showtime, _, send_expo, _ = _tickets_available_setup(
+        mocker, recipients=[watcher, other]
+    )
+
+    sent_count = push_notifications.send_seat_alerts(
+        session=mocker.MagicMock(),
+        showtime_ids=[showtime.id],
+        kind=SeatAlertKind.TICKETS_AVAILABLE,
+        exclude_user_ids=[watcher.id],
+    )
+
+    assert sent_count == 1
+    (message,) = send_expo.call_args.args[0]
+    assert message["to"] == f"ExponentPushToken[{other.id}]"

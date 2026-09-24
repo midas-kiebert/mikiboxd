@@ -108,8 +108,9 @@ def test_sold_out_crossing_fires_separately_and_can_repeat() -> None:
     showtime = _showtime(seats_capacity=100)
     assert _read(showtime, 5) == SeatCrossings(nearly_sold_out=True)
     assert _read(showtime, 0) == SeatCrossings(sold_out=True)
-    # A ticket comes back: on sale again, no second "nearly sold out".
-    assert _read(showtime, 1) == NO_CROSSING
+    # A ticket comes back: on sale again, no second "nearly sold out" — but
+    # the interested are told it can be bought again.
+    assert _read(showtime, 1) == SeatCrossings(tickets_available=True)
     assert _read(showtime, 0) == SeatCrossings(sold_out=True)
 
 

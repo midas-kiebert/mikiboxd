@@ -1,0 +1,28 @@
+# signup:
+- mobile doesnt immediately show that a username is invalid while typing, web does this correctly, also not on pick a username when using social sign in
+- web showed some popup for a split second before starting the intro, this makes it look like the user missed something
+- no deselect all option per city on mobile
+- on mobile with the "Mark a screening as interested" page in the intro, the highlighted rectangle has circles cut out of the corners, this shouldnt happen. On Android the highlight doesnt match where the button is, it's too low.
+- on mobile, if while creating an account you get a friend request, the buttons take up so much horizontal space that the name and "sent you a request" gets cut off with ellipses
+- on my ios, after finishing the intro it opened up the cineville pass modal (still having the values filled in from local storage, so maybe that's why, but this shouldnt happen), on android t opened up the cinemas modal, but with nothing in the modal.
+- on android/ios the nothing lined up right now page on activity flashes when opening it.
+- still the text in the 3-way thumb selector has the wrong color
+- still some jankiness when switching between tabs on the activity page.
+- tab on log in page should skip forgot password, go straight from email to password.
+- i logged out on ios and it opened the notifications modal
+- google sign in on android: 10: DEVELOPER_ERROR: Follow troubleshooting instructons at https://react-native-google-signin.github.io/docs/troubleshooting
+- clicking reset password on web while logged in on another account doesnt work.
+- give more space on the web for longer email addresses in the top right
+- web opens 2 popups that say basically the same thing when changing your email, remove the uglier one without the nice send link again button, but the uglier one always shows up, sometimes the nice looking one doesnt show up (is the nicer one the feature tip?)
+- in the settings page in the app, move the password section up, to match with the layout on web
+- when browsing without an account, the showtime modal can be pulled up, on android this works fine, it just extends the modal, but on ios it creates some empty space below the sheet.
+- on ios, i reopened the app in guest mode, and now when filters open it at first creates a gap below the sheet, then it doesnt allow me to scroll down in the filters section, it keeps going back up, this happens intermittently
+- The connect your letterboxd section in the filters on mobile is way too big when logged out, also going to the log in / sign up screen from the filters modal doesnt close the filters modal.
+- buttons in signed out activity / friends pages on mobile are not centered correctly
+- logging in from a dialog doesnt bring you back to that, but that's fine, not expected behaviour anyway.
+- invite links open weird on web, they shouldnt go to an intermediate page, they should send you to the home page (screenings page) and have the showtime open in the panel. Also the you're invited section on the right panel shows the name of the person who invited you, it should show who's interested/going with icons like normal and then also "You were invited by [NAME]" and also show the icon of who invited you.
+- a share link to a movie page should just plainly share the movie page, without any extra filters.
+- on web I set english subtitled to the default, then opened a movie page, but it had english subtitled turned off, it should be turned on (this was opened from within the ticket wall), reloading the page then did select english subtitled correctly. even when its not the default it SHOULD take the filters i had on when going to the movie page.
+- make the confirm email look more in the style of the rest of the app (in terms of colours at least)
+- quickly switching between push and email is a little slow to react on the app and sometimes it goes back and forth, make the changes optimistic.
+- make the connect your letterboxd section a little smaller on the app, make it collapseable.

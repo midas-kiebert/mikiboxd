@@ -67,8 +67,10 @@ def _private_key() -> str:
     return key.replace("\\n", "\n").strip()
 
 
-def apple_client_secret() -> str:
+def apple_client_secret(client_id: str) -> str:
     """Mint the ES256 client-secret JWT Apple's token endpoints expect.
+
+    Signed for one client: the app's bundle ID or the website's Services ID.
 
     Raises:
         AppleAuthError: If the Apple credentials are not configured, or the
@@ -82,7 +84,7 @@ def apple_client_secret() -> str:
         "iat": issued_at,
         "exp": issued_at + int(_CLIENT_SECRET_TTL.total_seconds()),
         "aud": _APPLE_AUDIENCE,
-        "sub": settings.APPLE_CLIENT_ID,
+        "sub": client_id,
     }
     try:
         return jwt.encode(
@@ -104,8 +106,14 @@ def _post(url: str, data: dict[str, Any]) -> httpx.Response:
         )
 
 
-def exchange_authorization_code(authorization_code: str) -> str | None:
-    """Trade a native sign-in authorization code for a refresh token.
+def exchange_authorization_code(
+    authorization_code: str, client_id: str | None = None
+) -> str | None:
+    """Trade a sign-in authorization code for a refresh token.
+
+    `client_id` is the identity token's audience: the app's bundle ID for a
+    native sign-in (the default), or the website's Services ID, whose codes
+    Apple only accepts together with the redirect URI the website used.
 
     Returns None — never raises — when the credentials are unconfigured or Apple
     refuses the exchange. A sign-in must not fail because the thing that would
@@ -117,22 +125,23 @@ def exchange_authorization_code(authorization_code: str) -> str | None:
             "token for this sign-in (account deletion will skip revocation)"
         )
         return None
+    client_id = client_id or settings.APPLE_CLIENT_ID
     try:
-        client_secret = apple_client_secret()
+        client_secret = apple_client_secret(client_id)
     except AppleAuthError:
         logger.exception("Could not build the Apple client secret")
         return None
 
+    data = {
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "code": authorization_code,
+        "grant_type": "authorization_code",
+    }
+    if client_id != settings.APPLE_CLIENT_ID and settings.APPLE_WEB_REDIRECT_URI:
+        data["redirect_uri"] = settings.APPLE_WEB_REDIRECT_URI
     try:
-        response = _post(
-            _APPLE_TOKEN_URL,
-            {
-                "client_id": settings.APPLE_CLIENT_ID,
-                "client_secret": client_secret,
-                "code": authorization_code,
-                "grant_type": "authorization_code",
-            },
-        )
+        response = _post(_APPLE_TOKEN_URL, data)
     except httpx.HTTPError:
         logger.exception("Apple authorization-code exchange failed to send")
         return None
@@ -158,6 +167,10 @@ def exchange_authorization_code(authorization_code: str) -> str | None:
 def revoke_refresh_token(refresh_token: str) -> bool:
     """Revoke a stored Apple refresh token. True if Apple accepted it.
 
+    The token belongs to whichever client the user signed in with — the app or
+    the website — and nothing records which, so each is tried in turn: Apple
+    answers a token from another client with `invalid_client`, not success.
+
     Returns False — never raises — on any failure, so a deletion is never
     blocked by Apple being unreachable. Apple treats revoking an already-revoked
     token as a success, which makes a retry safe.
@@ -168,8 +181,15 @@ def revoke_refresh_token(refresh_token: str) -> bool:
             "revocation on account deletion"
         )
         return False
+    return any(
+        _revoke_for_client(refresh_token, client_id)
+        for client_id in settings.apple_client_ids
+    )
+
+
+def _revoke_for_client(refresh_token: str, client_id: str) -> bool:
     try:
-        client_secret = apple_client_secret()
+        client_secret = apple_client_secret(client_id)
     except AppleAuthError:
         logger.exception("Could not build the Apple client secret")
         return False
@@ -178,7 +198,7 @@ def revoke_refresh_token(refresh_token: str) -> bool:
         response = _post(
             _APPLE_REVOKE_URL,
             {
-                "client_id": settings.APPLE_CLIENT_ID,
+                "client_id": client_id,
                 "client_secret": client_secret,
                 "token": refresh_token,
                 "token_type_hint": "refresh_token",
@@ -190,7 +210,8 @@ def revoke_refresh_token(refresh_token: str) -> bool:
 
     if response.status_code >= 400:
         logger.error(
-            "Apple refused the token revocation: %s %s",
+            "Apple refused the token revocation for %s: %s %s",
+            client_id,
             response.status_code,
             response.text,
         )

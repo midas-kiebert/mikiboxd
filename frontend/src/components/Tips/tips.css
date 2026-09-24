@@ -1,0 +1,28 @@
+/* Web feature tips (`VerifyEmailTip.tsx`); dialog, text and buttons are the intro's. */
+
+.tp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 24px 20px 20px;
+}
+
+.tp-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 10px;
+  border-radius: 14px;
+  background: var(--chakra-colors-bg-subtle);
+  color: var(--chakra-colors-app-tint);
+}
+
+.tp-address {
+  margin: 12px 0 2px;
+  color: var(--chakra-colors-fg);
+  font-size: 15px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}

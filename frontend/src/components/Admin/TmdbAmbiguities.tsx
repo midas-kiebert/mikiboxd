@@ -55,7 +55,7 @@ const Outcome = ({ ambiguity }: { ambiguity: TmdbAmbiguityView }) => {
     (candidate) => candidate.tmdb_id === ambiguity.matched_tmdb_id,
   )
   if (ambiguity.matched_tmdb_id === null) {
-    return <Badge colorPalette="red">No match — showtimes skipped</Badge>
+    return <Badge colorPalette="red">No match — screenings skipped</Badge>
   }
   const matchedLabel = matched
     ? `${matched.title}${matched.release_year ? ` (${matched.release_year})` : ""}`
@@ -174,8 +174,8 @@ const TmdbAmbiguities = () => {
       </Stack>
       <Text color="fg.muted" mb={3}>
         Lookups where several films matched a scraped listing equally well. The
-        listing alone couldn't tell them apart, even when a tie-break picked
-        one — check the pick, then mark it reviewed or correct it.
+        listing alone couldn't tell them apart, even when a tie-break picked one
+        — check the pick, then mark it reviewed or correct it.
       </Text>
       {isLoading || !ambiguities ? (
         <Text>Loading ambiguous matches…</Text>

@@ -93,7 +93,6 @@ export default function SavePresetDialog({
   );
 
   const [name, setName] = useState("");
-  const [saveAsDefault, setSaveAsDefault] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [included, setIncluded] = useState<Set<PresetDimension>>(new Set());
   const [partialOpen, setPartialOpen] = useState(false);
@@ -106,7 +105,6 @@ export default function SavePresetDialog({
     queueMicrotask(() => {
       setName("");
       nameInputRef.current?.clear();
-      setSaveAsDefault(false);
       setError(null);
       setPartialOpen(false);
       setIncluded(new Set(summaries.map((row) => row.dimension)));
@@ -119,7 +117,6 @@ export default function SavePresetDialog({
       const created = await MeService.createSavedPreset({
         requestBody: buildSavedPresetCreate({
           name: name.trim(),
-          isFavorite: saveAsDefault,
           // Persist the opt-out set: dimensions the user unchecked (left as-is).
           // Cinemas are opt-in and tracked via `includeCinemas` / `cinema_ids`.
           untouchedFields: summaries
@@ -135,10 +132,9 @@ export default function SavePresetDialog({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: displayPresetsQueryKey });
-      queryClient.invalidateQueries({ queryKey: ["user", "favorite_saved_preset"] });
       onClose();
     },
-    onError: () => setError("Could not save preset. Please try again."),
+    onError: () => setError("Could not save quick filter. Please try again."),
   });
 
   const toggle = (dimension: PresetDimension) => {
@@ -154,19 +150,17 @@ export default function SavePresetDialog({
   const canSave = name.trim().length > 0 && included.size > 0 && !isPending;
 
   const handleSave = () => {
-    if (!name.trim()) { setError("Enter a preset name."); return; }
+    if (!name.trim()) { setError("Enter a name."); return; }
     if (included.size === 0) { setError("Include at least one filter."); return; }
     save();
   };
-
-  const showCinemaWarning = saveAsDefault && included.has("cinemas");
 
   return (
     <AppBottomSheet
       visible={visible}
       onClose={onClose}
       onBack={isPending ? undefined : onClose}
-      title="Save filter preset"
+      title="Save quick filter"
       backgroundColor={colors.nestedModalBackground}
       enablePanDownToClose={!isPending}
       // One text field and two buttons — cheap enough that the mount cannot
@@ -179,14 +173,14 @@ export default function SavePresetDialog({
       <BottomSheetScrollView contentContainerStyle={[styles.content, { paddingBottom: bottomInset + 16 }]}>
         <View style={styles.header}>
           <ThemedText style={styles.subtitle}>
-            Saves all your current filters. Applying it later sets every filter to match this preset.
+            Saves all your current filters. Applying it later sets every filter to match this quick filter.
           </ThemedText>
         </View>
 
         <BottomSheetTextInput
           ref={nameInputRef as never}
           onChangeText={(value) => { setName(value); if (error) setError(null); }}
-          placeholder="Preset name"
+          placeholder="Quick filter name"
           placeholderTextColor={colors.textSecondary}
           style={styles.input}
           maxLength={80}
@@ -204,7 +198,7 @@ export default function SavePresetDialog({
             <View style={styles.partialHeaderText}>
               <ThemedText style={styles.partialLabel}>Partial filters</ThemedText>
               <ThemedText style={styles.partialSub}>
-                Choose which filters this preset controls.
+                Choose which filters this quick filter controls.
               </ThemedText>
             </View>
             <MaterialIcons
@@ -217,7 +211,7 @@ export default function SavePresetDialog({
           {partialOpen && (
             <>
               <ThemedText style={styles.partialHint}>
-                By default the preset saves every filter. Uncheck a filter to leave it untouched. When you apply the preset later, only the checked filters change and the rest stay as they are.
+                By default the quick filter saves every filter. Uncheck a filter to leave it untouched. When you apply it later, only the checked filters change and the rest stay as they are.
               </ThemedText>
               <View style={styles.pillGrid}>
                 {summaries.map((row) => {
@@ -249,33 +243,6 @@ export default function SavePresetDialog({
             </>
           )}
         </View>
-
-        <TouchableOpacity
-          style={styles.defaultRow}
-          onPress={() => setSaveAsDefault((v) => !v)}
-          activeOpacity={0.8}
-        >
-          <MaterialIcons
-            name={saveAsDefault ? "check-box" : "check-box-outline-blank"}
-            size={18}
-            color={saveAsDefault ? colors.tint : colors.textSecondary}
-          />
-          <View style={styles.defaultText}>
-            <ThemedText style={styles.defaultLabel}>Set as default</ThemedText>
-            <ThemedText style={styles.defaultSub}>
-              These filters will be selected by default when you open the app.
-            </ThemedText>
-          </View>
-        </TouchableOpacity>
-
-        {showCinemaWarning && (
-          <View style={styles.warning}>
-            <MaterialIcons name="info-outline" size={13} color={colors.yellow.secondary} />
-            <ThemedText style={styles.warningText}>
-              Setting a preset with cinema selections as default will override your default cinema selection. You will still revert to your default cinema selection when you clear your filters. It is recommended to uncheck &quot;Cinemas&quot; in dropdown above.
-            </ThemedText>
-          </View>
-        )}
 
         {error ? <ThemedText style={styles.errorText}>{error}</ThemedText> : null}
 
@@ -365,26 +332,6 @@ const createStyles = (colors: ReturnType<typeof useThemeColors>) =>
     pillLabel: { fontSize: 12, fontWeight: "600", color: colors.textSecondary, lineHeight: 15 },
     pillLabelChecked: { color: colors.text },
     pillValue: { fontSize: 10, color: colors.textSecondary, lineHeight: 13 },
-    defaultRow: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      gap: 8,
-    },
-    defaultText: { flex: 1, gap: 2 },
-    defaultLabel: { fontSize: 13, fontWeight: "600", color: colors.text },
-    defaultSub: { fontSize: 11, color: colors.textSecondary, lineHeight: 15 },
-    warning: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      gap: 7,
-      paddingHorizontal: 10,
-      paddingVertical: 8,
-      borderRadius: 10,
-      borderWidth: 1,
-      borderColor: colors.yellow.border,
-      backgroundColor: colors.yellow.primary,
-    },
-    warningText: { flex: 1, fontSize: 11, color: colors.text, lineHeight: 16 },
     errorText: { fontSize: 12, color: colors.red.secondary },
     actions: { flexDirection: "row", gap: 8 },
     btn: {

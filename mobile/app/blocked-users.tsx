@@ -11,9 +11,9 @@ import { useFetchBlockedUsers } from 'shared/hooks/useFetchBlockedUsers';
 import TopBar from '@/components/layout/TopBar';
 import TopSafeAreaView from '@/components/layout/TopSafeAreaView';
 import { ThemedText } from '@/components/themed-text';
+import PersonAvatar from '@/components/ui/PersonAvatar';
 import { useUserModeration } from '@/hooks/useUserModeration';
 import { useThemeColors } from '@/hooks/use-theme-color';
-import { getAvatarColors, getAvatarInitial } from '@/utils/avatar-color';
 import { triggerSelectionHaptic } from '@/utils/long-press';
 
 export default function BlockedUsersScreen() {
@@ -29,14 +29,16 @@ export default function BlockedUsersScreen() {
 
   const renderRow = ({ item }: { item: BlockedUserPublic }) => {
     const name = item.display_name?.trim() || 'Unknown user';
-    const avatarColors = getAvatarColors(item.id, colors);
     return (
       <View style={styles.row}>
-        <View style={[styles.avatar, { backgroundColor: avatarColors.primary }]}>
-          <ThemedText style={[styles.avatarText, { color: avatarColors.secondary }]}>
-            {getAvatarInitial(name)}
-          </ThemedText>
-        </View>
+        <PersonAvatar
+          userId={item.id}
+          name={name}
+          avatarUrl={item.avatar_url}
+          size={38}
+          fontSize={15}
+          style={styles.avatar}
+        />
         <ThemedText style={styles.name} numberOfLines={1}>
           {name}
         </ThemedText>

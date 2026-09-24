@@ -133,7 +133,7 @@ def login_social_token(
     # alone rather than clearing a good one.
     if body.provider is SocialProvider.APPLE and body.authorization_code:
         apple_refresh_token = apple_auth.exchange_authorization_code(
-            body.authorization_code
+            body.authorization_code, client_id=claims.audience
         )
         if apple_refresh_token:
             user.apple_refresh_token = apple_refresh_token
@@ -210,7 +210,7 @@ def recover_password(email: str, session: SessionDep) -> Message:
             html_content=email_data.html_content,
             text_content=email_data.text_content,
         )
-    except EmailDeliveryError as e:
+    except (RuntimeError, EmailDeliveryError) as e:
         logger.exception("Password recovery email delivery failed for %s", user.email)
         raise HTTPException(
             status_code=http_status.HTTP_502_BAD_GATEWAY,

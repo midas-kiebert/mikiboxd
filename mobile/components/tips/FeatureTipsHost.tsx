@@ -1,21 +1,26 @@
 /**
  * Renders at most one feature tip. Candidates are listed in priority order —
- * verify email, notifications, cinemas, friends, Letterboxd, filter presets,
- * watchlist digest — and `rollForFeatureTip` applies eligibility, dismissal,
+ * verify email; the three "you missed something" notification tips (an invite,
+ * a sold-out screening, a friend request); cinemas, friends, Letterboxd,
+ * Letterboxd picture, filter presets, watchlist digest, interest reminders and
+ * the Cineville pass — and `rollForFeatureTip` applies eligibility, dismissal,
  * per-tip cooldowns and a random chance, so the user is never handed a stack of
- * nags and does not see a tip on every single app open. The exception is
+ * nags and does not see a tip on every single app open. The exceptions are
  * "verify email", which is unfinished business rather than a suggestion and
- * does appear on every open until it is done.
+ * does appear on every open until it is done, and the event tips, which are
+ * rationed by the events themselves (see `EVENT_TIP_IDS`).
  *
  * The roll happens once per session, a short delay after all the eligibility
  * data has actually loaded (not just once eligibility looks true), so nothing
- * flashes up mid-load or the instant the app opens.
+ * flashes up mid-load or the instant the app opens. Each later return to the
+ * foreground gets one more chance, for the event tips only
+ * (`rollForEventTip`), about whatever happened while the app was away.
  *
  * To add a tip: give it an id in `utils/feature-tips`, compute its eligibility
  * here as a top-level hook call (never inside a loop — rules of hooks), add it
  * to the candidate list in priority order, and render its component below.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useIsFocused } from "expo-router/react-navigation";
 import { useQuery } from "@tanstack/react-query";
 import useAuth from "shared/hooks/useAuth";
@@ -30,17 +35,29 @@ import {
 } from "@/components/filters/saved-presets";
 import AddFriendsTip from "@/components/tips/AddFriendsTip";
 import CinemaPresetTip from "@/components/tips/CinemaPresetTip";
+import CinevillePassTip from "@/components/tips/CinevillePassTip";
 import FilterPresetTip from "@/components/tips/FilterPresetTip";
+import FriendRequestTip from "@/components/tips/FriendRequestTip";
+import InterestRemindersTip from "@/components/tips/InterestRemindersTip";
+import InviteTip from "@/components/tips/InviteTip";
+import LetterboxdAvatarTip from "@/components/tips/LetterboxdAvatarTip";
 import LetterboxdUsernameTip from "@/components/tips/LetterboxdUsernameTip";
-import NotificationPermissionTip from "@/components/tips/NotificationPermissionTip";
+import SoldOutTip from "@/components/tips/SoldOutTip";
 import VerifyEmailTip from "@/components/tips/VerifyEmailTip";
 import WatchlistDigestTip from "@/components/tips/WatchlistDigestTip";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import {
-  useSystemNotificationPermission,
-  wantsPushNotifications,
+  isNotificationDeliverable,
+  useCanReceivePush,
 } from "@/hooks/useNotificationPreferences";
-import { rollForFeatureTip, useFirstVisibleTip } from "@/utils/feature-tips";
+import { useAwayEvents, useAwayEventsTracking } from "@/utils/away-events";
+import { useCinevilleCardDigits } from "@/utils/cineville-card";
+import {
+  type FeatureTipCandidate,
+  rollForEventTip,
+  rollForFeatureTip,
+  useFirstVisibleTip,
+} from "@/utils/feature-tips";
 import { useIsIntroOwed } from "@/utils/intro";
 
 /** Give the app a moment to settle before nagging, even once data is ready. */
@@ -57,8 +74,10 @@ export default function FeatureTipsHost() {
   // the walkthrough has started, and the filters highlight it ends on, neither
   // of which is a moment to put a dialog over.
   const isIntroOwed = useIsIntroOwed();
-  const { status: permissionStatus, isGranted: isPermissionGranted } =
-    useSystemNotificationPermission();
+  const canPush = useCanReceivePush();
+  useAwayEventsTracking(user ? String(user.id) : null);
+  const { events: awayEvents, windowId } = useAwayEvents();
+  const cinevilleDigits = useCinevilleCardDigits();
   const { data: cinemas } = useFetchCinemas();
   const { data: friends } = useFetchFriends({ enabled: Boolean(user) });
   const { data: sentRequests } = useFetchSentRequests({ enabled: Boolean(user) });
@@ -79,6 +98,13 @@ export default function FeatureTipsHost() {
   const shouldSuggestWatchlistDigest = currentUser?.show_watchlist_digest_tip === true;
 
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
+  // Only once a sync has actually read a picture: offering "use your picture"
+  // with nothing to show would be a promise the app cannot keep yet. Switching
+  // it on (here or in Settings) is what ends eligibility.
+  const shouldSuggestLetterboxdAvatar =
+    hasLetterboxdUsername &&
+    Boolean(currentUser?.letterboxd_avatar_url) &&
+    currentUser?.use_letterboxd_avatar === false;
 
   // The tip nudges the user to set their cinemas, so it asks whether that row
   // exists — not whether the list is empty. The list never is: the backend
@@ -94,11 +120,27 @@ export default function FeatureTipsHost() {
   const shouldSuggestAddFriends =
     friends !== undefined && sentRequests !== undefined &&
     friends.length === 0 && sentRequests.length === 0;
-  // Only nag about the system block when the user actually asked for a push.
-  // Someone who turned every notification off, or routed them all to email,
-  // made that choice deliberately and does not need permission at all.
-  const isBlockedFromNotifications =
-    permissionStatus !== null && !isPermissionGranted && wantsPushNotifications(user);
+  // The event tips: something happened while the app was away that the user
+  // was never told about, because that notification is off or cannot reach
+  // this device. Each offers exactly that notification.
+  const missesNotification = (
+    key: Parameters<typeof isNotificationDeliverable>[1]
+  ): boolean => !isNotificationDeliverable(currentUser, key, canPush === true);
+  const soldOutScreening = awayEvents?.sold_out[0] ?? null;
+  // An invite that can still be answered beats one that is already lost.
+  const upcomingInvite = awayEvents?.upcoming_invites[0] ?? null;
+  const missedInvite = awayEvents?.missed_invites[0] ?? null;
+  const tipInvite = upcomingInvite ?? missedInvite;
+  const shouldSuggestInvites =
+    tipInvite !== null && missesNotification("notify_on_showtime_ping");
+  const shouldSuggestSeatAlerts =
+    soldOutScreening !== null && missesNotification("notify_on_seat_alert");
+  const shouldSuggestFriendRequests =
+    (awayEvents?.friend_requests ?? 0) > 0 && missesNotification("notify_on_friend_requests");
+  const shouldSuggestInterestReminders =
+    currentUser !== undefined && !currentUser.notify_on_interest_reminder;
+  // Null means the number is still being read from storage.
+  const shouldSuggestCinevillePass = cinevilleDigits === null;
   const shouldSuggestFilterPreset = filterPresets !== undefined && filterPresets.length === 0;
 
   // Everything a candidate below reads must have actually resolved before the
@@ -111,7 +153,10 @@ export default function FeatureTipsHost() {
     sentRequests !== undefined &&
     cinemaPresets !== undefined &&
     filterPresets !== undefined &&
-    permissionStatus !== null;
+    currentUser !== undefined &&
+    canPush !== null &&
+    cinevilleDigits !== undefined &&
+    awayEvents !== null;
 
   const [readyToRoll, setReadyToRoll] = useState(false);
   useEffect(() => {
@@ -125,46 +170,63 @@ export default function FeatureTipsHost() {
     return () => clearTimeout(timer);
   }, [dataReady, needsEmailVerification, isIntroOwed]);
 
+  // Priority order, most-broken first:
+  //  0. verify email — not a suggestion but unfinished business, and exempt
+  //     from the chance, the cooldown and the Settings switch (see
+  //     ALWAYS_SHOW_TIP_IDS). Whenever it is eligible it wins, so nothing below
+  //     it is reached until the address is confirmed.
+  //  1-3. the event tips — an invite (still to answer, or missed), a sold-out screening, a friend
+  //     request, each only for events since the app was last used. Ahead of
+  //     every suggestion because they come with proof of what the user is
+  //     missing, and they are rare by construction.
+  //  4. cinemas — an unfiltered feed makes every screen noisier, and it is
+  //     one tap to fix. Normally handled by the intro, so this is the user
+  //     who skipped that page.
+  //  5. friends — the social half of the app, but it needs other people to
+  //     accept before it pays off.
+  //  6. Letterboxd, 7. its profile picture, 8. filter presets — real
+  //     conveniences, no urgency; all carry the longer cooldown. The two
+  //     Letterboxd tips never compete: the picture needs a username first.
+  //  9. watchlist digest, 10. interest reminders, 11. the Cineville pass —
+  //     last on purpose: niche conveniences with the longest cooldowns. They
+  //     should feel like something you stumble on, not a pitch.
+  const candidates: FeatureTipCandidate[] = [
+    { id: "verify-email", isEligible: needsEmailVerification },
+    { id: "invite", isEligible: shouldSuggestInvites },
+    { id: "sold-out", isEligible: shouldSuggestSeatAlerts },
+    { id: "friend-request", isEligible: shouldSuggestFriendRequests },
+    { id: "cinema-presets", isEligible: shouldSuggestCinemaPreset },
+    { id: "add-friends", isEligible: shouldSuggestAddFriends },
+    { id: "letterboxd-username", isEligible: !hasLetterboxdUsername },
+    { id: "letterboxd-avatar", isEligible: shouldSuggestLetterboxdAvatar },
+    { id: "filter-presets", isEligible: shouldSuggestFilterPreset },
+    { id: "watchlist-digest", isEligible: shouldSuggestWatchlistDigest },
+    { id: "interest-reminders", isEligible: shouldSuggestInterestReminders },
+    { id: "cineville-pass", isEligible: shouldSuggestCinevillePass },
+  ];
+  // The candidates change identity every render; the roll only needs to see
+  // the latest list when it actually runs.
+  const candidatesRef = useRef(candidates);
+  useEffect(() => {
+    candidatesRef.current = candidates;
+  });
+
   useEffect(() => {
     if (!readyToRoll) return;
-    rollForFeatureTip([
-      // Priority order, most-broken first:
-      //  0. verify email — not a suggestion but unfinished business, and the
-      //     only candidate exempt from the chance, the cooldown and the
-      //     Settings switch (see ALWAYS_SHOW_TIP_IDS). Whenever it is eligible
-      //     it wins, so nothing below it is reached until the address is
-      //     confirmed.
-      //  1. notifications — the only tip about something already failing: the
-      //     user asked for pushes and the system is silently dropping them.
-      //     Rarely eligible, so it costs the others almost nothing.
-      //  2. cinemas — an unfiltered feed makes every screen noisier, and it is
-      //     one tap to fix. Normally handled by the intro, so this is the user
-      //     who skipped that page.
-      //  3. friends — the social half of the app, but it needs other people to
-      //     accept before it pays off.
-      //  4. Letterboxd, 5. filter presets — real conveniences, no urgency;
-      //     both also carry the longer cooldown.
-      //  6. watchlist digest — last on purpose: a niche convenience, behind a
-      //     backend switch, with the longest cooldown and lowest chance of the
-      //     lot. It should feel like something you stumble on, not a pitch.
-      { id: "verify-email", isEligible: needsEmailVerification },
-      { id: "notification-permission", isEligible: isBlockedFromNotifications },
-      { id: "cinema-presets", isEligible: shouldSuggestCinemaPreset },
-      { id: "add-friends", isEligible: shouldSuggestAddFriends },
-      { id: "letterboxd-username", isEligible: !hasLetterboxdUsername },
-      { id: "filter-presets", isEligible: shouldSuggestFilterPreset },
-      { id: "watchlist-digest", isEligible: shouldSuggestWatchlistDigest },
-    ]);
-  }, [
-    readyToRoll,
-    needsEmailVerification,
-    shouldSuggestCinemaPreset,
-    shouldSuggestAddFriends,
-    isBlockedFromNotifications,
-    hasLetterboxdUsername,
-    shouldSuggestFilterPreset,
-    shouldSuggestWatchlistDigest,
-  ]);
+    rollForFeatureTip(candidatesRef.current);
+  }, [readyToRoll]);
+
+  // Every later return to the foreground: one more chance, for the events of
+  // that absence. The first window is the launch itself, which the roll above
+  // already covered.
+  const rolledWindowIdRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!readyToRoll || awayEvents === null || isIntroOwed) return;
+    const previous = rolledWindowIdRef.current;
+    rolledWindowIdRef.current = windowId;
+    if (previous === null || previous === windowId) return;
+    rollForEventTip(candidatesRef.current);
+  }, [awayEvents, isIntroOwed, readyToRoll, windowId]);
 
   const visibleTipId = useFirstVisibleTip();
 
@@ -172,8 +234,17 @@ export default function FeatureTipsHost() {
   if (visibleTipId === "verify-email") return <VerifyEmailTip />;
   if (visibleTipId === "cinema-presets") return <CinemaPresetTip />;
   if (visibleTipId === "add-friends") return <AddFriendsTip />;
-  if (visibleTipId === "notification-permission") return <NotificationPermissionTip />;
+  if (visibleTipId === "invite" && tipInvite) {
+    return <InviteTip invite={tipInvite} isMissed={upcomingInvite === null} />;
+  }
+  if (visibleTipId === "sold-out" && soldOutScreening) {
+    return <SoldOutTip screening={soldOutScreening} />;
+  }
+  if (visibleTipId === "friend-request") return <FriendRequestTip />;
+  if (visibleTipId === "interest-reminders") return <InterestRemindersTip />;
+  if (visibleTipId === "cineville-pass") return <CinevillePassTip />;
   if (visibleTipId === "letterboxd-username") return <LetterboxdUsernameTip />;
+  if (visibleTipId === "letterboxd-avatar") return <LetterboxdAvatarTip />;
   if (visibleTipId === "filter-presets") return <FilterPresetTip />;
   if (visibleTipId === "watchlist-digest") return <WatchlistDigestTip />;
   return null;

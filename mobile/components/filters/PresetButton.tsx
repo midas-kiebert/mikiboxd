@@ -43,8 +43,8 @@
  * selected one.
  *
  * The fade is seeded from `isSatisfied` at construction: a button can mount
- * already satisfied — the favourite preset applied at launch does exactly
- * that — and an animated value is only ever as correct as the last update
+ * already satisfied — the feed's defaults can already match it at launch —
+ * and an animated value is only ever as correct as the last update
  * pushed to the view, which for a state that was never entered is none.
  *
  * The animation lives here, per button, rather than in the row: two presets

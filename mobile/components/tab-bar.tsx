@@ -157,7 +157,9 @@ const reselectHandlers = new Map<string, () => void>();
  */
 export function useRegisterTabReselect(tabKey: string, handler: () => void) {
   const handlerRef = useRef(handler);
-  handlerRef.current = handler;
+  useEffect(() => {
+    handlerRef.current = handler;
+  });
   useEffect(() => {
     const wrapped = () => handlerRef.current();
     reselectHandlers.set(tabKey, wrapped);

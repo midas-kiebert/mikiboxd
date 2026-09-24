@@ -1,11 +1,22 @@
-import { Button, Center, Flex, Spinner, Text, VStack } from "@chakra-ui/react"
-import { useMutation } from "@tanstack/react-query"
-import { createFileRoute } from "@tanstack/react-router"
+import {
+  Link,
+  createFileRoute,
+  useNavigate,
+  useParams,
+} from "@tanstack/react-router"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { ApiError, ShowtimesService } from "shared"
-import { storage } from "shared/storage"
 
+import { primeSession } from "@/auth/session"
+import { useIsSignedIn } from "@/auth/useSession"
+import { AuthShell } from "@/components/Auth/AuthShell"
 import InstallAppGate from "@/components/Common/InstallAppGate"
+import {
+  formatScreeningTime,
+  useShowtimeInviteContext,
+} from "@/features/install-prompt"
+import { defaultFeedParams } from "@/features/showtimes/feed-params"
+import { openInShowtimePanelOnArrival } from "@/features/showtimes/showtime-panel-slot"
 
 const getErrorMessage = (error: unknown): string => {
   if (!(error instanceof ApiError)) return "Could not process the invite link."
@@ -25,20 +36,65 @@ const getErrorMessage = (error: unknown): string => {
 
 export const Route = createFileRoute("/ping/$showtimeId/$sender" as never)({
   component: PingLinkRoute,
+  // Outside `_layout`, so the session is read here: signed in or not decides
+  // whether the invite is recorded now or after logging in.
+  beforeLoad: async () => {
+    await primeSession()
+  },
 })
 
 function PingLinkRoute() {
+  const { showtimeId, sender } = useParams({ strict: false }) as {
+    showtimeId: string
+    sender: string
+  }
+  const invite = useShowtimeInviteContext(showtimeId, sender)
+  const senderName = invite?.sender_name ?? null
+
   return (
     <InstallAppGate
-      headline="You have been invited to a screening"
-      body="MiKiNO keeps your invites, tells you who else is going, and shows what else is playing near you."
+      headline={
+        senderName
+          ? `${senderName} invited you to a screening`
+          : "You have been invited to a screening"
+      }
+      card={
+        invite
+          ? {
+              posterUrl: invite.movie_poster_link,
+              title: invite.movie_title,
+              subtitle: `${formatScreeningTime(invite.datetime)} · ${invite.cinema_name}`,
+            }
+          : null
+      }
+      body="MiKiNO is a free app for going to the cinema with friends. It shows what is on at your selected cinemas, which films your friends want to see, and lets you invite each other to screenings."
+      nextStep={
+        senderName
+          ? `Install it and create an account to reply to ${senderName}'s invite.`
+          : "Install it and create an account to reply to the invite."
+      }
+      iosReopenHint="After installing, open the link again and the invite will be waiting for you."
+      skipLabel="I'll use the website instead"
     >
       <PingLinkPage />
     </InstallAppGate>
   )
 }
 
+/**
+ * What an invite link does on the web: record the invite, then show the
+ * screening where invites are normally seen — the screenings feed, with it open
+ * in the side panel. It used to stop on a page of its own ("Screening Invite"
+ * with an "Open Invites" button), an extra step between the link and the thing
+ * it was about. A guest is sent to log in and brought back here first, since
+ * an invite can only be recorded on an account.
+ */
 function PingLinkPage() {
+  const navigate = useNavigate()
+  const isSignedIn = useIsSignedIn()
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const hasStartedRef = useRef(false)
+
   const [pathShowtimeId, pathSender] = useMemo(() => {
     const match = window.location.pathname.match(/^\/ping\/([^/]+)\/([^/]+)$/)
     if (!match) return ["", ""]
@@ -52,131 +108,59 @@ function PingLinkPage() {
     }
   }, [])
 
-  const { showtimeId, token } = {
-    showtimeId: pathShowtimeId,
-    token: pathSender,
-  }
-
-  const normalizedShowtimeId = useMemo(() => {
-    const parsed = Number.parseInt(showtimeId?.trim() ?? "", 10)
-    return Number.isInteger(parsed) && parsed > 0 ? parsed : null
-  }, [showtimeId])
-
-  const normalizedToken = useMemo(() => token?.trim() ?? "", [token])
-
-  const [hasCheckedAuth, setHasCheckedAuth] = useState(false)
-  const [hasAuth, setHasAuth] = useState(false)
-  const [hasStarted, setHasStarted] = useState(false)
-  const [statusMessage, setStatusMessage] = useState(
-    "Checking this invite link.",
-  )
-
-  const hasAttemptedRef = useRef(false)
-
-  const pingMutation = useMutation({
-    mutationFn: (payload: { showtimeId: number; token: string }) =>
-      ShowtimesService.receivePingFromLink({
-        showtimeId: payload.showtimeId,
-        token: payload.token,
-      }),
-    onSuccess: () => {
-      setHasStarted(false)
-      setStatusMessage("You can now open your invites.")
-    },
-    onError: (error: unknown) => {
-      setHasStarted(false)
-      setStatusMessage(getErrorMessage(error))
-    },
-  })
-
   useEffect(() => {
-    if (hasCheckedAuth) return
+    if (hasStartedRef.current) return
+    hasStartedRef.current = true
 
-    storage
-      .getItem("access_token")
-      .then((token) => {
-        setHasAuth(Boolean(token))
-      })
-      .catch(() => {
-        setHasAuth(false)
-      })
-      .finally(() => {
-        setHasCheckedAuth(true)
-      })
-  }, [hasCheckedAuth])
-
-  useEffect(() => {
-    if (!hasCheckedAuth || hasAttemptedRef.current) return
-    hasAttemptedRef.current = true
-
-    if (normalizedShowtimeId === null || normalizedToken.length === 0) {
-      setStatusMessage("Invalid invite link.")
+    const showtimeId = Number.parseInt(pathShowtimeId.trim(), 10)
+    const token = pathSender.trim()
+    if (!Number.isInteger(showtimeId) || showtimeId <= 0 || !token) {
+      setErrorMessage("This invite link is not valid.")
       return
     }
 
-    if (!hasAuth) {
-      setStatusMessage("You need to log in before this invite link works.")
+    if (!isSignedIn) {
+      void navigate({
+        to: "/login",
+        search: { redirect: window.location.pathname },
+        replace: true,
+      })
       return
     }
 
-    setHasStarted(true)
-    pingMutation.mutate({
-      showtimeId: normalizedShowtimeId,
-      token: normalizedToken,
-    })
-  }, [
-    hasCheckedAuth,
-    hasAuth,
-    normalizedShowtimeId,
-    normalizedToken,
-    pingMutation,
-  ])
-
-  const isSuccess = pingMutation.isSuccess
+    const openInvite = async () => {
+      await ShowtimesService.receivePingFromLink({ showtimeId, token })
+      // Fetched after recording it, so the panel opens already saying who
+      // invited you.
+      const showtime = await ShowtimesService.getShowtimeById({ showtimeId })
+      openInShowtimePanelOnArrival(showtime)
+      void navigate({ to: "/", search: defaultFeedParams, replace: true })
+    }
+    openInvite().catch((error: unknown) =>
+      setErrorMessage(getErrorMessage(error)),
+    )
+  }, [isSignedIn, navigate, pathSender, pathShowtimeId])
 
   return (
-    <Center minH="100vh" px={4}>
-      <Flex
-        direction="column"
-        align="center"
-        gap={4}
-        maxW="md"
-        textAlign="center"
-      >
-        <Text fontSize="2xl" fontWeight="bold">
-          Showtime Invite
-        </Text>
-
-        {hasStarted || pingMutation.isPending ? (
-          <VStack gap={2}>
-            <Spinner size="lg" />
-            <Text>Opening invite...</Text>
-          </VStack>
-        ) : null}
-
-        <Text>{statusMessage}</Text>
-
-        <VStack gap={2}>
-          {isSuccess && (
-            <Button
-              onClick={() => window.location.assign("/pings")}
-              colorScheme="teal"
-            >
-              Open Invites
-            </Button>
-          )}
-
-          {hasCheckedAuth && !hasAuth && (
-            <Button
-              onClick={() => window.location.assign("/login")}
-              colorScheme="teal"
-              variant="solid"
-            >
-              Log in
-            </Button>
-          )}
-        </VStack>
-      </Flex>
-    </Center>
+    <AuthShell
+      title={
+        errorMessage
+          ? "This invite could not be opened"
+          : "Opening your invite…"
+      }
+      lede={errorMessage ?? "Taking you to the screening."}
+    >
+      {errorMessage ? (
+        <div className="au-card">
+          <Link
+            to="/"
+            search={defaultFeedParams}
+            className="au-button au-button--primary"
+          >
+            Go to screenings
+          </Link>
+        </div>
+      ) : null}
+    </AuthShell>
   )
 }

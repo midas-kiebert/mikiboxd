@@ -5,7 +5,7 @@
  * backdrop with the same fast custom timing used by the showtime sheet's dialogs
  * (RN's built-in `animationType="fade"` is too slow to tune).
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { Animated, Modal, StyleSheet, TouchableOpacity, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
@@ -21,6 +21,8 @@ type ConfirmDialogProps = {
   visible: boolean;
   title: string;
   message?: string;
+  /** Extra content between the message and the buttons, e.g. a list of steps. */
+  children?: ReactNode;
   icon?: keyof typeof MaterialIcons.glyphMap;
   confirmLabel: string;
   /**
@@ -47,6 +49,7 @@ export default function ConfirmDialog({
   visible,
   title,
   message,
+  children,
   icon,
   confirmLabel,
   cancelLabel,
@@ -122,6 +125,7 @@ export default function ConfirmDialog({
           ) : null}
           <ThemedText style={styles.title}>{title}</ThemedText>
           {message ? <ThemedText style={styles.message}>{message}</ThemedText> : null}
+          {children}
           <View style={[styles.actions, hasSecondary && styles.stackedActions]}>
             <TouchableOpacity
               style={[

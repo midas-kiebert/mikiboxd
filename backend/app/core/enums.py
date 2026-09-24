@@ -192,6 +192,22 @@ class ShowtimePingSort(str, Enum):
 
 
 @unique
+class FeedOverviewSectionKind(str, Enum):
+    """The lists the website's feed overview can show, in priority order.
+
+    Declaration order is the priority `services.feed_overview` fills the card
+    in, most urgent first.
+    """
+
+    INVITED = "invited"
+    SELLING_FAST = "selling_fast"
+    CUSTOM = "custom"
+    PLANS = "plans"
+    FRIENDS_GOING = "friends_going"
+    WATCHLIST = "watchlist"
+
+
+@unique
 class NotificationType(str, Enum):
     """Kind of event a stored notification-centre entry represents.
 
@@ -217,7 +233,7 @@ class NotificationType(str, Enum):
 
 @unique
 class SeatAlertKind(str, Enum):
-    """Which of the two seat-count notices an interested user is being sent.
+    """Which seat-count notice an interested user is being sent.
 
     They are two notices, not one repeated: "nearly sold out" is a nudge to
     decide, sent once ever on the way up, while "sold out" is the answer to
@@ -229,6 +245,10 @@ class SeatAlertKind(str, Enum):
 
     NEARLY_SOLD_OUT = "nearly_sold_out"
     SOLD_OUT = "sold_out"
+    # A sold-out screening has seats again. The poller keeps a thin watch on
+    # every sold-out screening someone is interested in (see
+    # `services.seat_availability.next_check_at`); this is what it finds.
+    TICKETS_AVAILABLE = "tickets_available"
 
 
 @unique
@@ -337,3 +357,16 @@ class ScreenSide(str, Enum):
 
     TOP = "top"
     BOTTOM = "bottom"
+
+
+@unique
+class ActivityMode(str, Enum):
+    """The Activity screen's three slices, in both clients.
+
+    ALL is the viewer and their friends; YOU is the viewer's own agenda,
+    invites included; FRIENDS drops the viewer's own selections.
+    """
+
+    ALL = "all"
+    YOU = "you"
+    FRIENDS = "friends"

@@ -7,7 +7,7 @@ import { Notifications } from '@/utils/notifications-module';
 import type * as NotificationsTypes from 'expo-notifications';
 import type { Href } from "expo-router";
 import { Platform } from "react-native";
-import { MeService, ShowtimesService } from "shared";
+import { FriendsService, MeService, ShowtimesService } from "shared";
 
 /**
  * Whether this build can hold a remote push token at all.
@@ -41,6 +41,14 @@ type PushTokenRegistrationState = {
 type PushTokenRegistrationOptions = {
   force?: boolean;
   userId?: string;
+  /**
+   * Whether a missing permission may be asked for. False for the background
+   * registrations on launch and sign-in: the OS prompt is asked exactly once
+   * and only ever from a screen that has just explained it (the intro's
+   * notifications page, a notification tip, a Settings row), because a cold
+   * system dialog is the one people deny out of habit.
+   */
+  prompt?: boolean;
 };
 
 // Channel ID is versioned to recover from user-disabled/stale channel configs.
@@ -48,6 +56,9 @@ export const ANDROID_PUSH_CHANNEL_ID = "mikino-heads-up-v2";
 const LEGACY_ANDROID_PUSH_CHANNEL_ID = "heads-up";
 export const SHOWTIME_PING_NOTIFICATION_CATEGORY_ID = "showtime-ping";
 export const SHOWTIME_PING_ACTION_INTERESTED_ID = "showtime-ping-interest";
+export const FRIEND_REQUEST_NOTIFICATION_CATEGORY_ID = "friend-request";
+export const FRIEND_REQUEST_ACTION_ACCEPT_ID = "friend-request-accept";
+export const FRIEND_REQUEST_ACTION_DENY_ID = "friend-request-deny";
 
 type PushNotificationData = {
   type?: unknown;
@@ -77,6 +88,9 @@ const parsePositiveInteger = (value: unknown): number | null => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
+const parseNonEmptyString = (value: unknown): string | null =>
+  typeof value === "string" && value.trim().length > 0 ? value : null;
+
 export async function configureNotificationCategories(): Promise<void> {
   await Notifications.setNotificationCategoryAsync(
     SHOWTIME_PING_NOTIFICATION_CATEGORY_ID,
@@ -90,13 +104,35 @@ export async function configureNotificationCategories(): Promise<void> {
       },
     ]
   );
+  await Notifications.setNotificationCategoryAsync(
+    FRIEND_REQUEST_NOTIFICATION_CATEGORY_ID,
+    [
+      {
+        identifier: FRIEND_REQUEST_ACTION_ACCEPT_ID,
+        buttonTitle: "Accept",
+        options: {
+          opensAppToForeground: true,
+        },
+      },
+      {
+        identifier: FRIEND_REQUEST_ACTION_DENY_ID,
+        buttonTitle: "Deny",
+        options: {
+          opensAppToForeground: true,
+          isDestructive: true,
+        },
+      },
+    ]
+  );
 }
 
 export const canRouteFromNotificationAction = (
   actionIdentifier: string
 ): boolean =>
   actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER ||
-  actionIdentifier === SHOWTIME_PING_ACTION_INTERESTED_ID;
+  actionIdentifier === SHOWTIME_PING_ACTION_INTERESTED_ID ||
+  actionIdentifier === FRIEND_REQUEST_ACTION_ACCEPT_ID ||
+  actionIdentifier === FRIEND_REQUEST_ACTION_DENY_ID;
 
 export function resolveNotificationRoute(data: unknown): Href | null {
   if (!isPushNotificationData(data) || typeof data.type !== "string") {
@@ -168,27 +204,49 @@ export function getModalShowtimeIdFromNotification(data: unknown): number | null
 export async function handleNotificationQuickAction(
   response: NotificationsTypes.NotificationResponse
 ): Promise<boolean> {
-  if (response.actionIdentifier !== SHOWTIME_PING_ACTION_INTERESTED_ID) {
-    return false;
-  }
-
+  const { actionIdentifier } = response;
   const data = response.notification.request.content.data;
-  if (!isPushNotificationData(data) || data.type !== "showtime_ping") {
+  if (!isPushNotificationData(data)) {
     return false;
   }
 
-  const showtimeId = parsePositiveInteger(data.showtimeId);
-  if (showtimeId === null) {
-    return false;
+  if (actionIdentifier === SHOWTIME_PING_ACTION_INTERESTED_ID) {
+    if (data.type !== "showtime_ping") {
+      return false;
+    }
+    const showtimeId = parsePositiveInteger(data.showtimeId);
+    if (showtimeId === null) {
+      return false;
+    }
+    await ShowtimesService.updateShowtimeSelection({
+      showtimeId,
+      requestBody: {
+        going_status: "INTERESTED",
+      },
+    });
+    return true;
   }
 
-  await ShowtimesService.updateShowtimeSelection({
-    showtimeId,
-    requestBody: {
-      going_status: "INTERESTED",
-    },
-  });
-  return true;
+  if (
+    actionIdentifier === FRIEND_REQUEST_ACTION_ACCEPT_ID ||
+    actionIdentifier === FRIEND_REQUEST_ACTION_DENY_ID
+  ) {
+    if (data.type !== "friend_request_received") {
+      return false;
+    }
+    const senderId = parseNonEmptyString(data.senderId);
+    if (senderId === null) {
+      return false;
+    }
+    if (actionIdentifier === FRIEND_REQUEST_ACTION_ACCEPT_ID) {
+      await FriendsService.acceptFriendRequest({ senderId });
+    } else {
+      await FriendsService.declineFriendRequest({ senderId });
+    }
+    return true;
+  }
+
+  return false;
 }
 
 async function getProjectId(): Promise<string | null> {
@@ -278,7 +336,7 @@ const ensureAndroidNotificationChannels = async (force: boolean): Promise<void> 
 export async function registerPushTokenForCurrentDevice(
   options: PushTokenRegistrationOptions = {}
 ): Promise<string | null> {
-  const { force = false, userId } = options;
+  const { force = false, userId, prompt = true } = options;
   const scope = getPushTokenRegistrationScope(userId);
   const now = getNow();
 
@@ -309,7 +367,7 @@ export async function registerPushTokenForCurrentDevice(
     let finalStatus = permissions.status;
 
     // Ask the user only when permission is not already granted.
-    if (finalStatus !== "granted") {
+    if (finalStatus !== "granted" && prompt) {
       const requested =
         Platform.OS === "ios"
           ? await Notifications.requestPermissionsAsync({
@@ -441,6 +499,11 @@ export const clearPushTokenRegistrationStateForCurrentUser = (userId?: string): 
 };
 
 export async function unregisterPushTokenForCurrentDevice(): Promise<void> {
+  // Ahead of the guard below, and of the network call: the icon badge counts
+  // things waiting for the account that is on its way out, and a leftover
+  // number on the home screen after signing out is worse than a missed one.
+  void Notifications.setBadgeCountAsync(0).catch(() => {});
+
   // No token was ever registered from this build, and reading one would throw.
   if (!isRemotePushAvailable) return;
 

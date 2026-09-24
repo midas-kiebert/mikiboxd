@@ -18,4 +18,5 @@ class BlockedUserPublic(SQLModel):
 
     id: UUID
     display_name: str | None
+    avatar_url: str | None = None
     blocked_at: datetime

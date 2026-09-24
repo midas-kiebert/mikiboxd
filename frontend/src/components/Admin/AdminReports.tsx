@@ -103,7 +103,7 @@ const EditShowtimePanel = ({ showtimeId }: { showtimeId: number }) => {
         },
       }),
     onSuccess: () => {
-      showSuccessToast("Showtime updated.")
+      showSuccessToast("Screening updated.")
       queryClient.invalidateQueries({
         queryKey: ["admin", "showtime", showtimeId],
       })
@@ -136,7 +136,7 @@ const EditShowtimePanel = ({ showtimeId }: { showtimeId: number }) => {
         loading={mutation.isPending}
         onClick={() => mutation.mutate()}
       >
-        Save showtime
+        Save screening
       </Button>
     </Stack>
   )
@@ -298,7 +298,7 @@ const ReportRow = ({
     mutationFn: () =>
       AdminService.deleteShowtime({ showtimeId: report.showtime_id }),
     onSuccess: () => {
-      showSuccessToast("Showtime deleted.")
+      showSuccessToast("Screening deleted.")
       invalidate()
     },
     onError: (err: ApiError) => handleError(err),
@@ -406,7 +406,7 @@ const ReportRow = ({
               variant="ghost"
               onClick={() => setIsFixOpen((open) => !open)}
             >
-              {isFixOpen ? "Hide fix" : "Fix showtime"}
+              {isFixOpen ? "Hide fix" : "Fix screening"}
             </Button>
             <Button
               size="sm"
@@ -423,14 +423,14 @@ const ReportRow = ({
               onClick={() => {
                 if (
                   confirm(
-                    `Delete this showtime for "${report.movie_title}"? This removes it for everyone.`,
+                    `Delete this screening for "${report.movie_title}"? This removes it for everyone.`,
                   )
                 ) {
                   deleteShowtimeMutation.mutate()
                 }
               }}
             >
-              Delete showtime
+              Delete screening
             </Button>
           </Stack>
         </Table.Cell>
@@ -482,9 +482,9 @@ const ReportsTable = ({ groups }: { groups: ReportGroup[] }) => (
   <Table.Root size="sm">
     <Table.Header>
       <Table.Row>
-        <Table.ColumnHeader>Movie</Table.ColumnHeader>
+        <Table.ColumnHeader>Film</Table.ColumnHeader>
         <Table.ColumnHeader>Cinema</Table.ColumnHeader>
-        <Table.ColumnHeader>Showtime</Table.ColumnHeader>
+        <Table.ColumnHeader>Screening</Table.ColumnHeader>
         <Table.ColumnHeader>Ticket</Table.ColumnHeader>
         <Table.ColumnHeader>Reason</Table.ColumnHeader>
         <Table.ColumnHeader>Message</Table.ColumnHeader>
@@ -525,7 +525,7 @@ const AdminReports = () => {
   return (
     <Box>
       <Heading size="md" mb={4}>
-        Showtime reports
+        Screening reports
       </Heading>
       <Tabs.Root defaultValue="open" variant="subtle">
         <Tabs.List>

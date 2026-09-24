@@ -67,6 +67,7 @@ import WatchlistDigestSourcesSection from '@/components/settings/WatchlistDigest
 import SignedOutPanel from '@/components/auth/SignedOutPanel';
 import CinevilleCardModal from '@/components/cineville/CinevilleCardModal';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
+import PersonAvatar from '@/components/ui/PersonAvatar';
 import AppSwitch from '@/components/ui/AppSwitch';
 import SegmentedControl, { type SegmentedOption } from '@/components/ui/SegmentedControl';
 import EmailVerificationRequiredDialog from '@/components/ui/EmailVerificationRequiredDialog';
@@ -156,7 +157,7 @@ function SettingsScreen() {
     confirm_password: '',
   });
   // The notification preferences, their delivery channels and the OS permission
-  // state, shared with the notification-permission tip.
+  // state.
   const notificationPreferences = useNotificationPreferences();
   // Local state for the watchlist new-showtime email digest master switch.
   // Per-source settings (frequency, list, cinemas) live in
@@ -560,6 +561,29 @@ function SettingsScreen() {
         <View style={styles.section}>
           <ThemedText style={styles.sectionTitle}>My profile</ThemedText>
           <View style={styles.card}>
+            {user ? (
+              // The avatar exactly as friends see it: the Letterboxd picture
+              // only once it is switched on, the coloured initial otherwise.
+              <View style={styles.profileHeader}>
+                <PersonAvatar
+                  userId={user.id}
+                  name={user.display_name ?? ''}
+                  avatarUrl={user.avatar_url}
+                  size={56}
+                  fontSize={22}
+                />
+                <View style={styles.profileHeaderText}>
+                  <ThemedText style={styles.profileName} numberOfLines={1}>
+                    {user.display_name ?? ''}
+                  </ThemedText>
+                  <ThemedText style={styles.profileCaption}>
+                    {user.avatar_url
+                      ? 'Your Letterboxd profile picture, as friends see it.'
+                      : 'Your coloured initial. You can use your Letterboxd picture instead under Letterboxd.'}
+                  </ThemedText>
+                </View>
+              </View>
+            ) : null}
             <ThemedText style={styles.label}>Username</ThemedText>
             <TextInput
               style={styles.input}
@@ -668,6 +692,63 @@ function SettingsScreen() {
         </View>
         ) : null}
 
+        {/* Straight after the profile, as on the website's Settings page. */}
+        {isSignedIn ? (
+        <View style={styles.section}>
+          <ThemedText style={styles.sectionTitle}>{hasPassword ? 'Password' : 'Add password'}</ThemedText>
+          <View style={styles.card}>
+            {hasPassword ? (
+              <>
+                <ThemedText style={styles.label}>Current password</ThemedText>
+                <TextInput
+                  style={styles.input}
+                  value={passwords.current_password}
+                  onChangeText={(value) => setPasswords((prev) => ({ ...prev, current_password: value }))}
+                  placeholder="Current password"
+                  placeholderTextColor={colors.textSecondary}
+                  secureTextEntry
+                />
+              </>
+            ) : (
+              <ThemedText style={styles.helperText}>
+                Your account signed in with Apple or Google and has no password yet. Add
+                one to also be able to log in with your email.
+              </ThemedText>
+            )}
+            <ThemedText style={styles.label}>New password</ThemedText>
+            <TextInput
+              style={styles.input}
+              value={passwords.new_password}
+              onChangeText={(value) => setPasswords((prev) => ({ ...prev, new_password: value }))}
+              placeholder="New password"
+              placeholderTextColor={colors.textSecondary}
+              secureTextEntry
+            />
+            <ThemedText style={styles.label}>Confirm password</ThemedText>
+            <TextInput
+              style={styles.input}
+              value={passwords.confirm_password}
+              onChangeText={(value) => setPasswords((prev) => ({ ...prev, confirm_password: value }))}
+              placeholder="Confirm password"
+              placeholderTextColor={colors.textSecondary}
+              secureTextEntry
+            />
+            <TouchableOpacity
+              style={[
+                styles.primaryButton,
+                (isPasswordSaving || isPasswordFormIncomplete) && styles.buttonDisabled,
+              ]}
+              onPress={handlePasswordSave}
+              disabled={isPasswordSaving || isPasswordFormIncomplete}
+            >
+              <ThemedText style={styles.primaryButtonText}>
+                {isPasswordSaving ? 'Saving...' : hasPassword ? 'Update password' : 'Add password'}
+              </ThemedText>
+            </TouchableOpacity>
+          </View>
+        </View>
+        ) : null}
+
         {isSignedIn ? (
         <View style={styles.section} onLayout={handleLetterboxdSectionLayout}>
           <ThemedText style={styles.sectionTitle}>Letterboxd</ThemedText>
@@ -695,7 +776,7 @@ function SettingsScreen() {
             <View style={styles.card}>
               <ThemedText style={styles.helperText}>
                 Replays the first-run intro from page one. The last step (the Filters highlight)
-                appears on the showtimes tab once its list has loaded.
+                appears on the screenings tab once its list has loaded.
               </ThemedText>
               <TouchableOpacity
                 style={styles.secondaryButton}
@@ -782,7 +863,7 @@ function SettingsScreen() {
                 </View>
                 <ThemedText style={styles.label}>Shortcut button</ThemedText>
                 <View style={styles.cinevilleShortcutRow}>
-                  <ThemedText style={styles.cinevilleShortcutLabel}>On the showtimes tab</ThemedText>
+                  <ThemedText style={styles.cinevilleShortcutLabel}>On the screenings tab</ThemedText>
                   <AppSwitch
                     value={isShortcutOnShowtimes}
                     onValueChange={(value) => setCinevilleShortcutEnabled('showtimes', value)}
@@ -912,11 +993,11 @@ function SettingsScreen() {
             <View style={styles.notificationToggleHeader}>
               <View style={styles.notificationToggleTextContainer}>
                 <ThemedText style={styles.notificationToggleTitle}>
-                  Clear "interested" when you go
+                  Clear &quot;interested&quot; when you go
                 </ThemedText>
                 <ThemedText style={styles.notificationToggleDescription}>
-                  When you mark a showtime "going", ask to remove "interested" from other
-                  showtimes of the same movie.
+                  When you mark a screening &quot;going&quot;, ask to remove &quot;interested&quot; from
+                  other screenings of the same film.
                 </ThemedText>
               </View>
               <AppSwitch
@@ -924,62 +1005,6 @@ function SettingsScreen() {
                 onValueChange={setRemoveInterestedReminderEnabled}
               />
             </View>
-          </View>
-        </View>
-        ) : null}
-
-        {isSignedIn ? (
-        <View style={styles.section}>
-          <ThemedText style={styles.sectionTitle}>{hasPassword ? 'Password' : 'Add password'}</ThemedText>
-          <View style={styles.card}>
-            {hasPassword ? (
-              <>
-                <ThemedText style={styles.label}>Current password</ThemedText>
-                <TextInput
-                  style={styles.input}
-                  value={passwords.current_password}
-                  onChangeText={(value) => setPasswords((prev) => ({ ...prev, current_password: value }))}
-                  placeholder="Current password"
-                  placeholderTextColor={colors.textSecondary}
-                  secureTextEntry
-                />
-              </>
-            ) : (
-              <ThemedText style={styles.helperText}>
-                Your account signed in with Apple or Google and has no password yet. Add
-                one to also be able to log in with your email.
-              </ThemedText>
-            )}
-            <ThemedText style={styles.label}>New password</ThemedText>
-            <TextInput
-              style={styles.input}
-              value={passwords.new_password}
-              onChangeText={(value) => setPasswords((prev) => ({ ...prev, new_password: value }))}
-              placeholder="New password"
-              placeholderTextColor={colors.textSecondary}
-              secureTextEntry
-            />
-            <ThemedText style={styles.label}>Confirm password</ThemedText>
-            <TextInput
-              style={styles.input}
-              value={passwords.confirm_password}
-              onChangeText={(value) => setPasswords((prev) => ({ ...prev, confirm_password: value }))}
-              placeholder="Confirm password"
-              placeholderTextColor={colors.textSecondary}
-              secureTextEntry
-            />
-            <TouchableOpacity
-              style={[
-                styles.primaryButton,
-                (isPasswordSaving || isPasswordFormIncomplete) && styles.buttonDisabled,
-              ]}
-              onPress={handlePasswordSave}
-              disabled={isPasswordSaving || isPasswordFormIncomplete}
-            >
-              <ThemedText style={styles.primaryButtonText}>
-                {isPasswordSaving ? 'Saving...' : hasPassword ? 'Update password' : 'Add password'}
-              </ThemedText>
-            </TouchableOpacity>
           </View>
         </View>
         ) : null}
@@ -1084,7 +1109,7 @@ function SettingsScreen() {
             <View style={[styles.card, styles.dangerCard]} onLayout={handleDangerCardLayout}>
               <ThemedText style={styles.dangerHelperText}>
                 Permanently delete your account and all associated data. Your friends,
-                showtime selections and invites go with it. This cannot be undone.
+                screening selections and invites go with it. This cannot be undone.
               </ThemedText>
               <TouchableOpacity
                 style={[styles.dangerButton, deleteMutation.isPending && styles.buttonDisabled]}
@@ -1190,6 +1215,27 @@ const createStyles = (colors: typeof import('@/constants/theme').Colors.light) =
     },
     label: {
       fontSize: 12,
+      color: colors.textSecondary,
+    },
+    profileHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      marginBottom: 4,
+    },
+    profileHeaderText: {
+      flex: 1,
+      gap: 2,
+    },
+    profileName: {
+      fontSize: 16,
+      lineHeight: 22,
+      fontWeight: '700',
+      color: colors.text,
+    },
+    profileCaption: {
+      fontSize: 12,
+      lineHeight: 17,
       color: colors.textSecondary,
     },
     emailLabelRow: {

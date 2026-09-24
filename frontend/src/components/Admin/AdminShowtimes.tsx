@@ -26,7 +26,7 @@ const EditShowtimeRow = ({ showtime }: { showtime: AdminShowtimePublic }) => {
         requestBody: { ticket_link: ticketLink, datetime },
       }),
     onSuccess: () => {
-      showSuccessToast("Showtime updated.")
+      showSuccessToast("Screening updated.")
       invalidate()
     },
     onError: (err: ApiError) => handleError(err),
@@ -35,7 +35,7 @@ const EditShowtimeRow = ({ showtime }: { showtime: AdminShowtimePublic }) => {
   const deleteMutation = useMutation({
     mutationFn: () => AdminService.deleteShowtime({ showtimeId: showtime.id }),
     onSuccess: () => {
-      showSuccessToast("Showtime deleted.")
+      showSuccessToast("Screening deleted.")
       invalidate()
     },
     onError: (err: ApiError) => handleError(err),
@@ -75,7 +75,7 @@ const EditShowtimeRow = ({ showtime }: { showtime: AdminShowtimePublic }) => {
             loading={deleteMutation.isPending}
             onClick={() => {
               if (
-                confirm(`Delete this showtime for "${showtime.movie_title}"?`)
+                confirm(`Delete this screening for "${showtime.movie_title}"?`)
               ) {
                 deleteMutation.mutate()
               }
@@ -106,10 +106,10 @@ const AdminShowtimes = () => {
   return (
     <Box>
       <Heading size="md" mb={4}>
-        Showtimes
+        Screenings
       </Heading>
       <Stack direction="row" gap={4} mb={4} maxW="lg">
-        <Field label="Movie ID">
+        <Field label="Film ID">
           <Input value={movieId} onChange={(e) => setMovieId(e.target.value)} />
         </Field>
         <Field label="Cinema ID">
@@ -123,7 +123,7 @@ const AdminShowtimes = () => {
       <Table.Root size="sm">
         <Table.Header>
           <Table.Row>
-            <Table.ColumnHeader>Movie</Table.ColumnHeader>
+            <Table.ColumnHeader>Film</Table.ColumnHeader>
             <Table.ColumnHeader>Cinema</Table.ColumnHeader>
             <Table.ColumnHeader>Datetime</Table.ColumnHeader>
             <Table.ColumnHeader>Ticket link</Table.ColumnHeader>

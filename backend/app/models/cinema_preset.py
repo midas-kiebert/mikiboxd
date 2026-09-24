@@ -17,10 +17,11 @@ from app.utils import now_amsterdam_naive
 DEFAULT_CINEMA_PRESET_ID = uuid.UUID("00000000-0000-0000-0000-000000000003")
 DEFAULT_CINEMA_PRESET_NAME = "All cinemas"
 
-# The name of the one preset every user has whether they asked for it or not:
-# the cinemas they actually go to, applied on startup. It is a real row, marked
-# by `is_favorite` rather than by this name — the name is only what the manage
-# screen shows, and the user is free to change it. Nothing may key off it.
+# The name reserved for a preferred selection that has no name of its own:
+# "Set as preferred cinemas" on an unnamed selection writes into the row with
+# this name (see `me.set_favorite_cinema_ids`). Which row *is* preferred is
+# still `is_favorite`, never this name — the user can rename it, or promote a
+# preset they named, and every read of the preferred cinemas follows the flag.
 FAVORITE_CINEMA_PRESET_NAME = "My Cinemas"
 
 

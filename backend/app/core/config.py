@@ -137,6 +137,22 @@ class Settings(BaseSettings):
     # with this as the `aud` claim (no separate OAuth client is needed).
     APPLE_CLIENT_ID: str = "com.midaskiebert.mikino"
 
+    # The website's Sign in with Apple client: a Services ID from the Apple
+    # Developer portal, grouped under the app's primary App ID so that a person
+    # gets the same `sub` on the web as in the app. Web identity tokens carry
+    # this as their `aud`, and a web authorization code can only be exchanged
+    # with it plus the exact redirect URI the website used. Unset = no Apple
+    # sign-in on the web (the website hides the button too).
+    APPLE_WEB_CLIENT_ID: str | None = None
+    APPLE_WEB_REDIRECT_URI: str | None = None
+
+    @property
+    def apple_client_ids(self) -> list[str]:
+        """Every client an Apple identity token may be issued to."""
+        return [self.APPLE_CLIENT_ID] + (
+            [self.APPLE_WEB_CLIENT_ID] if self.APPLE_WEB_CLIENT_ID else []
+        )
+
     # Credentials for Apple's token endpoints, needed only to *revoke* a user's
     # Sign in with Apple tokens when they delete their account — which Apple
     # requires of any app offering Sign in with Apple (guideline 5.1.1(v) and
@@ -162,7 +178,8 @@ class Settings(BaseSettings):
     # client IDs from Google Cloud Console. The mobile app requests an ID token
     # scoped to the Web client (`webClientId`), so that one is the one that
     # actually appears as `aud` — but all are accepted since GoogleSignin
-    # configuration variants can vary this.
+    # configuration variants can vary this. The website's Google button uses
+    # the same Web client, so its origins must be listed on it in the console.
     GOOGLE_CLIENT_IDS: Annotated[list[str] | str, BeforeValidator(_parse_cors)] = []
 
     # -------------------------------------------------------------------------
@@ -264,6 +281,15 @@ class Settings(BaseSettings):
     EMAILS_FROM_EMAIL: EmailStr | None = None
     EMAILS_FROM_NAME: str | None = None  # Display name, not an email address
 
+    # Outside production, the only addresses mail is actually delivered to.
+    # Staging runs on a copy of prod's users, so without this every reminder,
+    # alert and digest it produced would reach a real person. Comma-separated;
+    # an entry starting with "@" allows a whole domain. Everything else is
+    # logged and dropped in `send_email`. Ignored in production.
+    NON_PROD_EMAIL_ALLOWLIST: Annotated[
+        list[str] | str, BeforeValidator(_parse_cors)
+    ] = []
+
     @model_validator(mode="after")
     def _set_default_emails_from(self) -> Self:
         """Fall back to PROJECT_NAME as the email sender display name."""
@@ -274,8 +300,28 @@ class Settings(BaseSettings):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def emails_enabled(self) -> bool:
-        """True only when both an SMTP host and a From address are configured."""
-        return bool(self.SMTP_HOST and self.EMAILS_FROM_EMAIL)
+        """True off LOCAL (or under TESTING), with SMTP host + From address set.
+
+        The root .env carries real production SMTP creds even for local runs
+        (so devs can test the full send path against staging), which would
+        otherwise mail real users the moment someone points a local backend at
+        a copy of the prod database. The TESTING escape hatch keeps this from
+        touching the test suite, which already blocks real delivery itself
+        (`send_email` raises under TESTING) and asserts against a mocked
+        `send_email` that expects this flag true. See push_notifications_enabled
+        below.
+        """
+        return (self.TESTING or self.ENVIRONMENT is not Environment.LOCAL) and bool(
+            self.SMTP_HOST and self.EMAILS_FROM_EMAIL
+        )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def push_notifications_enabled(self) -> bool:
+        """False on LOCAL, so a copy of prod's push tokens can never be used
+        to push real users. See emails_enabled above for the same reasoning,
+        including the TESTING escape hatch."""
+        return self.TESTING or self.ENVIRONMENT is not Environment.LOCAL
 
     # -------------------------------------------------------------------------
     # Scraping & Integrations

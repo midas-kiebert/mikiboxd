@@ -1,11 +1,113 @@
 from datetime import timedelta
 from uuid import uuid4
 
+import pytest
 from pytest_mock import MockerFixture
 
-from app.core.enums import GoingStatus, NotificationChannel, NotificationType
+from app.core.config import settings
+from app.core.enums import (
+    Environment,
+    GoingStatus,
+    NotificationChannel,
+    NotificationType,
+)
 from app.services import push_notifications
 from app.utils import now_amsterdam_naive
+
+CINEMA_NAME = "LAB111"
+# Far enough out that no title carries a day word ("tonight", "on Friday").
+FAR_OFF = timedelta(days=10)
+
+
+def _showtime(
+    mocker: MockerFixture,
+    *,
+    id: int = 111,
+    movie_id: int = 222,
+    title: str = "Movie",
+):
+    """A showtime mock carrying the real values notification copy is built
+    from: a datetime and a cinema name, not auto-created MagicMock attributes."""
+    cinema = mocker.MagicMock()
+    cinema.name = CINEMA_NAME
+    return mocker.MagicMock(
+        id=id,
+        movie_id=movie_id,
+        movie=mocker.MagicMock(title=title, poster_link=None),
+        cinema=cinema,
+        datetime=now_amsterdam_naive() + FAR_OFF,
+    )
+
+
+def _subtitle(showtime) -> str:
+    return f"{CINEMA_NAME} • {showtime.datetime.strftime('%A, %b %d at %H:%M')}"
+
+
+# ---------------------------------------------------------------------------
+# Settings.push_notifications_enabled + the _send_expo_messages gate
+#
+# A local backend routinely runs against a copy of prod's database, real push
+# tokens included. `_send_expo_messages` is the single choke point every
+# notification type in this module goes through to reach Expo, so gating it
+# there is what stops a local run from pushing real users' phones.
+#
+# The gate is bypassed under TESTING (which the whole suite runs with, per
+# conftest), since push-sending tests elsewhere already isolate themselves by
+# mocking `_send_expo_messages` directly rather than relying on this flag. The
+# "disabled on LOCAL" cases below turn TESTING off to exercise the actual
+# real-local-dev-run scenario the gate targets.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("environment", [Environment.STAGING, Environment.PRODUCTION])
+def test_push_notifications_enabled_off_local(
+    monkeypatch: pytest.MonkeyPatch, environment: Environment
+) -> None:
+    monkeypatch.setattr(settings, "ENVIRONMENT", environment)
+
+    assert settings.push_notifications_enabled is True
+
+
+def test_push_notifications_disabled_on_local(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "ENVIRONMENT", Environment.LOCAL)
+    monkeypatch.setattr(settings, "TESTING", False)
+
+    assert settings.push_notifications_enabled is False
+
+
+def test_send_expo_messages_skips_http_call_when_disabled(
+    monkeypatch: pytest.MonkeyPatch, mocker: MockerFixture
+) -> None:
+    monkeypatch.setattr(settings, "ENVIRONMENT", Environment.LOCAL)
+    monkeypatch.setattr(settings, "TESTING", False)
+    client_cls = mocker.patch("app.services.push_notifications.httpx.Client")
+
+    result = push_notifications._send_expo_messages(
+        [{"to": "ExponentPushToken[abc]", "title": "t", "body": "b"}]
+    )
+
+    assert result == []
+    client_cls.assert_not_called()
+
+
+def test_send_expo_messages_calls_http_when_enabled(
+    monkeypatch: pytest.MonkeyPatch, mocker: MockerFixture
+) -> None:
+    monkeypatch.setattr(settings, "ENVIRONMENT", Environment.STAGING)
+    fake_client = mocker.MagicMock()
+    fake_client.__enter__.return_value = fake_client
+    fake_client.post.return_value.json.return_value = {"data": [{"status": "ok"}]}
+    client_cls = mocker.patch(
+        "app.services.push_notifications.httpx.Client", return_value=fake_client
+    )
+
+    result = push_notifications._send_expo_messages(
+        [{"to": "ExponentPushToken[abc]", "title": "t", "body": "b"}]
+    )
+
+    client_cls.assert_called_once()
+    fake_client.post.assert_called_once()
+    assert result == [{"status": "ok"}]
 
 
 def test_notify_friends_looks_up_both_going_and_interested_recipients(
@@ -13,7 +115,7 @@ def test_notify_friends_looks_up_both_going_and_interested_recipients(
 ) -> None:
     session = mocker.MagicMock()
     actor_id = uuid4()
-    showtime = mocker.MagicMock()
+    showtime = _showtime(mocker)
     showtime.id = 123
     showtime.movie_id = 456
     showtime.movie = mocker.MagicMock(title="In the Mood for Love")
@@ -53,7 +155,7 @@ def test_notify_friends_only_for_opted_in_recipients(
     recipient_opted_out_id = uuid4()
 
     session = mocker.MagicMock()
-    showtime = mocker.MagicMock()
+    showtime = _showtime(mocker)
     showtime.id = 123
     showtime.movie_id = 456
     showtime.movie = mocker.MagicMock(title="In the Mood for Love")
@@ -105,8 +207,8 @@ def test_notify_friends_only_for_opted_in_recipients(
     sent_payload = send_messages.call_args.args[0]
     assert len(sent_payload) == 1
     assert sent_payload[0]["to"] == token.token
-    assert sent_payload[0]["title"] == "Alex is going"
-    assert sent_payload[0]["body"] == showtime.movie.title
+    assert sent_payload[0]["title"] == "Alex is going to In the Mood for Love"
+    assert sent_payload[0]["body"] == _subtitle(showtime)
     assert "richContent" not in sent_payload[0]
     handle_results.assert_called_once()
 
@@ -117,7 +219,7 @@ def test_notify_friends_uses_email_channel_when_selected(
     session = mocker.MagicMock()
     actor_id = uuid4()
     recipient_id = uuid4()
-    showtime = mocker.MagicMock(id=111, movie_id=222, movie=mocker.MagicMock(title="Movie"))
+    showtime = _showtime(mocker)
     actor = mocker.MagicMock(display_name="Alex")
     recipient = mocker.MagicMock(
         id=recipient_id,
@@ -138,7 +240,7 @@ def test_notify_friends_uses_email_channel_when_selected(
         "app.services.push_notifications.push_token_crud.get_push_tokens_for_users",
     )
     send_email = mocker.patch(
-        "app.services.push_notifications._send_email_notification",
+        "app.services.push_notifications._send_templated_email",
         return_value=True,
     )
 
@@ -151,18 +253,16 @@ def test_notify_friends_uses_email_channel_when_selected(
     )
 
     get_tokens.assert_not_called()
-    send_email.assert_called_once_with(
-        email_to="friend@example.com",
-        subject="Alex is going",
-        body="Movie",
-    )
+    send_email.assert_called_once()
+    assert send_email.call_args.kwargs["recipient"].email == "friend@example.com"
+    assert send_email.call_args.kwargs["email_data"].subject == "Alex is going to Movie"
 
 
 def test_notify_friends_skips_when_no_opted_in_recipients(
     mocker: MockerFixture,
 ) -> None:
     session = mocker.MagicMock()
-    showtime = mocker.MagicMock(id=111, movie_id=222, movie=mocker.MagicMock(title="Movie"))
+    showtime = _showtime(mocker)
     actor = mocker.MagicMock(display_name="Alex")
     recipient_opted_out = mocker.MagicMock(
         id=uuid4(),
@@ -199,7 +299,7 @@ def test_notify_friends_skips_when_recipient_is_hidden_by_visibility(
     mocker: MockerFixture,
 ) -> None:
     session = mocker.MagicMock()
-    showtime = mocker.MagicMock(id=111, movie_id=222, movie=mocker.MagicMock(title="Movie"))
+    showtime = _showtime(mocker)
     actor = mocker.MagicMock(display_name="Alex")
     recipient = mocker.MagicMock(
         id=uuid4(),
@@ -223,7 +323,7 @@ def test_notify_friends_skips_when_recipient_is_hidden_by_visibility(
         "app.services.push_notifications.push_token_crud.get_push_tokens_for_users",
     )
     send_messages = mocker.patch("app.services.push_notifications._send_expo_messages")
-    send_email = mocker.patch("app.services.push_notifications._send_email_notification")
+    send_email = mocker.patch("app.services.push_notifications._send_templated_email")
 
     push_notifications.notify_friends_on_showtime_selection(
         session=session,
@@ -244,7 +344,7 @@ def test_notify_friends_sends_no_longer_selected_status(
     session = mocker.MagicMock()
     actor_id = uuid4()
     recipient_id = uuid4()
-    showtime = mocker.MagicMock(id=111, movie_id=222, movie=mocker.MagicMock(title="Movie"))
+    showtime = _showtime(mocker)
     actor = mocker.MagicMock(display_name="Alex")
     recipient = mocker.MagicMock(
         id=recipient_id,
@@ -281,7 +381,7 @@ def test_notify_friends_sends_no_longer_selected_status(
 
     sent_payload = send_messages.call_args.args[0]
     assert len(sent_payload) == 1
-    assert sent_payload[0]["title"] == "Alex is no longer interested"
+    assert sent_payload[0]["title"] == "Alex is no longer interested in Movie"
     assert sent_payload[0]["data"]["type"] == "showtime_status_removed"
     assert sent_payload[0]["data"]["status"] == GoingStatus.NOT_GOING.value
     assert sent_payload[0]["data"]["previousStatus"] == GoingStatus.INTERESTED.value
@@ -291,7 +391,7 @@ def test_notify_friends_sends_no_longer_going_when_status_downgrades(
     mocker: MockerFixture,
 ) -> None:
     session = mocker.MagicMock()
-    showtime = mocker.MagicMock(id=111, movie_id=222, movie=mocker.MagicMock(title="Movie"))
+    showtime = _showtime(mocker)
     actor = mocker.MagicMock(display_name="Alex")
     recipient = mocker.MagicMock(
         id=uuid4(),
@@ -328,7 +428,7 @@ def test_notify_friends_sends_no_longer_going_when_status_downgrades(
 
     sent_payload = send_messages.call_args.args[0]
     assert len(sent_payload) == 1
-    assert sent_payload[0]["title"] == "Alex is no longer going"
+    assert sent_payload[0]["title"] == "Alex is no longer going to Movie"
     assert sent_payload[0]["data"]["type"] == "showtime_status_removed"
     assert sent_payload[0]["data"]["status"] == GoingStatus.INTERESTED.value
     assert sent_payload[0]["data"]["previousStatus"] == GoingStatus.GOING.value
@@ -376,8 +476,8 @@ def test_notify_user_on_friend_request(
     sent_payload = send_messages.call_args.args[0]
     assert len(sent_payload) == 1
     assert sent_payload[0]["to"] == token.token
-    assert sent_payload[0]["title"] == "New friend request"
-    assert sent_payload[0]["body"] == "Alex sent you a friend request"
+    assert sent_payload[0]["title"] == "Alex sent you a friend request"
+    assert sent_payload[0]["body"] == ""
     assert sent_payload[0]["data"]["type"] == "friend_request_received"
     assert sent_payload[0]["data"]["senderId"] == str(sender_id)
     assert "richContent" not in sent_payload[0]
@@ -405,7 +505,7 @@ def test_notify_user_on_friend_request_uses_email_channel(
         "app.services.push_notifications.push_token_crud.get_push_tokens_for_users",
     )
     send_email = mocker.patch(
-        "app.services.push_notifications._send_email_notification",
+        "app.services.push_notifications._send_templated_email",
         return_value=True,
     )
 
@@ -416,10 +516,11 @@ def test_notify_user_on_friend_request_uses_email_channel(
     )
 
     get_tokens.assert_not_called()
-    send_email.assert_called_once_with(
-        email_to="friend@example.com",
-        subject="New friend request",
-        body="Alex sent you a friend request",
+    send_email.assert_called_once()
+    assert send_email.call_args.kwargs["recipient"].email == "friend@example.com"
+    assert (
+        send_email.call_args.kwargs["email_data"].subject
+        == "Alex sent you a friend request"
     )
 
 
@@ -465,8 +566,8 @@ def test_notify_user_on_friend_request_accepted(
     sent_payload = send_messages.call_args.args[0]
     assert len(sent_payload) == 1
     assert sent_payload[0]["to"] == token.token
-    assert sent_payload[0]["title"] == "Friend request accepted"
-    assert sent_payload[0]["body"] == "Alex accepted your friend request"
+    assert sent_payload[0]["title"] == "Alex accepted your friend request"
+    assert sent_payload[0]["body"] == ""
     assert sent_payload[0]["data"]["type"] == "friend_request_accepted"
     assert sent_payload[0]["data"]["accepterId"] == str(accepter_id)
     assert "richContent" not in sent_payload[0]
@@ -479,10 +580,12 @@ def test_notify_user_on_showtime_ping(
     session = mocker.MagicMock()
     sender_id = uuid4()
     receiver_id = uuid4()
-    showtime = mocker.MagicMock()
+    showtime = _showtime(mocker)
     showtime.id = 42
     showtime.movie_id = 77
-    showtime.datetime = now_amsterdam_naive() + timedelta(days=1)
+    showtime.datetime = (now_amsterdam_naive() + timedelta(days=1)).replace(
+        hour=20, minute=0, second=0, microsecond=0
+    )
     showtime.movie = mocker.MagicMock(title="Memories of Murder")
 
     sender = mocker.MagicMock(display_name="Alex")
@@ -519,12 +622,65 @@ def test_notify_user_on_showtime_ping(
 
     sent_payload = send_messages.call_args.args[0]
     assert len(sent_payload) == 1
-    assert sent_payload[0]["title"] == "Alex invited you"
+    assert sent_payload[0]["title"] == (
+        f"Alex invited you to Memories of Murder tomorrow at "
+        f"{showtime.datetime.strftime('%H:%M')} in {CINEMA_NAME}"
+    )
     assert sent_payload[0]["data"]["type"] == "showtime_ping"
     assert sent_payload[0]["data"]["showtimeId"] == showtime.id
     assert sent_payload[0]["data"]["movieId"] == showtime.movie_id
     assert sent_payload[0]["data"]["senderId"] == str(sender_id)
     handle_results.assert_called_once()
+
+
+def test_notify_user_on_showtime_ping_makes_no_http_call_on_local(
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: MockerFixture,
+) -> None:
+    """End-to-end check that the LOCAL gate is effective for a real caller:
+    even with a receiver opted in on the push channel and a real token on
+    file, nothing reaches Expo's HTTP endpoint when running as LOCAL."""
+    monkeypatch.setattr(settings, "ENVIRONMENT", Environment.LOCAL)
+    monkeypatch.setattr(settings, "TESTING", False)
+
+    session = mocker.MagicMock()
+    sender_id = uuid4()
+    receiver_id = uuid4()
+    showtime = _showtime(mocker)
+    showtime.id = 42
+    showtime.movie_id = 77
+    showtime.datetime = now_amsterdam_naive() + timedelta(days=1)
+    showtime.movie = mocker.MagicMock(title="Memories of Murder")
+
+    sender = mocker.MagicMock(display_name="Alex")
+    receiver = mocker.MagicMock(
+        notify_on_showtime_ping=True,
+        notify_channel_showtime_ping=NotificationChannel.PUSH,
+    )
+    token = mocker.MagicMock(token="ExponentPushToken[abc]")
+
+    mocker.patch(
+        "app.services.push_notifications.showtime_crud.get_showtime_by_id",
+        return_value=showtime,
+    )
+    mocker.patch(
+        "app.services.push_notifications.user_crud.get_user_by_id",
+        side_effect=[sender, receiver],
+    )
+    mocker.patch(
+        "app.services.push_notifications.push_token_crud.get_push_tokens_for_users",
+        return_value=[token],
+    )
+    client_cls = mocker.patch("app.services.push_notifications.httpx.Client")
+
+    push_notifications.notify_user_on_showtime_ping(
+        session=session,
+        sender_id=sender_id,
+        receiver_id=receiver_id,
+        showtime_id=showtime.id,
+    )
+
+    client_cls.assert_not_called()
 
 
 def test_notify_user_on_showtime_ping_uses_email_channel(
@@ -533,7 +689,7 @@ def test_notify_user_on_showtime_ping_uses_email_channel(
     session = mocker.MagicMock()
     sender_id = uuid4()
     receiver_id = uuid4()
-    showtime = mocker.MagicMock()
+    showtime = _showtime(mocker)
     showtime.id = 42
     showtime.movie_id = 77
     showtime.datetime = now_amsterdam_naive() + timedelta(days=1)
@@ -557,7 +713,7 @@ def test_notify_user_on_showtime_ping_uses_email_channel(
         "app.services.push_notifications.push_token_crud.get_push_tokens_for_users",
     )
     send_email = mocker.patch(
-        "app.services.push_notifications._send_email_notification",
+        "app.services.push_notifications._send_templated_email",
         return_value=True,
     )
 
@@ -571,9 +727,10 @@ def test_notify_user_on_showtime_ping_uses_email_channel(
     get_tokens.assert_not_called()
     send_email.assert_called_once()
     email_call = send_email.call_args.kwargs
-    assert email_call["email_to"] == "friend@example.com"
-    assert email_call["subject"] == "Alex invited you"
-    assert "Memories of Murder" in email_call["body"]
+    assert email_call["recipient"].email == "friend@example.com"
+    assert email_call["email_data"].subject.startswith(
+        "Alex invited you to Memories of Murder"
+    )
 
 
 def test_send_interested_showtime_reminders_marks_selection_as_sent(
@@ -583,7 +740,7 @@ def test_send_interested_showtime_reminders_marks_selection_as_sent(
     user_id = uuid4()
     now = now_amsterdam_naive()
 
-    showtime = mocker.MagicMock()
+    showtime = _showtime(mocker)
     showtime.id = 123
     showtime.movie_id = 456
     showtime.datetime = now + timedelta(hours=23)
@@ -635,7 +792,7 @@ def test_send_interested_showtime_reminders_uses_email_channel(
     user_id = uuid4()
     now = now_amsterdam_naive()
 
-    showtime = mocker.MagicMock()
+    showtime = _showtime(mocker)
     showtime.id = 123
     showtime.movie_id = 456
     showtime.datetime = now + timedelta(hours=23)
@@ -665,7 +822,7 @@ def test_send_interested_showtime_reminders_uses_email_channel(
     )
     send_messages = mocker.patch("app.services.push_notifications._send_expo_messages")
     send_email = mocker.patch(
-        "app.services.push_notifications._send_email_notification",
+        "app.services.push_notifications._send_templated_email",
         return_value=True,
     )
 
@@ -688,7 +845,7 @@ def test_notify_friends_persists_match_notification(
     actor_id = uuid4()
     recipient_id = uuid4()
     session = mocker.MagicMock()
-    showtime = mocker.MagicMock(id=111, movie_id=222, movie=mocker.MagicMock(title="Movie"))
+    showtime = _showtime(mocker)
     actor = mocker.MagicMock(display_name="Alex")
     recipient = mocker.MagicMock(
         id=recipient_id,
@@ -744,7 +901,7 @@ def test_notify_friends_skips_match_for_inviter(
     actor_id = uuid4()
     recipient_id = uuid4()
     session = mocker.MagicMock()
-    showtime = mocker.MagicMock(id=111, movie_id=222, movie=mocker.MagicMock(title="Movie"))
+    showtime = _showtime(mocker)
     actor = mocker.MagicMock(display_name="Alex")
     recipient = mocker.MagicMock(
         id=recipient_id,
@@ -793,7 +950,7 @@ def test_notify_friends_deletes_notifications_on_removal(
 ) -> None:
     actor_id = uuid4()
     session = mocker.MagicMock()
-    showtime = mocker.MagicMock(id=111, movie_id=222, movie=mocker.MagicMock(title="Movie"))
+    showtime = _showtime(mocker)
     actor = mocker.MagicMock(display_name="Alex")
 
     mocker.patch(
@@ -834,7 +991,7 @@ def test_notify_inviters_on_response_creates_invite_response(
     responder_id = uuid4()
     inviter_id = uuid4()
     session = mocker.MagicMock()
-    showtime = mocker.MagicMock(id=111, movie_id=222, movie=mocker.MagicMock(title="Movie"))
+    showtime = _showtime(mocker)
     responder = mocker.MagicMock(display_name="Alex")
     inviter = mocker.MagicMock(
         id=inviter_id,
@@ -892,7 +1049,7 @@ def test_notify_inviters_on_response_creates_invite_response(
     send_messages.assert_called_once()
     sent_payload = send_messages.call_args.args[0]
     assert sent_payload[0]["data"]["type"] == "invite_response"
-    assert sent_payload[0]["title"] == "Alex is going"
+    assert sent_payload[0]["title"] == "Alex is going to Movie"
 
 
 def test_notify_inviters_on_response_skips_when_opted_out(
@@ -900,7 +1057,7 @@ def test_notify_inviters_on_response_skips_when_opted_out(
 ) -> None:
     responder_id = uuid4()
     session = mocker.MagicMock()
-    showtime = mocker.MagicMock(id=111, movie_id=222, movie=mocker.MagicMock(title="Movie"))
+    showtime = _showtime(mocker)
     responder = mocker.MagicMock(display_name="Alex")
     inviter = mocker.MagicMock(
         id=uuid4(),

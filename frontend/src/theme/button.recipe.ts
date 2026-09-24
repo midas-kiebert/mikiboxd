@@ -16,7 +16,7 @@ export const buttonRecipe = defineRecipe({
       ghost: {
         bg: "transparent",
         _hover: {
-          bg: "gray.100",
+          bg: "bg.subtle",
         },
       },
     },

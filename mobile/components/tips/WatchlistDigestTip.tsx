@@ -63,8 +63,8 @@ export default function WatchlistDigestTip() {
       title={isEnabled ? "You're subscribed" : "Get an email when a watchlist film lands"}
       message={
         isEnabled
-          ? "You'll hear when a film from your watchlist gets a showtime. How often, and which cinemas count, are in Settings."
-          : "We can email you when something on your Letterboxd watchlist gets a showtime at one of your cinemas, so you don't have to keep checking."
+          ? "You'll hear when a film from your watchlist gets a screening. How often, and which cinemas count, are in Settings."
+          : "We can email you when something on your Letterboxd watchlist gets a screening at one of your cinemas, so you don't have to keep checking."
       }
       actionLabel={isEnabled ? "Done" : "Email me"}
       onAction={isEnabled ? undefined : () => void handleEnable()}

@@ -74,23 +74,42 @@ def _film(
 
 CATALOGUE: list[tuple[Any, Any]] = [
     _film(
-        101, "Aftersun", "Kriterion", 1, 20,
-        poster="/dPCswmsCsW7ffgHl2mtdqiYFqfC.jpg", slug="aftersun",
+        101,
+        "Aftersun",
+        "Kriterion",
+        1,
+        20,
+        poster="/dPCswmsCsW7ffgHl2mtdqiYFqfC.jpg",
+        slug="aftersun",
     ),
     # No Letterboxd slug: that row renders with the MiKiNO link alone.
     _film(
-        102, "Perfect Days", "LAB111", 2, 19,
+        102,
+        "Perfect Days",
+        "LAB111",
+        2,
+        19,
         poster="/cQjXQrTLLpgL4TVsdIVFtVQNaOG.jpg",
     ),
     _film(
-        103, "The Zone of Interest", "Eye Filmmuseum", 3, 16,
-        poster="/hUu9zyZmDd8VZegKi1iK1Vk0RYS.jpg", slug="the-zone-of-interest",
+        103,
+        "The Zone of Interest",
+        "Eye Filmmuseum",
+        3,
+        16,
+        poster="/hUu9zyZmDd8VZegKi1iK1Vk0RYS.jpg",
+        slug="the-zone-of-interest",
     ),
     # No poster: that row falls back to text only.
     _film(104, "Petite Maman", "Filmhuis Cavia", 4, 21, slug="petite-maman"),
     _film(
-        105, "Drive My Car", "Rialto De Pijp", 6, 18,
-        poster="/tOO0Wgh1U0Y4mznAQxLcTOSSg6t.jpg", slug="drive-my-car",
+        105,
+        "Drive My Car",
+        "Rialto De Pijp",
+        6,
+        18,
+        poster="/tOO0Wgh1U0Y4mznAQxLcTOSSg6t.jpg",
+        slug="drive-my-car",
     ),
 ]
 
@@ -128,29 +147,41 @@ DELETED_LIST = DigestSource(
 
 CASES: list[tuple[str, list[DigestSource], int, str]] = [
     (
-        "Weekly", [WATCHLIST], 3,
+        "Weekly",
+        [WATCHLIST],
+        3,
         "The default: films from your Letterboxd watchlist.",
     ),
     (
-        "Weekly", [CHOSEN_LIST], 5,
+        "Weekly",
+        [CHOSEN_LIST],
+        5,
         "Same mode following a chosen list — the footer links the list, not the "
         "watchlist. “Petite Maman” has no poster.",
     ),
     (
-        "Eager", [WATCHLIST_DAILY], 1,
+        "Eager",
+        [WATCHLIST_DAILY],
+        1,
         "Eager, one film. The subject claims no timeframe and the explainer "
         "line changes with the mode.",
     ),
     (
-        "Eager", [CHOSEN_LIST_DAILY], 3,
+        "Eager",
+        [CHOSEN_LIST_DAILY],
+        3,
         "Eager following a list. “Perfect Days” has no Letterboxd slug.",
     ),
     (
-        "Weekly", [DELETED_LIST], 2,
+        "Weekly",
+        [DELETED_LIST],
+        2,
         "Edge case: the chosen list row was deleted, so it is named but not linked.",
     ),
     (
-        "Combined", [WATCHLIST_DAILY, CHOSEN_LIST], 5,
+        "Combined",
+        [WATCHLIST_DAILY, CHOSEN_LIST],
+        5,
         "Two sources due the same day, combined into a single email: one footer "
         "line per source, each with its own cadence and explainer.",
     ),
@@ -191,9 +222,7 @@ PAGE_CSS = """
 """
 
 
-def _render_case(
-    *, email: EmailData, label: str, note: str, film_count: int
-) -> str:
+def _render_case(*, email: EmailData, label: str, note: str, film_count: int) -> str:
     """One case: the headers a client would show, then the body in an iframe."""
     # srcdoc rather than a data: URI so the email HTML stays readable in devtools.
     return f"""

@@ -1,7 +1,7 @@
 /**
  * Shared web layout/presentation component: Support.
  */
-import { Flex, Heading, Link as ChakraLink, Text } from "@chakra-ui/react"
+import { Link as ChakraLink, Flex, Heading, Text } from "@chakra-ui/react"
 
 const Support = () => {
   return (

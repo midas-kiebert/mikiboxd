@@ -1,12 +1,21 @@
 /**
- * The two Letterboxd relationships a friend can have with a film, and the icon /
- * color / wording each one gets. Centralised so the showtime sheet, the movie
- * page and the shared popup all mark "watchlisted" and "watched" identically.
+ * The app's presentation of a Letterboxd watch relationship: the shared copy
+ * and icon, resolved against the app's theme colours.
+ *
+ * The wording, the icon name and which palette draws it come from
+ * `shared/friends/friend-watch-kind`, so the website cannot mark "watchlisted"
+ * with a different icon or colour than the app does.
  */
+import {
+  type FriendWatchKind,
+  getFriendWatchKindCopy,
+} from "shared/friends/friend-watch-kind";
 
-type ThemeColors = typeof import("@/constants/theme").Colors.light;
+import type { Colors } from "@/constants/theme";
 
-export type FriendWatchKind = "watchlisted" | "watched";
+type ThemeColors = typeof Colors.light;
+
+export type { FriendWatchKind };
 
 type FriendWatchKindMeta = {
   icon: "schedule" | "visibility";
@@ -20,17 +29,12 @@ type FriendWatchKindMeta = {
 export const getFriendWatchKindMeta = (
   kind: FriendWatchKind,
   colors: ThemeColors
-): FriendWatchKindMeta =>
-  kind === "watchlisted"
-    ? {
-        icon: "schedule",
-        accent: colors.orange.secondary,
-        background: colors.orange.primary,
-        title: "Watchlisted",
-      }
-    : {
-        icon: "visibility",
-        accent: colors.green.secondary,
-        background: colors.green.primary,
-        title: "Watched",
-      };
+): FriendWatchKindMeta => {
+  const { icon, palette, title } = getFriendWatchKindCopy(kind);
+  return {
+    icon,
+    accent: colors[palette].secondary,
+    background: colors[palette].primary,
+    title,
+  };
+};

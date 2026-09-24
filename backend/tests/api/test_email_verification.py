@@ -89,7 +89,7 @@ def test_signup_creates_an_unverified_account_and_mails_a_link(
 
     assert _get_user(db_transaction, email).email_verified is False
     assert [mail["email_to"] for mail in sent_emails] == [email]
-    assert "/users/verify-email?token=" in sent_emails[0]["html_content"]
+    assert f"{settings.FRONTEND_HOST}/verify-email?token=" in sent_emails[0]["html_content"]
 
 
 def test_signup_still_succeeds_when_the_verification_email_fails(
@@ -122,7 +122,7 @@ def test_verification_link_confirms_the_account(
     assert sent_emails[0]["email_to"] == email
     token = generate_email_verification_token(email=email)
 
-    r = client.get(f"{settings.API_V1_STR}/users/verify-email", params={"token": token})
+    r = client.post(f"{settings.API_V1_STR}/users/verify-email", json={"token": token})
 
     assert r.status_code == 200
     db_transaction.expire_all()
@@ -139,14 +139,14 @@ def test_verification_link_can_be_clicked_twice(
     _signup(client, email)
     assert sent_emails[0]["email_to"] == email
     token = generate_email_verification_token(email=email)
-    params = {"token": token}
+    body = {"token": token}
 
     assert (
-        client.get(f"{settings.API_V1_STR}/users/verify-email", params=params).status_code
+        client.post(f"{settings.API_V1_STR}/users/verify-email", json=body).status_code
         == 200
     )
     assert (
-        client.get(f"{settings.API_V1_STR}/users/verify-email", params=params).status_code
+        client.post(f"{settings.API_V1_STR}/users/verify-email", json=body).status_code
         == 200
     )
     db_transaction.expire_all()
@@ -154,11 +154,38 @@ def test_verification_link_can_be_clicked_twice(
 
 
 def test_verification_link_rejects_garbage(client: TestClient) -> None:
-    r = client.get(
-        f"{settings.API_V1_STR}/users/verify-email", params={"token": "not-a-token"}
+    r = client.post(
+        f"{settings.API_V1_STR}/users/verify-email", json={"token": "not-a-token"}
     )
 
     assert r.status_code == 400
+
+
+def test_old_api_verification_link_forwards_to_the_website_page(
+    client: TestClient,
+    db_transaction: Session,
+    sent_emails: list[dict[str, str]],
+) -> None:
+    """Links mailed before the website page existed still work, via a redirect.
+
+    The redirect itself confirms nothing — mail scanners open links on their
+    own, and the page it lands on is what does the confirming.
+    """
+    email = random_email()
+    _signup(client, email)
+    assert sent_emails[0]["email_to"] == email
+    token = generate_email_verification_token(email=email)
+
+    r = client.get(
+        f"{settings.API_V1_STR}/users/verify-email",
+        params={"token": token},
+        follow_redirects=False,
+    )
+
+    assert r.status_code == 307
+    assert r.headers["location"] == f"{settings.FRONTEND_HOST}/verify-email?token={token}"
+    db_transaction.expire_all()
+    assert _get_user(db_transaction, email).email_verified is False
 
 
 def test_verification_link_rejects_a_password_reset_token(
@@ -176,8 +203,8 @@ def test_verification_link_rejects_a_password_reset_token(
     assert sent_emails[0]["email_to"] == email
     reset_token = generate_password_reset_token(email=email)
 
-    r = client.get(
-        f"{settings.API_V1_STR}/users/verify-email", params={"token": reset_token}
+    r = client.post(
+        f"{settings.API_V1_STR}/users/verify-email", json={"token": reset_token}
     )
 
     assert r.status_code == 400
@@ -252,12 +279,14 @@ def test_unverified_account_cannot_enable_the_watchlist_digest(
     assert refreshed.notify_watchlist_digest_enabled is False
 
 
-def test_unverified_account_cannot_route_notifications_to_email(
+def test_unverified_account_can_choose_email_as_a_notification_channel(
     client: TestClient,
     normal_user_token_headers: dict[str, str],
     db_transaction: Session,
 ) -> None:
-    """The digest is not the only way to point something at an inbox."""
+    """Email is a valid choice before the address is confirmed (the intro
+    offers it to brand-new accounts); nothing is mailed until it is — see
+    `push_notifications._send_templated_email`."""
     user = db_transaction.exec(
         select(User).where(User.email == settings.EMAIL_TEST_USER)
     ).one()
@@ -272,12 +301,8 @@ def test_unverified_account_cannot_route_notifications_to_email(
         json={"notify_channel_friend_requests": "email"},
     )
 
-    assert r.status_code == 403
-    db_transaction.expire_all()
-    refreshed = db_transaction.exec(
-        select(User).where(User.email == settings.EMAIL_TEST_USER)
-    ).one()
-    assert refreshed.notify_channel_friend_requests == NotificationChannel.PUSH
+    assert r.status_code == 200
+    assert r.json()["notify_channel_friend_requests"] == "email"
 
 
 def test_unverified_account_can_still_switch_a_channel_back_to_push(

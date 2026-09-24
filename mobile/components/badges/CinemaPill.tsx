@@ -13,6 +13,7 @@ import type { CinemaPublic } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
 import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
+import { useInheritFiltersParams } from "@/hooks/usePageFilters";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { getCinemaColorPalette } from "@/utils/cinema-color";
 
@@ -43,6 +44,7 @@ export default function CinemaPill({
 }: CinemaPillProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const router = useRouter();
+  const inheritFiltersParams = useInheritFiltersParams();
   const goToCinemaShowtimes = useSingleFireNavigation((c: CinemaPublic) =>
     router.push({
       pathname: "/cinema-showtimes/[id]",
@@ -52,6 +54,7 @@ export default function CinemaPill({
         city: c.city.name,
         badgeBgColor: c.badge_bg_color,
         url: c.url,
+        ...inheritFiltersParams,
       },
     })
   );

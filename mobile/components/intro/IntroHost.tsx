@@ -16,6 +16,11 @@
  * the app goes, which is exactly why it forces the showtimes tab the moment it
  * actually starts: a resumed deep link or another tab reached first would
  * otherwise be whatever's revealed once the walkthrough ends.
+ *
+ * An existing account the app has never asked how it wants to be notified
+ * (`app_notifications_prompted` false — typically one made on the website) gets
+ * the notifications-only intro instead, under the same conditions. It stays
+ * where the user is: one question does not need the showtimes tab behind it.
  */
 import { useEffect, useState } from "react";
 import { useNavigationContainerRef, useRouter, useSegments } from "expo-router";
@@ -26,6 +31,7 @@ import IntroFlow from "@/components/intro/IntroFlow";
 import { hasUsername, useCurrentUser } from "@/hooks/useCurrentUser";
 import {
   startIntroIfPending,
+  startNotificationsIntro,
   useIntroPhase,
   useIsIntroLoaded,
   useIsIntroOwed,
@@ -88,8 +94,10 @@ export default function IntroHost() {
     if (!isNavigationReady || !isLoaded || !isInTabs || !hasPickedUsername) return;
     if (startIntroIfPending()) {
       router.replace("/(tabs)");
+      return;
     }
-  }, [hasPickedUsername, isInTabs, isLoaded, isNavigationReady, router]);
+    if (currentUser?.app_notifications_prompted === false) startNotificationsIntro();
+  }, [currentUser, hasPickedUsername, isInTabs, isLoaded, isNavigationReady, router]);
 
   if (phase !== "pages") return null;
   return <IntroFlow />;

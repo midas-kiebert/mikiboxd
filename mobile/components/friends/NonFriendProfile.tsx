@@ -23,11 +23,11 @@ import type { UserReportReason, UserWithFriendStatus } from "shared";
 import ReportUserDialog from "@/components/friends/ReportUserDialog";
 import { ThemedText } from "@/components/themed-text";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import PersonAvatar from "@/components/ui/PersonAvatar";
 import { useFriendActions } from "@/hooks/useFriendActions";
 import { useOptimisticFriendStatus } from "@/hooks/useFriendStatus";
 import { useUserModeration } from "@/hooks/useUserModeration";
 import { useThemeColors } from "@/hooks/use-theme-color";
-import { getAvatarColors, getAvatarInitial } from "@/utils/avatar-color";
 import { triggerSelectionHaptic } from "@/utils/long-press";
 
 type NonFriendProfileProps = {
@@ -53,7 +53,6 @@ export default function NonFriendProfile({ user: seed }: NonFriendProfileProps) 
 
   const displayUser = user ?? seed;
   const name = displayUser.display_name?.trim() || "This user";
-  const avatarColors = getAvatarColors(displayUser.id, colors);
   const isBlocked = displayUser.is_blocked;
 
   const handleConfirmBlock = () => {
@@ -99,11 +98,14 @@ export default function NonFriendProfile({ user: seed }: NonFriendProfileProps) 
   return (
     <View style={styles.container}>
       <View style={styles.card}>
-        <View style={[styles.avatar, { backgroundColor: avatarColors.primary }]}>
-          <ThemedText style={[styles.avatarText, { color: avatarColors.secondary }]}>
-            {getAvatarInitial(name)}
-          </ThemedText>
-        </View>
+        <PersonAvatar
+          userId={displayUser.id}
+          name={name}
+          avatarUrl={displayUser.avatar_url}
+          size={84}
+          fontSize={32}
+          style={styles.avatar}
+        />
         <ThemedText style={styles.name} numberOfLines={2}>
           {name}
         </ThemedText>
@@ -134,7 +136,7 @@ export default function NonFriendProfile({ user: seed }: NonFriendProfileProps) 
           </ThemedText>
         ) : (
           <ThemedText style={styles.hint}>
-            Become friends to see {name}&apos;s agenda and invite them to showtimes.
+            Become friends to see {name}&apos;s agenda and invite them to screenings.
           </ThemedText>
         )}
 

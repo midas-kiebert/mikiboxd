@@ -155,6 +155,7 @@ export default function FriendWatchListModal({
                   key={friend.id}
                   userId={friend.id}
                   name={name}
+                  avatarUrl={friend.avatar_url}
                   mode={rowInvite ? "invite" : "display"}
                   pingStatus={inviteState?.pingStatus ?? null}
                   invited={inviteState?.invited ?? false}

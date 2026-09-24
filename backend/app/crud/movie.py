@@ -1,4 +1,5 @@
 import re
+from collections.abc import Sequence
 from datetime import datetime, time, timedelta
 from typing import Any
 from uuid import UUID
@@ -7,7 +8,7 @@ from sqlalchemy import String, case, false, func, select
 from sqlalchemy.dialects.postgresql import ARRAY as PGArray
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnElement
-from sqlmodel import Session, Time, cast, col, or_
+from sqlmodel import Session, Time, and_, cast, col, or_
 
 from app.core.enums import GoingStatus, SearchField
 from app.core.viewer import ViewerId
@@ -134,6 +135,33 @@ def apply_language_filter(stmt, *, filters: Filters):
             col(Movie.original_language).in_(selected_languages),
             cast(col(Showtime.subtitles), PGArray(String)).overlap(selected_languages),
         )
+    )
+
+
+def status_owner_clause(
+    *, filters: Filters, viewer_id: UUID, visible_row: Any
+) -> ColumnElement[bool]:
+    """Whose selections the going/interested filter matches.
+
+    Everyone the viewer can see plus the viewer themself by default;
+    `friends_only` drops the viewer, `only_you` keeps nobody else (their
+    agenda), and `friend_ids` keeps only those friends — still only where
+    they let the viewer see it, exactly as each friend's own agenda does.
+    `visible_row` is the caller's `ShowtimeVisibilityEffective` alias,
+    outer-joined for this viewer.
+    """
+    if filters.friend_ids:
+        return and_(
+            col(ShowtimeSelection.user_id).in_(filters.friend_ids),
+            col(visible_row.viewer_id).is_not(None),
+        )
+    if filters.only_you:
+        return col(ShowtimeSelection.user_id) == viewer_id
+    if filters.friends_only:
+        return col(visible_row.viewer_id).is_not(None)
+    return or_(
+        col(ShowtimeSelection.user_id) == viewer_id,
+        col(visible_row.viewer_id).is_not(None),
     )
 
 
@@ -337,62 +365,6 @@ def update_movie(*, db_movie: Movie, movie_update: MovieUpdate) -> Movie:
     return db_movie
 
 
-def get_cinemas_for_movie(
-    *, session: Session, movie_id: int, filters: Filters
-) -> list[Cinema]:
-    stmt = (
-        select(Cinema)
-        .join(Showtime, col(Showtime.cinema_id) == col(Cinema.id))
-        .where(
-            col(Showtime.movie_id) == movie_id,
-            col(Showtime.datetime) >= filters.snapshot_time,
-        )
-        .distinct()
-    )
-    if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
-        stmt = stmt.where(col(Cinema.id).in_(filters.selected_cinema_ids))
-
-    if filters.days is not None and len(filters.days) > 0:
-        stmt = stmt.where(
-            day_bucket_date_clause(col(Showtime.datetime)).in_(filters.days)
-        )
-
-    if filters.time_ranges is not None and len(filters.time_ranges) > 0:
-        stmt = stmt.where(
-            or_(
-                *[
-                    time_range_clause(
-                        col(Showtime.datetime),
-                        col(Showtime.end_datetime),
-                        tr.start,
-                        tr.end,
-                    )
-                    for tr in filters.time_ranges
-                ]
-            )
-        )
-
-    has_languages_filter = (
-        filters.selected_languages is not None and len(filters.selected_languages) > 0
-    )
-    if (
-        filters.runtime_min is not None
-        or filters.runtime_max is not None
-        or has_languages_filter
-    ):
-        stmt = stmt.join(Movie, col(Movie.id) == col(Showtime.movie_id))
-        if filters.runtime_min is not None:
-            stmt = stmt.where(col(Movie.duration) >= filters.runtime_min)
-        if filters.runtime_max is not None:
-            stmt = stmt.where(col(Movie.duration) <= filters.runtime_max)
-        if has_languages_filter:
-            stmt = apply_language_filter(stmt, filters=filters)
-
-    result = session.execute(stmt)
-    cinemas: list[Cinema] = list(result.scalars().all())
-    return cinemas
-
-
 # "-", "'", ".", "/" and plain spaces are treated as interchangeable (and
 # droppable) so that e.g. "da" / "d a" / "d-a" all match a title containing
 # "d'a". "." and "/" are in here for the cinemas whose display name carries one:
@@ -560,20 +532,72 @@ def get_friends_for_movie(
     return friends
 
 
-def _get_friends_with_movie_in_selection(
+def get_friends_for_movies(
+    *,
+    session: Session,
+    movie_ids: Sequence[int],
+    snapshot_time: datetime,
+    current_user: UUID,
+    going_status: GoingStatus = GoingStatus.GOING,
+) -> dict[int, list[User]]:
+    """Friends going/interested per movie, for a whole page in one query.
+
+    Mirrors `get_friends_for_movie`, which this delegates to for the
+    single-movie case — see `crud.showtime_page` for why asking this a movie
+    at a time doesn't scale to a page of cards.
+    """
+    if len(movie_ids) == 0:
+        return {}
+    stmt = (
+        select(col(Showtime.movie_id), User)
+        .join(ShowtimeSelection, col(ShowtimeSelection.user_id) == col(User.id))
+        .join(Showtime, col(Showtime.id) == col(ShowtimeSelection.showtime_id))
+        .join(
+            ShowtimeVisibilityEffective,
+            (col(ShowtimeVisibilityEffective.owner_id) == col(User.id))
+            & (col(ShowtimeVisibilityEffective.showtime_id) == col(Showtime.id))
+            & (col(ShowtimeVisibilityEffective.viewer_id) == current_user),
+        )
+        .join(
+            CinemaSelection,
+            col(CinemaSelection.cinema_id) == col(Showtime.cinema_id),
+        )
+        .where(
+            col(Showtime.movie_id).in_(movie_ids),
+            col(Showtime.datetime) >= snapshot_time,
+            col(CinemaSelection.user_id) == current_user,
+            col(ShowtimeSelection.going_status) == going_status,
+        )
+        .distinct()
+    )
+    friends_by_movie_id: dict[int, list[User]] = {}
+    for movie_id, friend in session.execute(stmt).all():
+        friends_by_movie_id.setdefault(movie_id, []).append(friend)
+    return friends_by_movie_id
+
+
+def _get_friends_with_movies_in_selection(
     *,
     session: Session,
     selection_model: type[WatchlistSelection] | type[WatchedSelection],
-    movie_id: int,
+    movie_ids: Sequence[int],
     current_user: UUID,
-) -> list[User]:
+) -> dict[int, list[User]]:
     """
-    Friends of ``current_user`` who have ``movie_id`` in the given Letterboxd
-    selection table (watchlist or watched), matched by their linked Letterboxd
-    username. Shared query body for the watchlisted/watched lookups below.
+    Friends of ``current_user`` who have any of ``movie_ids`` in the given
+    Letterboxd selection table (watchlist or watched), matched by their linked
+    Letterboxd username, keyed by movie. Shared query body for the
+    watchlisted/watched lookups below.
+
+    One query for however many movies a page holds: asked one movie at a time
+    this was two queries per showtime, and the same film asked again for every
+    screening of it.
     """
+    if len(movie_ids) == 0:
+        return {}
+
     stmt = (
-        select(User)
+        select(col(selection_model.movie_id), User)
         .join(Friendship, col(Friendship.friend_id) == col(User.id))
         .join(
             selection_model,
@@ -581,13 +605,14 @@ def _get_friends_with_movie_in_selection(
         )
         .where(
             col(Friendship.user_id) == current_user,
-            col(selection_model.movie_id) == movie_id,
+            col(selection_model.movie_id).in_(movie_ids),
         )
         .distinct()
     )
-    result = session.execute(stmt)
-    friends: list[User] = list(result.scalars().all())
-    return friends
+    friends_by_movie_id: dict[int, list[User]] = {}
+    for movie_id, friend in session.execute(stmt).all():
+        friends_by_movie_id.setdefault(movie_id, []).append(friend)
+    return friends_by_movie_id
 
 
 def get_friends_who_watchlisted_movie(
@@ -597,10 +622,24 @@ def get_friends_who_watchlisted_movie(
     current_user: UUID,
 ) -> list[User]:
     """Friends who have this movie on their Letterboxd watchlist."""
-    return _get_friends_with_movie_in_selection(
+    return get_friends_who_watchlisted_movies(
+        session=session,
+        movie_ids=[movie_id],
+        current_user=current_user,
+    ).get(movie_id, [])
+
+
+def get_friends_who_watchlisted_movies(
+    *,
+    session: Session,
+    movie_ids: Sequence[int],
+    current_user: UUID,
+) -> dict[int, list[User]]:
+    """Friends who have these movies on their Letterboxd watchlist, by movie."""
+    return _get_friends_with_movies_in_selection(
         session=session,
         selection_model=WatchlistSelection,
-        movie_id=movie_id,
+        movie_ids=movie_ids,
         current_user=current_user,
     )
 
@@ -612,12 +651,249 @@ def get_friends_who_watched_movie(
     current_user: UUID,
 ) -> list[User]:
     """Friends who have marked this movie as watched on Letterboxd."""
-    return _get_friends_with_movie_in_selection(
+    return get_friends_who_watched_movies(
+        session=session,
+        movie_ids=[movie_id],
+        current_user=current_user,
+    ).get(movie_id, [])
+
+
+def get_friends_who_watched_movies(
+    *,
+    session: Session,
+    movie_ids: Sequence[int],
+    current_user: UUID,
+) -> dict[int, list[User]]:
+    """Friends who have marked these movies watched on Letterboxd, by movie."""
+    return _get_friends_with_movies_in_selection(
         session=session,
         selection_model=WatchedSelection,
-        movie_id=movie_id,
+        movie_ids=movie_ids,
         current_user=current_user,
     )
+
+
+def get_cinemas_for_movies(
+    *, session: Session, movie_ids: Sequence[int], filters: Filters
+) -> dict[int, list[Cinema]]:
+    """The cinemas currently showing each of these movies, by movie, for a
+    whole page of cards in one query."""
+    if len(movie_ids) == 0:
+        return {}
+    stmt = (
+        select(col(Showtime.movie_id), Cinema)
+        .join(Cinema, col(Showtime.cinema_id) == col(Cinema.id))
+        .where(
+            col(Showtime.movie_id).in_(movie_ids),
+            col(Showtime.datetime) >= filters.snapshot_time,
+        )
+        .distinct()
+    )
+    if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
+        stmt = stmt.where(col(Cinema.id).in_(filters.selected_cinema_ids))
+
+    if filters.days is not None and len(filters.days) > 0:
+        stmt = stmt.where(
+            day_bucket_date_clause(col(Showtime.datetime)).in_(filters.days)
+        )
+
+    if filters.time_ranges is not None and len(filters.time_ranges) > 0:
+        stmt = stmt.where(
+            or_(
+                *[
+                    time_range_clause(
+                        col(Showtime.datetime),
+                        col(Showtime.end_datetime),
+                        tr.start,
+                        tr.end,
+                    )
+                    for tr in filters.time_ranges
+                ]
+            )
+        )
+
+    has_languages_filter = (
+        filters.selected_languages is not None and len(filters.selected_languages) > 0
+    )
+    if (
+        filters.runtime_min is not None
+        or filters.runtime_max is not None
+        or has_languages_filter
+    ):
+        stmt = stmt.join(Movie, col(Movie.id) == col(Showtime.movie_id))
+        if filters.runtime_min is not None:
+            stmt = stmt.where(col(Movie.duration) >= filters.runtime_min)
+        if filters.runtime_max is not None:
+            stmt = stmt.where(col(Movie.duration) <= filters.runtime_max)
+        if has_languages_filter:
+            stmt = apply_language_filter(stmt, filters=filters)
+
+    result = session.execute(stmt)
+    cinemas_by_movie_id: dict[int, list[Cinema]] = {}
+    for movie_id, cinema in result.all():
+        cinemas_by_movie_id.setdefault(movie_id, []).append(cinema)
+    return cinemas_by_movie_id
+
+
+def get_last_showtime_datetimes(
+    *, session: Session, movie_ids: Sequence[int], filters: Filters
+) -> dict[int, datetime]:
+    """Each movie's last showtime datetime, for a whole page of cards in one
+    query."""
+    if len(movie_ids) == 0:
+        return {}
+    stmt = select(col(Showtime.movie_id), func.max(col(Showtime.datetime))).where(
+        col(Showtime.movie_id).in_(movie_ids)
+    )
+    if filters.selected_cinema_ids:
+        stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
+    stmt = stmt.group_by(col(Showtime.movie_id))
+    result = session.execute(stmt)
+    return dict(result.tuples().all())
+
+
+def get_total_number_of_future_showtimes_for_movies(
+    *, session: Session, movie_ids: Sequence[int], filters: Filters
+) -> dict[int, int]:
+    """Each movie's total future showtime count, for a whole page of cards in
+    one query."""
+    if len(movie_ids) == 0:
+        return {}
+    stmt = select(col(Showtime.movie_id), func.count(col(Showtime.id))).where(
+        col(Showtime.movie_id).in_(movie_ids),
+        col(Showtime.datetime) >= filters.snapshot_time,
+    )
+    if filters.selected_cinema_ids:
+        stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
+    stmt = stmt.group_by(col(Showtime.movie_id))
+    result = session.execute(stmt)
+    return dict(result.tuples().all())
+
+
+def get_showtimes_for_movies(
+    *,
+    session: Session,
+    movie_ids: Sequence[int],
+    limit: int,
+    filters: Filters,
+    current_user_id: ViewerId = None,
+) -> dict[int, list[Showtime]]:
+    """The first `limit` (future, filtered) showtimes of each movie, in one
+    query — the top-N-per-group shape `get_showtimes_for_movie` answers one
+    movie at a time.
+
+    Only covers what `converters.movie.summaries_for_page`'s per-card
+    showtimes need: no `letterboxd_username`/movie-set filtering (a card's own
+    showtimes are never filtered by watchlist/watched — see
+    `get_showtimes_for_movie`'s docstring), and `selected_statuses` is applied
+    as an `EXISTS` rather than a join, since a join's row fan-out would
+    corrupt the window function's
+    per-movie row numbering below.
+    """
+    if len(movie_ids) == 0:
+        return {}
+
+    stmt = select(Showtime).where(
+        col(Showtime.movie_id).in_(movie_ids),
+        col(Showtime.datetime) >= filters.snapshot_time,
+    )
+    if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
+        stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
+
+    if filters.days is not None and len(filters.days) > 0:
+        stmt = stmt.where(
+            day_bucket_date_clause(col(Showtime.datetime)).in_(filters.days)
+        )
+
+    if filters.time_ranges is not None and len(filters.time_ranges) > 0:
+        stmt = stmt.where(
+            or_(
+                *[
+                    time_range_clause(
+                        col(Showtime.datetime),
+                        col(Showtime.end_datetime),
+                        tr.start,
+                        tr.end,
+                    )
+                    for tr in filters.time_ranges
+                ]
+            )
+        )
+
+    has_languages_filter = (
+        filters.selected_languages is not None and len(filters.selected_languages) > 0
+    )
+    needs_movie_join = (
+        filters.runtime_min is not None
+        or filters.runtime_max is not None
+        or has_languages_filter
+    )
+    if filters.query and filters.search_field in (
+        SearchField.TITLE,
+        SearchField.DIRECTOR,
+        SearchField.ACTOR,
+    ):
+        needs_movie_join = True
+    if needs_movie_join:
+        stmt = stmt.join(Movie, col(Movie.id) == col(Showtime.movie_id))
+
+    stmt = apply_search_filter(
+        stmt, filters=filters, session=session, current_user_id=current_user_id
+    )
+
+    if filters.runtime_min is not None:
+        stmt = stmt.where(col(Movie.duration) >= filters.runtime_min)
+
+    if filters.runtime_max is not None:
+        stmt = stmt.where(col(Movie.duration) <= filters.runtime_max)
+
+    if has_languages_filter:
+        stmt = apply_language_filter(stmt, filters=filters)
+
+    if (
+        current_user_id is not None
+        and filters.selected_statuses is not None
+        and len(filters.selected_statuses) > 0
+    ):
+        visible_row = aliased(ShowtimeVisibilityEffective)
+        stmt = stmt.where(
+            select(col(ShowtimeSelection.showtime_id))
+            .select_from(ShowtimeSelection)
+            .outerjoin(
+                visible_row,
+                (col(visible_row.owner_id) == col(ShowtimeSelection.user_id))
+                & (col(visible_row.showtime_id) == col(ShowtimeSelection.showtime_id))
+                & (col(visible_row.viewer_id) == current_user_id),
+            )
+            .where(
+                col(ShowtimeSelection.showtime_id) == col(Showtime.id),
+                status_owner_clause(
+                    filters=filters, viewer_id=current_user_id, visible_row=visible_row
+                ),
+                col(ShowtimeSelection.going_status).in_(filters.selected_statuses),
+            )
+            .correlate(Showtime)
+            .exists()
+        )
+
+    row_number = (
+        func.row_number()
+        .over(partition_by=col(Showtime.movie_id), order_by=col(Showtime.datetime))
+        .label("row_number")
+    )
+    ranked = stmt.add_columns(row_number).subquery()
+    showtime_row = aliased(Showtime, ranked)
+    final_stmt = (
+        select(showtime_row)
+        .where(ranked.c.row_number <= limit)
+        .order_by(ranked.c.movie_id, ranked.c.row_number)
+    )
+
+    result = session.execute(final_stmt)
+    showtimes_by_movie_id: dict[int, list[Showtime]] = {}
+    for showtime in result.scalars().all():
+        showtimes_by_movie_id.setdefault(showtime.movie_id, []).append(showtime)
+    return showtimes_by_movie_id
 
 
 def get_showtimes_for_movie(
@@ -686,9 +962,10 @@ def get_showtimes_for_movie(
         stmt = apply_language_filter(stmt, filters=filters)
 
     # Movie-set filters (watchlist / watched / lists) only apply when a username is
-    # supplied. Callers building grouped movie *cards* (to_summary_public) do not
-    # pass one — those cards must always show the movie's own showtimes, since the
-    # movie already qualified via the list-level query. Without this guard the
+    # supplied. Callers building a movie's own showtime list without one — the
+    # movie detail page (`converters.movie.to_public`), and `get_showtimes_for_movies`
+    # for cards — must always show the movie's own showtimes, since the movie
+    # already qualified via the list-level query. Without this guard the
     # "include requested but no username" path would force an empty result and the
     # card would render no showtimes.
     if letterboxd_username is not None:
@@ -719,9 +996,8 @@ def get_showtimes_for_movie(
                 & (col(visible_row.viewer_id) == current_user_id),
             )
             .where(
-                or_(
-                    col(ShowtimeSelection.user_id) == current_user_id,
-                    col(visible_row.viewer_id).is_not(None),
+                status_owner_clause(
+                    filters=filters, viewer_id=current_user_id, visible_row=visible_row
                 ),
                 col(ShowtimeSelection.going_status).in_(filters.selected_statuses),
             )
@@ -739,44 +1015,6 @@ def get_showtimes_for_movie(
     showtimes: list[Showtime] = list(result.scalars().all())
 
     return showtimes
-
-
-def get_last_showtime_datetime(
-    *, session: Session, movie_id: int, filters: Filters
-) -> datetime | None:
-    stmt = select(Showtime).where(col(Showtime.movie_id) == movie_id)
-    if filters.selected_cinema_ids:
-        stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
-
-    stmt = stmt.order_by(col(Showtime.datetime).desc()).limit(1)
-
-    result = session.execute(stmt)
-    last_showtime: Showtime | None = result.scalars().one_or_none()
-
-    if last_showtime is None:
-        return None
-
-    return last_showtime.datetime
-
-
-def get_total_number_of_future_showtimes(
-    *, session: Session, movie_id: int, filters: Filters
-) -> int:
-    stmt = (
-        select(func.count(col(Showtime.id)))
-        .select_from(Showtime)
-        .where(
-            col(Showtime.movie_id) == movie_id,
-            col(Showtime.datetime) >= filters.snapshot_time,
-        )
-    )
-
-    if filters.selected_cinema_ids:
-        stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
-
-    result = session.execute(stmt)
-    total_showtimes: int = result.scalar_one_or_none() or 0
-    return total_showtimes
 
 
 def _build_movies_query(
@@ -864,9 +1102,8 @@ def _build_movies_query(
                 & (col(visible_row.viewer_id) == current_user_id),
             )
             .where(
-                or_(
-                    col(ShowtimeSelection.user_id) == current_user_id,
-                    col(visible_row.viewer_id).is_not(None),
+                status_owner_clause(
+                    filters=filters, viewer_id=current_user_id, visible_row=visible_row
                 ),
                 col(ShowtimeSelection.going_status).in_(filters.selected_statuses),
             )

@@ -43,6 +43,7 @@ import {
 } from '@/components/filters/shared-tab-filters';
 import { tabletCappedContentStyle } from '@/constants/tablet-layout';
 import { useThemeColors } from '@/hooks/use-theme-color';
+import { useFeedDefaults } from '@/hooks/useFeedDefaults';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useDelayedTrue } from '@/hooks/useDelayedTrue';
 import { LOADING_LOGO_DELAY_MS, LOADING_LOGO_COOLDOWN_MS } from '@/constants/loading-logo';
@@ -96,7 +97,6 @@ export default function MovieScreen() {
     hideWatched,
     appliedHideWatched,
     setHideWatched,
-    groupByMovie,
     setGroupByMovie,
     sessionCinemaIds,
     setSessionCinemaIds,
@@ -146,6 +146,8 @@ export default function MovieScreen() {
   // No account, no saved cinemas to fall back to — a guest's picks are the
   // session selection itself (see hooks/useCinemaSelection).
   const { data: preferredCinemaIds } = useFetchSelectedCinemas({ enabled: isSignedIn });
+  // Clearing puts language back to its default, not off (see useFeedDefaults).
+  const { defaultLanguages } = useFeedDefaults();
 
   useEffect(() => {
     if (hasLetterboxdUsername || !watchlistOnly) return;
@@ -303,7 +305,7 @@ export default function MovieScreen() {
     if (isEmptyLoading || refreshing) return null;
     return (
       <ThemedView style={styles.centerContainer}>
-        <ThemedText style={styles.emptyText}>No movies found</ThemedText>
+        <ThemedText style={styles.emptyText}>No films found</ThemedText>
         <SearchFieldFallback
           searchField={searchField}
           query={effectiveSearchQuery}
@@ -352,8 +354,6 @@ export default function MovieScreen() {
       />
       <PresetsRow onApplyPreset={handleApplyPreset} />
       <ActiveFilterChips
-        groupByMovie={groupByMovie}
-        setGroupByMovie={setGroupByMovie}
         watchlistOnly={effectiveWatchlistOnly}
         setWatchlistOnly={setWatchlistOnly}
         watchlistExclude={effectiveWatchlistExclude}
@@ -391,7 +391,7 @@ export default function MovieScreen() {
           setSelectedRuntimeRanges([]);
           setSelectedListIds([]);
           setExcludeListIds([]);
-          setSelectedLanguages([]);
+          setSelectedLanguages([...defaultLanguages]);
           if (preferredCinemaIds) setSessionCinemaIds(preferredCinemaIds);
         }}
       />

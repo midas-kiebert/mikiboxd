@@ -82,10 +82,22 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
     });
   }, []);
 
+  const handleOnlyCinema = useCallback((cinemaId: number) => {
+    setSelectedIds(new Set([cinemaId]));
+  }, []);
+
   const handleSelectCinemas = useCallback((cinemaIds: readonly number[]) => {
     setSelectedIds((current) => {
       const next = new Set(current);
       cinemaIds.forEach((id) => next.add(id));
+      return next;
+    });
+  }, []);
+
+  const handleDeselectCinemas = useCallback((cinemaIds: readonly number[]) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      cinemaIds.forEach((id) => next.delete(id));
       return next;
     });
   }, []);
@@ -116,7 +128,7 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
     <IntroPageShell
       icon="theaters"
       title="Select your favorite cinemas"
-      message="We'll only show you showtimes at the cinemas you pick. You can change this any time."
+      message="We'll only show you screenings at the cinemas you pick. You can change this any time."
       primaryLabel={selectedCount === 0 ? "Continue without saving" : "Save and continue"}
       onPrimary={handleSave}
       // Only the loading case is blocked: pressing through a list that has
@@ -165,7 +177,9 @@ export default function IntroCinemasPage({ onDone }: { onDone: () => void }) {
             cinemas={cinemaList}
             selectedIds={selectedIds}
             onToggleCinema={handleToggleCinema}
+            onOnlyCinema={handleOnlyCinema}
             onSelectCinemas={handleSelectCinemas}
+            onDeselectCinemas={handleDeselectCinemas}
           />
         )}
       </ScrollView>

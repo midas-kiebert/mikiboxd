@@ -212,8 +212,8 @@
   url: "https://www.cinemamiddelburg.nl"
 
 - key: cinema-oostereiland
-  name: Cinema Oostereiland
-  aliases: ["Cinema Oostereiland"]
+  name: Oostereiland
+  aliases: ["Cinema Oostereiland", "Oostereiland"]
   city: Hoorn
   cineville: true
   badge_bg_color: "red"
@@ -335,16 +335,16 @@
   url: "https://www.dewittdordrecht.nl"
 
 - key: filmtheater-hilversum
-  name: Filmtheater Hilversum
-  aliases: ["Filmtheater Hilversum"]
+  name: Th. Hilversum
+  aliases: ["Filmtheater Hilversum", "Th. Hilversum"]
   city: Hilversum
   cineville: true
   badge_bg_color: "red"
   url: "https://www.filmtheaterhilversum.nl"
 
 - key: filmtheater-voorschoten
-  name: Filmtheater Voorschoten
-  aliases: ["Filmtheater Voorschoten"]
+  name: Th. Voorschoten
+  aliases: ["Filmtheater Voorschoten", "Th. Voorschoten"]
   city: Voorschoten
   cineville: true
   badge_bg_color: "cyan"

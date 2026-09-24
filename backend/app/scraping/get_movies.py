@@ -1,4 +1,6 @@
+from collections.abc import Collection
 from datetime import datetime
+from typing import Any
 
 import aiohttp
 import requests
@@ -119,6 +121,57 @@ async def get_movies_json_async(
         return []
 
     return movies_response.data.films.data
+
+
+PRODUCTIONS_SEARCH_URL = "https://api.cineville.nl/productions/search"
+# Ids per request; one request covers today's ~700 films with room to spare.
+PRODUCTIONS_CHUNK_SIZE = 1000
+
+
+def _film_from_production(production: dict[str, Any]) -> Film:
+    attributes = production.get("attributes") or {}
+    return Film(
+        id=production["id"],
+        slug=production["slug"],
+        title=production["title"],
+        cast=attributes.get("cast"),
+        directors=attributes.get("directors"),
+        duration=attributes.get("duration"),
+        releaseYear=attributes.get("releaseYear"),
+        spokenLanguages=attributes.get("spokenLanguages"),
+    )
+
+
+async def get_films_by_production_ids_async(
+    session: aiohttp.ClientSession,
+    production_ids: Collection[str],
+) -> list[Film]:
+    """The films behind these production ids, from Cineville's REST API.
+
+    Replaces the website's GraphQL `films` query (`get_movies_json_async`),
+    which went down with a server-side 500 on 23 Sep 2026 and took every
+    Cineville scrape with it. api.cineville.nl — the same API the event listing
+    comes from — serves the same fields. Raises `CinevilleFetchError` when a
+    request keeps failing, like the event listing, so the run fails as a whole.
+    """
+    ids = sorted(production_ids)
+    films: list[Film] = []
+    for start in range(0, len(ids), PRODUCTIONS_CHUNK_SIZE):
+        chunk = ids[start : start + PRODUCTIONS_CHUNK_SIZE]
+        response_json = await post_json_with_retry(
+            session=session,
+            url=f"{PRODUCTIONS_SEARCH_URL}?page[limit]={len(chunk)}",
+            headers={"Content-Type": "application/json"},
+            payload={"id": {"in": chunk}},
+            timeout=aiohttp.ClientTimeout(total=60),
+            context=f"productions fetch ({len(chunk)} ids)",
+        )
+        films.extend(
+            _film_from_production(production)
+            for production in response_json["_embedded"]["productions"]
+            if production.get("productionTypeId", "film") == "film"
+        )
+    return films
 
 
 def get_movies_json() -> list[Film]:

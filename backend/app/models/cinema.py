@@ -25,8 +25,11 @@ CINEMA_ALIASES_DESCRIPTION = (
 class CinemaBase(SQLModel):
     """The cinema fields that are served to clients.
 
-    Deliberately excludes `key` and `aliases`: those are how the backend
-    identifies and matches a cinema, and no client has any use for them.
+    Deliberately excludes `key`: that is how the backend identifies a cinema,
+    and no client has any use for it. `aliases` is not here either, because the
+    table column needs its own `sa_column`, but it *is* served — `CinemaPublic`
+    adds it, so a client-side cinema search matches the same names the server's
+    search-by-cinema does.
     """
 
     name: str = Field(description="Display name of the cinema, shown to users")

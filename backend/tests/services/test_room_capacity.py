@@ -4,11 +4,13 @@ from datetime import datetime, timedelta
 
 from sqlmodel import Session
 
+from app.core.enums import SeatAvailabilityLevel
 from app.models.cinema_room_capacity import CinemaRoomCapacity
-from app.models.showtime import Showtime
+from app.models.showtime import Showtime, ShowtimeCreate
 from app.scraping.seat_availability import SeatAvailability
 from app.services import seat_availability as seat_availability_service
-from app.services.seat_availability import apply_reading
+from app.services.seat_availability import apply_reading, move_to_room
+from app.services.showtimes import _apply_upsert_update
 
 NOW = datetime(2026, 8, 24, 12, 0)
 
@@ -86,6 +88,102 @@ def test_rooms_are_scoped_to_their_cinema() -> None:
     assert room_capacities[(7, "Grote Zaal")] == 300
     assert room_capacities[(9, "Grote Zaal")] == 60
     assert second.seats_capacity == 60
+
+
+def _moved_out_of_lab_1(showtime_id: int) -> Showtime:
+    """A screening that was read while it played in LAB111's 128-seat LAB 1,
+    and has everything that taught it still on the row."""
+    return _showtime(
+        showtime_id,
+        room="LAB 1",
+        room_key="LAB 1",
+        seats_left=90,
+        seats_capacity=128,
+        seats_level_floor=SeatAvailabilityLevel.BUSY,
+        seats_next_check_at=NOW + timedelta(hours=6),
+    )
+
+
+def test_a_reading_that_finds_a_new_room_forgets_the_old_one() -> None:
+    """Showtimes 1926550/52 were moved from LAB 1 to LAB 2. The reading that
+    noticed kept their 128 (capacity only grew) and taught it to LAB 2's shared
+    number, after which every LAB 2 screening read as a 128-seat house."""
+    room_capacities = {(7, "LAB 1"): 128, (7, "LAB 2"): 56}
+    moved = _moved_out_of_lab_1(10)
+
+    _read(moved, 40, room_capacities, room="LAB 2")
+
+    assert moved.room == "LAB 2"
+    assert moved.room_key == "LAB 2"
+    assert moved.seats_capacity == 56
+    assert room_capacities[(7, "LAB 2")] == 56
+
+
+def test_a_scrape_that_moves_a_screening_forgets_the_old_room() -> None:
+    """The scraper can be first to see a move, and then the reading after it
+    finds the room it expected — so the reset has to happen on the scrape."""
+    moved = _moved_out_of_lab_1(11)
+
+    _apply_upsert_update(
+        existing_showtime=moved,
+        showtime_create=ShowtimeCreate(
+            movie_id=1, cinema_id=7, datetime=moved.datetime, room="LAB 2"
+        ),
+    )
+
+    assert moved.room == "LAB 2"
+    assert moved.seats_capacity is None
+    assert moved.seats_level_floor is None
+    assert moved.room_key is None
+    # Due at once, so the new room's reading is not hours away.
+    assert moved.seats_next_check_at is None
+
+    room_capacities = {(7, "LAB 1"): 128, (7, "LAB 2"): 56}
+    _read(moved, 40, room_capacities, room="LAB 2")
+    assert moved.seats_capacity == 56
+    assert room_capacities[(7, "LAB 2")] == 56
+
+
+def test_staying_in_the_same_room_keeps_what_it_learned() -> None:
+    showtime = _moved_out_of_lab_1(12)
+    move_to_room(showtime, "LAB 1")
+    assert showtime.seats_capacity == 128
+    assert showtime.seats_level_floor is SeatAvailabilityLevel.BUSY
+    assert showtime.room_key == "LAB 1"
+
+
+def test_learning_the_room_for_the_first_time_is_not_a_move() -> None:
+    """A roomless showtime can already carry its own running max; naming the
+    room it was always in must not throw that away."""
+    showtime = _showtime(13, room=None, seats_capacity=70)
+    move_to_room(showtime, "LAB 1")
+    assert showtime.room == "LAB 1"
+    assert showtime.seats_capacity == 70
+
+
+def test_an_overridden_room_ignores_and_leaves_alone_the_shared_number(
+    monkeypatch,
+) -> None:
+    """The override sets the room's size outright, so a poisoned or stale
+    shared number can neither raise it nor be raised by it."""
+    monkeypatch.setattr(
+        seat_availability_service,
+        "_capacity_overrides",
+        lambda: {"lab111": {"LAB 2": 56}},
+    )
+    room_capacities = {(7, "LAB 2"): 128}
+    showtime = _showtime(14, room="LAB 2")
+
+    apply_reading(
+        showtime=showtime,
+        availability=SeatAvailability(49, False, "LAB 2", "z-elite"),
+        now=NOW,
+        cinema_key="lab111",
+        room_capacities=room_capacities,
+    )
+
+    assert showtime.seats_capacity == 56
+    assert room_capacities == {(7, "LAB 2"): 128}
 
 
 def test_the_interest_path_lends_the_room_to_a_first_reading(

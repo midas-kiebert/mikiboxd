@@ -64,33 +64,11 @@ def test_process_cineville_movie_falls_back_to_cineville_runtime_when_tmdb_missi
         _ = (session, tmdb_id)
         return _tmdb_details(runtime_minutes=None)
 
-    async def fake_get_showtimes_json_async(
-        *,
-        productionId,
-        session,
-    ) -> list[get_showtimes.ShowtimeResponse]:
-        _ = (productionId, session)
-        return [
-            get_showtimes.ShowtimeResponse(
-                id="event-1",
-                startDate="2026-03-03T18:00:00.000Z",
-                endDate=None,
-                ticketUrl=None,
-                venueName="Eye",
-                subtitles=None,
-            )
-        ]
-
     monkeypatch.setattr(scrape, "find_tmdb_id_async", fake_find_tmdb_id_async)
     monkeypatch.setattr(
         scrape,
         "get_tmdb_movie_details_async",
         fake_get_tmdb_movie_details_async,
-    )
-    monkeypatch.setattr(
-        scrape.get_showtimes,
-        "get_showtimes_json_async",
-        fake_get_showtimes_json_async,
     )
 
     session: Any = object()
@@ -98,6 +76,16 @@ def test_process_cineville_movie_falls_back_to_cineville_runtime_when_tmdb_missi
         scrape._process_cineville_movie_async(
             movie_data=_movie_data(duration=75),
             session=session,
+            showtimes_data=[
+                get_showtimes.ShowtimeResponse(
+                    id="event-1",
+                    startDate="2026-03-03T18:00:00.000Z",
+                    endDate=None,
+                    ticketUrl=None,
+                    venueName="Eye",
+                    subtitles=None,
+                )
+            ],
         )
     )
 
@@ -139,24 +127,11 @@ def test_process_cineville_movie_prefers_tmdb_runtime_over_cineville(
         _ = (session, tmdb_id)
         return _tmdb_details(runtime_minutes=101)
 
-    async def fake_get_showtimes_json_async(
-        *,
-        productionId,
-        session,
-    ) -> list[get_showtimes.ShowtimeResponse]:
-        _ = (productionId, session)
-        return []
-
     monkeypatch.setattr(scrape, "find_tmdb_id_async", fake_find_tmdb_id_async)
     monkeypatch.setattr(
         scrape,
         "get_tmdb_movie_details_async",
         fake_get_tmdb_movie_details_async,
-    )
-    monkeypatch.setattr(
-        scrape.get_showtimes,
-        "get_showtimes_json_async",
-        fake_get_showtimes_json_async,
     )
 
     session: Any = object()
@@ -164,6 +139,7 @@ def test_process_cineville_movie_prefers_tmdb_runtime_over_cineville(
         scrape._process_cineville_movie_async(
             movie_data=_movie_data(duration=75),
             session=session,
+            showtimes_data=[],
         )
     )
 

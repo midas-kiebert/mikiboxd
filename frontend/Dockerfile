@@ -4,6 +4,8 @@ FROM node:20 AS build-stage
 WORKDIR /app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml /app/
+# The root package.json lists pnpm patches; install fails without their files.
+COPY patches /app/patches
 COPY tsconfig.json /app/tsconfig.json
 COPY frontend/package.json /app/frontend/package.json
 COPY shared/package.json /app/shared/package.json
@@ -14,6 +16,9 @@ COPY frontend /app/frontend
 COPY shared /app/shared
 
 ARG VITE_API_URL=${VITE_API_URL}
+ARG VITE_GOOGLE_CLIENT_ID
+ARG VITE_APPLE_SERVICES_ID
+ARG VITE_APPLE_REDIRECT_URI
 
 WORKDIR /app/frontend
 

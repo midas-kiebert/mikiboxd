@@ -49,6 +49,7 @@ from app.services.seat_availability import (
     WATCHABLE_LEVELS,
     apply_reading,
     effective_seat_level,
+    send_crossing_alerts,
 )
 from app.utils import now_amsterdam_naive
 
@@ -229,7 +230,7 @@ def run_due_watches(*, session: Session, now: datetime | None = None) -> int:
         # threaded through: a watched showtime is by definition already at the
         # top of the ratchet, so what it could teach us about the room cannot
         # change any level, and the poller will fold it in soon enough anyway.
-        apply_reading(
+        crossings = apply_reading(
             showtime=showtime,
             availability=availability,
             now=reference_time,
@@ -246,6 +247,14 @@ def run_due_watches(*, session: Session, now: datetime | None = None) -> int:
             user_id=watch.user_id,
             showtime=showtime,
             seats_left=showtime.seats_left,
+        )
+        # Whoever else is interested hears it too, from the same reading — the
+        # watch found it first, but it is the same news the poller's thinner
+        # watch would have sent them. Not the watcher, who was just told.
+        send_crossing_alerts(
+            session=session,
+            crossings_by_showtime={showtime.id: crossings},
+            exclude_user_ids=[watch.user_id],
         )
         session.delete(watch)
         notified += 1

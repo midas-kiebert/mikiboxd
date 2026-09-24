@@ -37,10 +37,12 @@ from app.scraping.cinemas.rotterdam.kinorotterdam import KinoRotterdamScraper
 from app.scraping.cinemas.utrecht.hartlooper import LouisHartlooperComplexScraper
 from app.scraping.cinemas.utrecht.slachtstraat import SlachtstraatScraper
 from app.scraping.cinemas.utrecht.springhaver import SpringhaverScraper
+from app.scraping.cineville_client import CinevilleFetchError
 from app.scraping.logger import logger
 from app.scraping.tmdb_lookup import find_tmdb_id_async, get_tmdb_lookup_cache_id
 from app.scraping.tmdb_movie_details import get_tmdb_movie_details_async
 from app.scraping.trusted_scrapers import TRUSTED_SCRAPERS
+from app.services import cineville_events as cineville_events_service
 from app.services import movies as movies_service
 from app.services import scrape_sync as scrape_sync_service
 from app.services import showtimes as showtimes_service
@@ -85,9 +87,9 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
-# Cineville rate-limits (HTTP 429) when the scrape fans out a request per movie.
-# Keep concurrency modest; the retry/backoff in cineville_client absorbs the
-# occasional 429, and the 6-hourly cadence leaves plenty of time.
+# How many films are resolved (TMDB lookup + details) at once. Cineville itself
+# is no longer fanned out per film — `get_all_events_async` reads the whole
+# listing in a few pages — so this only paces the TMDB side.
 CINEVILLE_CONCURRENCY = _env_int("CINEVILLE_CONCURRENCY", 5)
 CINEMA_SCRAPER_CONCURRENCY = _env_int("CINEMA_SCRAPER_CONCURRENCY", 2)
 CINEVILLE_HTTP_TOTAL_LIMIT = _env_int(
@@ -126,6 +128,8 @@ class PreparedCinevilleShowtime:
     ticket_url: str | None
     subtitles: list[str] | None
     venue_name: str
+    # When Cineville created the event, for the publish-timing log.
+    source_created_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -302,6 +306,7 @@ def _persist_cineville_results_batch(
                                     )
                                 ),
                                 showtime_id=db_showtime.id,
+                                source_created_at=showtime_data.source_created_at,
                             )
                         )
                 except Exception as e:
@@ -395,6 +400,7 @@ async def _process_cineville_movie_async(
     *,
     movie_data: Any,
     session: aiohttp.ClientSession,
+    showtimes_data: list[get_showtimes.ShowtimeResponse],
 ) -> tuple[
     PreparedCinevilleMovie | None,
     list[str],
@@ -508,24 +514,6 @@ async def _process_cineville_movie_async(
                 ),
             )
 
-        try:
-            showtimes_data = await get_showtimes.get_showtimes_json_async(
-                productionId=movie_data.id,
-                session=session,
-            )
-        except Exception as e:
-            return (
-                None,
-                [
-                    _format_error_context(
-                        stage="fetch_cineville_showtimes",
-                        error=e,
-                        movie_title=movie_title,
-                        production_id=production_id,
-                    )
-                ],
-            )
-
         prepared_showtimes = [
             PreparedCinevilleShowtime(
                 id=showtime.id,
@@ -534,6 +522,11 @@ async def _process_cineville_movie_async(
                 ticket_url=showtime.ticketUrl,
                 subtitles=showtime.subtitles,
                 venue_name=showtime.venueName,
+                source_created_at=(
+                    to_amsterdam_time(showtime.createdAt)
+                    if showtime.createdAt
+                    else None
+                ),
             )
             for showtime in showtimes_data
         ]
@@ -571,6 +564,7 @@ async def scrape_cineville_async() -> ScrapeExecutionSummary:
     stream_errors: dict[str, list[str]] = defaultdict(list)
     stream_started_at: dict[str, datetime] = {}
     semaphore = asyncio.Semaphore(CINEVILLE_CONCURRENCY)
+    sweep: cineville_events_service.CinevilleSweep | None = None
 
     connector = aiohttp.TCPConnector(
         limit=CINEVILLE_HTTP_TOTAL_LIMIT,
@@ -581,20 +575,47 @@ async def scrape_cineville_async() -> ScrapeExecutionSummary:
         timeout=aiohttp.ClientTimeout(total=20),
         connector=connector,
     ) as http_session:
-        movies_data = await get_movies.get_movies_json_async(session=http_session)
-        if not movies_data:
-            batch_persist_error = (
-                "stage=fetch_cineville_movies | "
-                "error=No movies returned from Cineville API"
+        movies_data: list[get_movies.Film] = []
+        events: list[get_showtimes.CinevilleEventRecord] = []
+        try:
+            events = await get_showtimes.get_all_events_async(http_session)
+            movies_data = await get_movies.get_films_by_production_ids_async(
+                http_session,
+                {event.productionId for event in events if event.productionId},
+            )
+        except (CinevilleFetchError, KeyError, TypeError, ValueError) as e:
+            batch_persist_error = _format_error_context(
+                stage="fetch_cineville_listing", error=e
             )
             summary.errors.append(batch_persist_error)
-        else:
+        if batch_persist_error is None and not movies_data:
+            batch_persist_error = (
+                "stage=fetch_cineville_movies | "
+                "error=No films returned from Cineville API"
+            )
+            summary.errors.append(batch_persist_error)
+
+        if batch_persist_error is None:
+            sweep = cineville_events_service.CinevilleSweep(
+                started_at=default_started_at, events=events, films=movies_data
+            )
+            showtimes_by_production: dict[str, list[get_showtimes.ShowtimeResponse]] = (
+                defaultdict(list)
+            )
+            for event in events:
+                if event.productionId is not None:
+                    showtimes_by_production[event.productionId].append(
+                        event.to_showtime()
+                    )
 
             async def process_movie(movie_data: Any) -> CinevilleWorkerResult:
                 async with semaphore:
                     return await _process_cineville_movie_async(
                         movie_data=movie_data,
                         session=http_session,
+                        showtimes_data=showtimes_by_production.get(
+                            str(movie_data.id), []
+                        ),
                     )
 
             results = cast(
@@ -619,6 +640,14 @@ async def scrape_cineville_async() -> ScrapeExecutionSummary:
         summary.errors.extend(worker_errors)
         if prepared_movie is not None:
             prepared_movies.append(prepared_movie)
+
+    if sweep is not None:
+        # The raw event log is analysis data; failing to write it must never
+        # fail the scrape itself.
+        try:
+            await asyncio.to_thread(cineville_events_service.record_sweep, sweep)
+        except Exception:
+            logger.exception("Failed to record the Cineville event log.")
 
     if batch_persist_error is None:
         try:
@@ -712,6 +741,20 @@ async def _run_single_cinema_scraper(
             )
         if cinema_id is not None:
             source_stream = f"cinema_scraper:{cinema_id}"
+            if scraper.min_run_interval is not None:
+                with get_db_context() as db_session:
+                    last_run = scrape_sync_service.latest_completed_run_started_at(
+                        session=db_session, source_stream=source_stream
+                    )
+                if (
+                    last_run is not None
+                    and started_at - last_run < scraper.min_run_interval
+                ):
+                    logger.info(
+                        f"Skipping {scraper_name}: last ran {last_run}, "
+                        f"runs at most every {scraper.min_run_interval}."
+                    )
+                    return summary
             # Drop leftovers from an earlier run of this scraper that raised
             # before its unidentified listings were read.
             consume_unidentified_listings(cinema_id)

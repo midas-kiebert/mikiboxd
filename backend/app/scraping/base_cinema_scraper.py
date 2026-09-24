@@ -1,9 +1,15 @@
 import os
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.services import unidentified_listings
+
+# For scrapers that fetch a page per film: at most one run an hour, so the
+# half-hourly Monday/Thursday slots in `scrape_schedule` don't double their load
+# on small cinemas' sites. A few minutes under the hour, so the slots' random
+# offsets can't make it skip a whole extra slot.
+PER_FILM_SCRAPER_INTERVAL = timedelta(minutes=55)
 
 
 class BaseCinemaScraper(ABC):
@@ -16,6 +22,10 @@ class BaseCinemaScraper(ABC):
 
     cinema_key: str
     cinema_id: int | None
+    # Most scrapers read a cinema's whole programme in one or two requests and
+    # run with every full scrape. One that fetches a page per film sets this so
+    # hourly scrapes don't multiply its load on the cinema's site.
+    min_run_interval: timedelta | None = None
 
     @staticmethod
     def item_concurrency(default: int = 4) -> int:

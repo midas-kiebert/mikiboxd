@@ -14,8 +14,8 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { ThemedText } from "@/components/themed-text";
 import { getFriendWatchKindMeta, type FriendWatchKind } from "@/components/friends/friend-watch-kind";
+import PersonAvatar from "@/components/ui/PersonAvatar";
 import { useThemeColors } from "@/hooks/use-theme-color";
-import { getAvatarColors, getAvatarInitial } from "@/utils/avatar-color";
 
 export type FriendWatchStatus = FriendWatchKind | null;
 export type FriendPingStatus = "GOING" | "INTERESTED" | null;
@@ -24,6 +24,7 @@ type FriendListRowProps = {
   /** Drives the avatar tint, so a friend keeps their color across the app. */
   userId: string;
   name: string;
+  avatarUrl?: string | null;
   /** Letterboxd relationship to the film, shown as a small trailing marker. */
   watchStatus?: FriendWatchStatus;
   /**
@@ -47,6 +48,7 @@ type FriendListRowProps = {
 export default function FriendListRow({
   userId,
   name,
+  avatarUrl = null,
   watchStatus = null,
   pingStatus = null,
   mode = "invite",
@@ -60,7 +62,6 @@ export default function FriendListRow({
   const colors = useThemeColors();
   const styles = createStyles(colors);
 
-  const avatarColors = getAvatarColors(userId, colors);
   const watchMeta = watchStatus ? getFriendWatchKindMeta(watchStatus, colors) : null;
   // Same green/orange the showtime sheet itself uses for going/interested.
   const pingStatusPalette =
@@ -79,11 +80,14 @@ export default function FriendListRow({
   // Render/output using the state and derived values prepared above.
   const content = (
     <>
-      <View style={[styles.avatar, { backgroundColor: avatarColors.primary }]}>
-        <ThemedText style={[styles.avatarText, { color: avatarColors.secondary }]}>
-          {getAvatarInitial(name)}
-        </ThemedText>
-      </View>
+      <PersonAvatar
+        userId={userId}
+        name={name}
+        avatarUrl={avatarUrl}
+        size={28}
+        fontSize={13}
+        style={styles.avatar}
+      />
       <ThemedText style={styles.name} numberOfLines={1} ellipsizeMode="tail">
         {name}
       </ThemedText>
@@ -108,7 +112,7 @@ export default function FriendListRow({
             activeOpacity={0.8}
             hitSlop={6}
             accessibilityRole="button"
-            accessibilityLabel={`Invite ${name} to this showtime`}
+            accessibilityLabel={`Invite ${name} to this screening`}
           >
             <MaterialIcons name="mail-outline" size={13} color={colors.blue.secondary} />
             <ThemedText style={styles.inviteButtonText}>Invite</ThemedText>

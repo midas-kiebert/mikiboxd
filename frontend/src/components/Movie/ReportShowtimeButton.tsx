@@ -28,7 +28,7 @@ import useAuth from "shared/hooks/useAuth"
 import { Field } from "../ui/field"
 
 const REASON_OPTIONS: { value: ShowtimeReportReason; label: string }[] = [
-  { value: "incorrect_movie", label: "Wrong movie" },
+  { value: "incorrect_movie", label: "Wrong film" },
   { value: "incorrect_time", label: "Wrong time" },
   { value: "does_not_exist", label: "Doesn't exist" },
   { value: "duplicate", label: "Duplicate" },
@@ -49,7 +49,7 @@ const ReportShowtimeButton = ({ showtimeId }: { showtimeId: number }) => {
         requestBody: { reason, message: message || null },
       }),
     onSuccess: () => {
-      showSuccessToast("Thanks! We'll take a look at this showtime.")
+      showSuccessToast("Thanks! We'll take a look at this screening.")
       setOpen(false)
       setMessage("")
     },
@@ -71,7 +71,7 @@ const ReportShowtimeButton = ({ showtimeId }: { showtimeId: number }) => {
         <Dialog.Backdrop />
         <Dialog.Positioner>
           <Dialog.Content p={4}>
-            <Dialog.Header>Report this showtime</Dialog.Header>
+            <Dialog.Header>Report this screening</Dialog.Header>
             <Dialog.CloseTrigger asChild>
               <CloseButton position="absolute" top={2} right={2} />
             </Dialog.CloseTrigger>

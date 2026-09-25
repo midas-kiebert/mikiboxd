@@ -60,10 +60,7 @@ def _apply_upsert_update(
     existing_showtime.datetime = showtime_create.datetime
     # Cineville carries no ticket link for festival events, and would otherwise
     # blank the festival site's link on every run.
-    if (
-        showtime_create.ticket_link is not None
-        or existing_showtime.festival_id is None
-    ):
+    if showtime_create.ticket_link is not None or existing_showtime.festival_id is None:
         existing_showtime.ticket_link = showtime_create.ticket_link
     if showtime_create.end_datetime is not None:
         existing_showtime.end_datetime = showtime_create.end_datetime

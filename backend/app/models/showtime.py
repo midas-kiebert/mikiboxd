@@ -41,9 +41,7 @@ class ShowtimeBase(SQLModel):
     # The festival this screening is part of: a `Cinema` row of kind
     # "festival", shown as a badge. `cinema_id` stays the real location, so a
     # LIFF screening in Trianon is still found under Trianon.
-    festival_id: int | None = Field(
-        default=None, foreign_key="cinema.id", index=True
-    )
+    festival_id: int | None = Field(default=None, foreign_key="cinema.id", index=True)
     # Whether a Cineville pass gets you in. None means "same as the cinema",
     # which is right for a regular programme; a festival sets it per screening,
     # because the pass covers only part of a festival (at LIFF, only the

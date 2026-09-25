@@ -1218,9 +1218,7 @@ def backfill_missing_posters() -> int:
     with get_db_context() as session:
         candidates = [
             (movie.id, movie.letterboxd_slug)
-            for movie in movies_crud.get_upcoming_movies_without_poster(
-                session=session
-            )
+            for movie in movies_crud.get_upcoming_movies_without_poster(session=session)
         ]
     found = 0
     for tmdb_id, slug in candidates:

@@ -265,8 +265,7 @@ class LIFFScraper(BaseCinemaScraper):
             ),
             title=details.title if details is not None else title,
             letterboxd_slug=None,
-            directors=(details.directors if details is not None else directors)
-            or None,
+            directors=(details.directors if details is not None else directors) or None,
             cast=(details.cast_names if details is not None else cast) or None,
             release_year=details.release_year if details is not None else year,
             duration=(details.runtime_minutes if details is not None else None)
@@ -365,8 +364,7 @@ class LIFFScraper(BaseCinemaScraper):
                     subtitles=show.subtitles,
                     festival_id=self.cinema_id,
                     cineville_pass=(
-                        _int_or_none(film_acf.get("section"))
-                        in competition_section_ids
+                        _int_or_none(film_acf.get("section")) in competition_section_ids
                     ),
                 )
                 festivals_service.adopt_placeholder_showtime(

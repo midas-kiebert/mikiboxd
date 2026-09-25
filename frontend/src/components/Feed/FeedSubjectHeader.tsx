@@ -465,6 +465,8 @@ type CinemaLike = {
   url: string
   badge_bg_color: string
   cineville: boolean
+  /** Absent from an older API and from a cinema built out of route params. */
+  kind?: CinemaPublic["kind"]
   city: { name: string }
 }
 

@@ -175,6 +175,13 @@
   white-space: nowrap;
 }
 
+/* Measured on the real font: the name's capitals sat 4px under the tag's top
+   edge and 5px over its bottom. Half a pixel down centres them — exact on a
+   2x screen, where this pixel is a real one. */
+.mk-tag > .mk-ellipsis {
+  transform: translateY(0.5px);
+}
+
 .mk-tag--xs {
   padding: 2px 5px 0;
   font-size: 10px;
@@ -190,9 +197,15 @@
   cursor: pointer;
 }
 
-.mk-tag-link:hover .mk-tag {
-  text-decoration: underline;
-  text-underline-offset: 2px;
+/* Clickable without an underline: on hover the tag's outline takes the
+   cinema's strong colour and its fill deepens a shade, like a pressed key. */
+.mk-tag-link .mk-tag {
+  transition: border-color 100ms ease, filter 100ms ease;
+}
+
+.mk-tag-link:hover .mk-tag--palette {
+  border-color: var(--p-secondary);
+  filter: brightness(0.95);
 }
 
 .mk-tag-link:focus-visible {

@@ -12,6 +12,7 @@ from sqlmodel import Session, Time, and_, cast, col, or_
 
 from app.core.enums import GoingStatus, SearchField
 from app.core.viewer import ViewerId
+from app.crud.cinema_filter import showtime_at_cinemas
 from app.crud.movie_set_filters import apply_movie_set_filters
 from app.inputs.movie import Filters
 from app.models.cinema import Cinema
@@ -24,6 +25,7 @@ from app.models.showtime_visibility import ShowtimeVisibilityEffective
 from app.models.user import User
 from app.models.watched_selection import WatchedSelection
 from app.models.watchlist_selection import WatchlistSelection
+from app.utils import now_amsterdam_naive
 
 DAY_BUCKET_CUTOFF = time(4, 0)
 DAY_BUCKET_OFFSET = timedelta(
@@ -339,6 +341,30 @@ def get_movies_without_letterboxd_slug(*, session: Session) -> list[Movie]:
     return movies
 
 
+def get_upcoming_movies_without_poster(*, session: Session) -> list[Movie]:
+    """Movies with a Letterboxd slug but no poster, still to be screened.
+
+    Letterboxd adds posters to new films late, often after the film was first
+    fetched, and nothing else asks again once a slug is stored. Limited to
+    films with a screening ahead, which is where a missing poster shows.
+    """
+    upcoming = (
+        select(col(Showtime.id))
+        .where(
+            col(Showtime.movie_id) == col(Movie.id),
+            col(Showtime.datetime) >= now_amsterdam_naive(),
+        )
+        .exists()
+    )
+    stmt = select(Movie).where(
+        col(Movie.letterboxd_slug).is_not(None),
+        col(Movie.poster_link).is_(None),
+        col(Movie.id) >= 0,
+        upcoming,
+    )
+    return list(session.execute(stmt).scalars().all())
+
+
 def update_movie(*, db_movie: Movie, movie_update: MovieUpdate) -> Movie:
     """
     Update an existing movie in the database. Does not flush, its the callers
@@ -451,7 +477,7 @@ def apply_search_filter(
 
     if filters.search_field == SearchField.CINEMA:
         return stmt.where(
-            col(Showtime.cinema_id).in_(_matching_cinema_ids_subquery(filters.query))
+            showtime_at_cinemas(_matching_cinema_ids_subquery(filters.query))
         )
 
     # SearchField.FRIEND
@@ -690,7 +716,7 @@ def get_cinemas_for_movies(
         .distinct()
     )
     if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
-        stmt = stmt.where(col(Cinema.id).in_(filters.selected_cinema_ids))
+        stmt = stmt.where(showtime_at_cinemas(filters.selected_cinema_ids))
 
     if filters.days is not None and len(filters.days) > 0:
         stmt = stmt.where(
@@ -746,7 +772,7 @@ def get_last_showtime_datetimes(
         col(Showtime.movie_id).in_(movie_ids)
     )
     if filters.selected_cinema_ids:
-        stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
+        stmt = stmt.where(showtime_at_cinemas(filters.selected_cinema_ids))
     stmt = stmt.group_by(col(Showtime.movie_id))
     result = session.execute(stmt)
     return dict(result.tuples().all())
@@ -764,7 +790,7 @@ def get_total_number_of_future_showtimes_for_movies(
         col(Showtime.datetime) >= filters.snapshot_time,
     )
     if filters.selected_cinema_ids:
-        stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
+        stmt = stmt.where(showtime_at_cinemas(filters.selected_cinema_ids))
     stmt = stmt.group_by(col(Showtime.movie_id))
     result = session.execute(stmt)
     return dict(result.tuples().all())
@@ -798,7 +824,7 @@ def get_showtimes_for_movies(
         col(Showtime.datetime) >= filters.snapshot_time,
     )
     if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
-        stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
+        stmt = stmt.where(showtime_at_cinemas(filters.selected_cinema_ids))
 
     if filters.days is not None and len(filters.days) > 0:
         stmt = stmt.where(
@@ -908,7 +934,7 @@ def get_showtimes_for_movie(
 ) -> list[Showtime]:
     stmt = select(Showtime).where(col(Showtime.datetime) >= filters.snapshot_time)
     if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
-        stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
+        stmt = stmt.where(showtime_at_cinemas(filters.selected_cinema_ids))
     stmt = stmt.where(col(Showtime.movie_id) == movie_id)
 
     if filters.days is not None and len(filters.days) > 0:
@@ -1037,7 +1063,7 @@ def _build_movies_query(
         )
     )
     if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
-        stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
+        stmt = stmt.where(showtime_at_cinemas(filters.selected_cinema_ids))
 
     stmt = apply_search_filter(
         stmt, filters=filters, session=session, current_user_id=current_user_id

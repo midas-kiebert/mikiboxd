@@ -1,5 +1,5 @@
 /**
- * A person's circle: their profile picture when they have one linked and
+ * A person's circle: their avatar when they have one linked and
  * synced, a colored initial otherwise — and always the initial underneath,
  * so a picture that fails to load falls back to it rather than leaving a
  * blank circle. Mirrors `frontend/src/components/Showtimes/detail/PersonAvatar.tsx`,

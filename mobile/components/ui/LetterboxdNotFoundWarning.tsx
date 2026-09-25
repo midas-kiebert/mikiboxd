@@ -22,7 +22,7 @@ export default function LetterboxdNotFoundWarning({ username }: { username: stri
           {`There is no Letterboxd account called "${username}"`}
         </ThemedText>
         <ThemedText style={styles.body}>
-          Check the spelling and save it again. Your watchlist and profile picture can&apos;t be
+          Check the spelling and save it again. Your watchlist and avatar can&apos;t be
           loaded until it matches your account.
         </ThemedText>
       </View>

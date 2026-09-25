@@ -21,6 +21,7 @@ import {
   registerPushTokenForCurrentDevice,
 } from '@/utils/push-notifications';
 import { FiltersModalProvider } from '@/components/filters/FiltersModalProvider';
+import FeatureTipsHost from '@/components/tips/FeatureTipsHost';
 import { useAppIconBadge } from '@/hooks/useAppIconBadge';
 
 const NOTIFICATION_PROMPT_DELAY_MS = 700;
@@ -280,6 +281,10 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+    {/* Here rather than in one tab, so a tip shows on whichever tab the app
+        opens on or the user goes to — not only once they reach Screenings.
+        Renders nothing inline: the tip, if any, is a modal over the screen. */}
+    <FeatureTipsHost />
     </FiltersModalProvider>
   );
 }

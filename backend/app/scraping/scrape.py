@@ -13,6 +13,7 @@ import aiohttp
 from sqlalchemy.exc import NoResultFound
 
 from app.api.deps import get_db_context
+from app.core.enums import CinemaKind
 from app.crud import cinema as cinema_crud
 from app.models.movie import (
     MovieCreate,
@@ -38,11 +39,13 @@ from app.scraping.cinemas.utrecht.hartlooper import LouisHartlooperComplexScrape
 from app.scraping.cinemas.utrecht.slachtstraat import SlachtstraatScraper
 from app.scraping.cinemas.utrecht.springhaver import SpringhaverScraper
 from app.scraping.cineville_client import CinevilleFetchError
+from app.scraping.festivals.liff import LIFFScraper
 from app.scraping.logger import logger
 from app.scraping.tmdb_lookup import find_tmdb_id_async, get_tmdb_lookup_cache_id
 from app.scraping.tmdb_movie_details import get_tmdb_movie_details_async
 from app.scraping.trusted_scrapers import TRUSTED_SCRAPERS
 from app.services import cineville_events as cineville_events_service
+from app.services import festivals as festivals_service
 from app.services import movies as movies_service
 from app.services import scrape_sync as scrape_sync_service
 from app.services import showtimes as showtimes_service
@@ -74,6 +77,7 @@ SCRAPERS: list[ScraperFactory] = [
     SlachtstraatScraper,
     SpringhaverScraper,
     FilmkoepelScraper,
+    LIFFScraper,
 ]
 
 
@@ -219,6 +223,12 @@ def _persist_cineville_results_batch(
             if cinema.cineville
             for venue_name in (cinema.name, *cinema.aliases)
         }
+        # Cineville lists a festival as one venue; its events are placed at the
+        # real location where a festival scraper knows it (see
+        # `festivals_service`), and at the festival itself otherwise.
+        festival_ids = {
+            cinema.id for cinema in cinemas if cinema.kind == CinemaKind.FESTIVAL
+        }
         # Cineville's LAB111 end time is the film's bare runtime; LAB111's own
         # programme always adds a 15-minute commercial/trailer intro on top, so
         # match that here too rather than under-reporting the show's end time.
@@ -269,6 +279,20 @@ def _persist_cineville_results_batch(
                     if end_date is not None and cinema_id == lab111_cinema_id:
                         end_date += timedelta(minutes=15)
 
+                    festival_id: int | None = None
+                    if cinema_id in festival_ids:
+                        festival_id = cinema_id
+                        cinema_id = (
+                            festivals_service.resolve_cineville_festival_cinema(
+                                session=session,
+                                festival_id=festival_id,
+                                start=start_date,
+                                movie_id=movie.id,
+                                movie_title=movie.title,
+                            )
+                            or festival_id
+                        )
+
                     source_stream = f"cineville:{cinema_id}"
                     stream_started_at.setdefault(source_stream, default_started_at)
 
@@ -280,6 +304,9 @@ def _persist_cineville_results_batch(
                         movie_id=movie.id,
                         tmdb_cache_id=movie.tmdb_cache_id,
                         cinema_id=cinema_id,
+                        festival_id=festival_id,
+                        # Listed by Cineville under the festival: the pass counts.
+                        cineville_pass=True if festival_id is not None else None,
                     )
                     db_showtime = showtimes_service.upsert_showtime(
                         session=session,

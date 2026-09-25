@@ -13,6 +13,7 @@ from typing import Any
 
 from sqlmodel import Session
 
+from app.core.enums import CinemaKind
 from app.crud import cinema as cinemas_crud
 from app.models.cinema import Cinema
 from app.schemas.cinema_scope import CinemaScope
@@ -53,7 +54,14 @@ def infer_cinema_scope(
     if not selected:
         return CinemaScope()
 
-    all_cinemas = cinemas_crud.get_cinemas(session=session)
+    # Only real cinemas say what a selection means: festivals and their venues
+    # come and go, sit in their own section of the picker, and would otherwise
+    # stop "every Leiden cinema" reading as Leiden the moment LIFF is on.
+    all_cinemas = [
+        cinema
+        for cinema in cinemas_crud.get_cinemas(session=session)
+        if cinema.kind == CinemaKind.CINEMA
+    ]
     every_id = {cinema.id for cinema in all_cinemas}
     if every_id and selected >= every_id:
         return CinemaScope(all_cinemas=True)
@@ -91,9 +99,17 @@ def resolve_cinema_scope(
     if scope.all_cinemas:
         return sorted(cinema.id for cinema in all_cinemas)
 
+    # A city takes its festival venues (they are in the city) but not a
+    # festival itself, which spans cities: "all of Leiden" must not bring in
+    # LIFF's screenings in Den Haag. LIFF's Leiden screenings are in Leiden's
+    # cinemas and venues anyway.
     wanted_cities = set(scope.city_ids)
     resolved = set(scope.cinema_ids)
-    resolved |= {cinema.id for cinema in all_cinemas if cinema.city_id in wanted_cities}
+    resolved |= {
+        cinema.id
+        for cinema in all_cinemas
+        if cinema.city_id in wanted_cities and cinema.kind != CinemaKind.FESTIVAL
+    }
     return sorted(resolved)
 
 

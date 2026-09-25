@@ -68,6 +68,11 @@ class ShowtimeSeatAvailabilityPublic(SQLModel):
     # when it is not. Rows embedded in showtime lists skip the budget half; the
     # detail endpoints that drive the button apply it.
     can_request_check: bool = False
+    # What the Cineville pass costs on top here, as last read alongside the
+    # seats. Mirrors `ShowtimePublic.cineville_surcharge_cents`, which the
+    # clients cache with the showtime: this is the copy that refetches when a
+    # reading lands, so a fresh one shows without reloading the page.
+    cineville_surcharge_cents: int | None = None
 
 
 class SoldOutWatchPublic(SQLModel):

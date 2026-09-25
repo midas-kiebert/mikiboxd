@@ -69,7 +69,7 @@ export default function CinevillePassTip() {
       tipId="cineville-pass"
       icon="badge"
       title="Got a Cineville pass?"
-      message="Save your pass number and MiKiNO keeps its barcode one tap away, ready to scan at the cinema door — no digging for the Cineville app while you're in the queue."
+      message="Save your pass number and MiKiNO will copy it to your clipboard when you go to buy a ticket. You can also open the barcode from within MiKiNO."
       actionLabel="Save my pass"
       onAction={() => void handleSave()}
       isActionDisabled={!isValid}
@@ -78,8 +78,8 @@ export default function CinevillePassTip() {
       helpLabel="Is this connected to Cineville?"
       helpContent={
         <ThemedText style={styles.helpText}>
-          No. MiKiNO has no connection to Cineville at all: it only draws the barcode from the
-          number you type here. The number is stored on this phone only — it is never sent to
+          No. It only draws the barcode from the
+          number you type here. The number is stored on this phone only. It is never sent to
           MiKiNO or anyone else.
         </ThemedText>
       }

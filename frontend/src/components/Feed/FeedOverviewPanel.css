@@ -4,6 +4,23 @@
  * tags, posters and avatars these rows reuse.
  */
 
+/* Measured by its own width, so the narrow layout below follows the column
+   (split screen, a small window) rather than the viewport. */
+.mk-overview {
+  --mk-ov-u: 1px;
+  container: mk-overview / inline-size;
+}
+
+.mk-overview__short {
+  display: none;
+}
+
+.mk-overview__poster {
+  display: block;
+  flex-shrink: 0;
+  width: 36px;
+}
+
 .mk-overview__section {
   padding: 12px 8px 8px;
 }
@@ -62,6 +79,36 @@
 
 .mk-overview__row:hover {
   background: var(--chakra-colors-bg-subtle);
+}
+
+/* Your status, as on Activity: a bar down the row's edge, in its ink. */
+.mk-overview__row--toned {
+  position: relative;
+}
+
+.mk-overview__row--toned::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--p-secondary);
+}
+
+/* An invite also fills the row: it is waiting on you. */
+.mk-overview__row--invited {
+  --mk-ring: var(--p-primary);
+  background: var(--p-primary);
+}
+
+.mk-overview__row--invited:hover {
+  background: color-mix(in srgb, var(--p-primary) 80%, var(--p-border));
+}
+
+.mk-overview__row--invited + .mk-overview__row--invited {
+  margin-top: 2px;
 }
 
 .mk-overview__row:focus-visible {
@@ -262,4 +309,38 @@
   width: 16px;
   height: 16px;
   flex-shrink: 0;
+}
+
+/* A narrow card: shorter wordings (`Fit` in the TSX), a smaller poster and
+   faces, and the seat count wraps under when and where instead of pushing
+   the cinema tag out. */
+@container mk-overview (max-width: 320px) {
+  .mk-overview__long {
+    display: none;
+  }
+
+  .mk-overview__short {
+    display: inline;
+  }
+
+  .mk-overview__accessory {
+    --mk-ov-u: 0.8px;
+  }
+
+  .mk-overview__poster {
+    width: 30px;
+  }
+
+  .mk-overview__row {
+    gap: 8px;
+  }
+
+  .mk-overview__meta {
+    flex-wrap: wrap;
+    row-gap: 3px;
+  }
+
+  .mk-overview__custom {
+    padding: 10px;
+  }
 }

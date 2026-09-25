@@ -94,7 +94,7 @@ const TICKET_SHARE = `(100cqw / var(${COLUMNS_VAR}))`
  * proportionally more air instead of standing shoulder to shoulder.
  */
 const GAP_BASE_PX = 12
-const GAP_FROM_SHARE_PX = 240
+const GAP_FROM_SHARE_PX = 200
 const GAP_PER_EXTRA = 0.07
 const GAP_MAX_PX = 48
 const WALL_GAP = `min(${GAP_MAX_PX}px, ${GAP_BASE_PX}px + max(0px, ${TICKET_SHARE} - ${GAP_FROM_SHARE_PX}px) * ${GAP_PER_EXTRA})`
@@ -116,8 +116,11 @@ const WALL_ROW_GAP = `calc(${GAP_BASE_PX}px + (var(${GAP_VAR}) - ${GAP_BASE_PX}p
  * row on a wide screen is two tickets with the wall drawn in around them, not
  * two posters the size of the window. Nothing at all below it, where the
  * tickets need every pixel.
+ *
+ * Lowered from 360px so three a row on a full 1920 screen (about 290px of
+ * room each) already draws the wall in: smaller tickets, wider sides.
  */
-const COMFORTABLE_SHARE_PX = 360
+const COMFORTABLE_SHARE_PX = 220
 const MARGIN_PER_EXTRA = 0.4
 const WALL_MARGIN = `max(0px, (${TICKET_SHARE} - ${COMFORTABLE_SHARE_PX}px) * var(${COLUMNS_VAR}) * ${MARGIN_PER_EXTRA})`
 

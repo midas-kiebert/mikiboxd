@@ -1,8 +1,8 @@
 /**
  * Renders at most one feature tip. Candidates are listed in priority order —
- * verify email; the three "you missed something" notification tips (an invite,
- * a sold-out screening, a friend request); cinemas, friends, Letterboxd,
- * Letterboxd picture, filter presets, watchlist digest, interest reminders and
+ * verify email; the two "you missed something" notification tips (an invite,
+ * a sold-out screening); cinemas, friends, Letterboxd,
+ * Letterboxd avatar, filter presets, watchlist digest, interest reminders and
  * the Cineville pass — and `rollForFeatureTip` applies eligibility, dismissal,
  * per-tip cooldowns and a random chance, so the user is never handed a stack of
  * nags and does not see a tip on every single app open. The exceptions are
@@ -37,7 +37,6 @@ import AddFriendsTip from "@/components/tips/AddFriendsTip";
 import CinemaPresetTip from "@/components/tips/CinemaPresetTip";
 import CinevillePassTip from "@/components/tips/CinevillePassTip";
 import FilterPresetTip from "@/components/tips/FilterPresetTip";
-import FriendRequestTip from "@/components/tips/FriendRequestTip";
 import InterestRemindersTip from "@/components/tips/InterestRemindersTip";
 import InviteTip from "@/components/tips/InviteTip";
 import LetterboxdAvatarTip from "@/components/tips/LetterboxdAvatarTip";
@@ -65,8 +64,9 @@ const TIP_ROLL_DELAY_MS = 1500;
 
 export default function FeatureTipsHost() {
   const { user } = useAuth();
-  // The host lives inside a tab screen that stays mounted when the user leaves
-  // it, and the tip is a blocking dialog, so it must not outlive the screen.
+  // The host lives in the tabs layout, which stays mounted under any screen
+  // pushed on top of it (a film page, say). The tip is a blocking dialog, so it
+  // only shows while the tabs themselves are on screen — any tab.
   const isFocused = useIsFocused();
   // A first-time user is being walked through these very features right now; a
   // tip on top of the intro would be nagging about something in progress.
@@ -127,16 +127,16 @@ export default function FeatureTipsHost() {
     key: Parameters<typeof isNotificationDeliverable>[1]
   ): boolean => !isNotificationDeliverable(currentUser, key, canPush === true);
   const soldOutScreening = awayEvents?.sold_out[0] ?? null;
-  // An invite that can still be answered beats one that is already lost.
-  const upcomingInvite = awayEvents?.upcoming_invites[0] ?? null;
+  // A missed invite beats one that can still be answered: it is the proof
+  // that notifications matter. Within each kind, the earliest screening (the
+  // lists come back sorted by screening date).
   const missedInvite = awayEvents?.missed_invites[0] ?? null;
-  const tipInvite = upcomingInvite ?? missedInvite;
+  const upcomingInvite = awayEvents?.upcoming_invites[0] ?? null;
+  const tipInvite = missedInvite ?? upcomingInvite;
   const shouldSuggestInvites =
     tipInvite !== null && missesNotification("notify_on_showtime_ping");
   const shouldSuggestSeatAlerts =
     soldOutScreening !== null && missesNotification("notify_on_seat_alert");
-  const shouldSuggestFriendRequests =
-    (awayEvents?.friend_requests ?? 0) > 0 && missesNotification("notify_on_friend_requests");
   const shouldSuggestInterestReminders =
     currentUser !== undefined && !currentUser.notify_on_interest_reminder;
   // Null means the number is still being read from storage.
@@ -175,8 +175,9 @@ export default function FeatureTipsHost() {
   //     from the chance, the cooldown and the Settings switch (see
   //     ALWAYS_SHOW_TIP_IDS). Whenever it is eligible it wins, so nothing below
   //     it is reached until the address is confirmed.
-  //  1-3. the event tips — an invite (still to answer, or missed), a sold-out screening, a friend
-  //     request, each only for events since the app was last used. Ahead of
+  //  1-2. the event tips — an invite (still to answer, or missed) and a
+  //     sold-out screening, each only for events since the app was last used.
+  //     (No friend-request tip: that one is reasonable to have off.) Ahead of
   //     every suggestion because they come with proof of what the user is
   //     missing, and they are rare by construction.
   //  4. cinemas — an unfiltered feed makes every screen noisier, and it is
@@ -184,25 +185,26 @@ export default function FeatureTipsHost() {
   //     who skipped that page.
   //  5. friends — the social half of the app, but it needs other people to
   //     accept before it pays off.
-  //  6. Letterboxd, 7. its profile picture, 8. filter presets — real
-  //     conveniences, no urgency; all carry the longer cooldown. The two
-  //     Letterboxd tips never compete: the picture needs a username first.
-  //  9. watchlist digest, 10. interest reminders, 11. the Cineville pass —
-  //     last on purpose: niche conveniences with the longest cooldowns. They
-  //     should feel like something you stumble on, not a pitch.
+  //  6. Letterboxd, 7. filter presets — real conveniences, no urgency; both
+  //     carry the longer cooldown.
+  //  8. watchlist digest, 9. interest reminders, 10. the Cineville pass —
+  //     niche conveniences with the longest cooldowns. They should feel like
+  //     something you stumble on, not a pitch.
+  //  11. the Letterboxd avatar — last of all: purely cosmetic, and
+  //     the username tip already asks it the moment a username is saved. Never
+  //     competes with the username tip: the picture needs a username first.
   const candidates: FeatureTipCandidate[] = [
     { id: "verify-email", isEligible: needsEmailVerification },
     { id: "invite", isEligible: shouldSuggestInvites },
     { id: "sold-out", isEligible: shouldSuggestSeatAlerts },
-    { id: "friend-request", isEligible: shouldSuggestFriendRequests },
     { id: "cinema-presets", isEligible: shouldSuggestCinemaPreset },
     { id: "add-friends", isEligible: shouldSuggestAddFriends },
     { id: "letterboxd-username", isEligible: !hasLetterboxdUsername },
-    { id: "letterboxd-avatar", isEligible: shouldSuggestLetterboxdAvatar },
     { id: "filter-presets", isEligible: shouldSuggestFilterPreset },
     { id: "watchlist-digest", isEligible: shouldSuggestWatchlistDigest },
     { id: "interest-reminders", isEligible: shouldSuggestInterestReminders },
     { id: "cineville-pass", isEligible: shouldSuggestCinevillePass },
+    { id: "letterboxd-avatar", isEligible: shouldSuggestLetterboxdAvatar },
   ];
   // The candidates change identity every render; the roll only needs to see
   // the latest list when it actually runs.
@@ -235,12 +237,11 @@ export default function FeatureTipsHost() {
   if (visibleTipId === "cinema-presets") return <CinemaPresetTip />;
   if (visibleTipId === "add-friends") return <AddFriendsTip />;
   if (visibleTipId === "invite" && tipInvite) {
-    return <InviteTip invite={tipInvite} isMissed={upcomingInvite === null} />;
+    return <InviteTip invite={tipInvite} isMissed={missedInvite !== null} />;
   }
   if (visibleTipId === "sold-out" && soldOutScreening) {
     return <SoldOutTip screening={soldOutScreening} />;
   }
-  if (visibleTipId === "friend-request") return <FriendRequestTip />;
   if (visibleTipId === "interest-reminders") return <InterestRemindersTip />;
   if (visibleTipId === "cineville-pass") return <CinevillePassTip />;
   if (visibleTipId === "letterboxd-username") return <LetterboxdUsernameTip />;

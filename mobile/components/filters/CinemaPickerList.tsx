@@ -139,7 +139,10 @@ export default function CinemaPickerList({
   // still needs the outline to hold its pale fill against the white pill.
   const isDark = useColorScheme() === "dark";
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { groupedCities, ungrouped } = useMemo(() => groupCinemas(cinemas), [cinemas]);
+  const { groupedCities, ungrouped, festivals } = useMemo(
+    () => groupCinemas(cinemas),
+    [cinemas]
+  );
 
   const sections = useMemo(
     () => [
@@ -163,8 +166,21 @@ export default function CinemaPickerList({
             },
           ]
         : []),
+      // Apart from the cinemas, and only while one is on (the server lists a
+      // festival or venue only with screenings coming up).
+      ...(festivals.length > 0
+        ? [
+            {
+              key: "festivals",
+              title: "Festivals",
+              cinemas: festivals,
+              canSelectAll: false,
+              showCity: true,
+            },
+          ]
+        : []),
     ],
-    [groupedCities, ungrouped]
+    [groupedCities, ungrouped, festivals]
   );
 
   const paletteByCinemaId = useMemo(

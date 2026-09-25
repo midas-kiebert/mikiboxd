@@ -31,15 +31,14 @@ import type { KeyboardEvent, ReactNode } from "react"
 import type { ShowtimePublic } from "shared"
 import type { FeedOverviewSectionKind } from "shared/client"
 
-import { openNotificationPanel } from "@/components/Notifications/notification-panel"
 import {
   AvatarStack,
   CinemaTagLink,
   Poster,
   SeatMark,
   TONE_PALETTE,
-  Tag,
   nameOf,
+  paletteClass,
   viewerTone,
   when,
 } from "@/components/Showtimes/cards/card-parts"
@@ -68,12 +67,6 @@ import {
 
 import "./FeedOverviewPanel.css"
 
-const TONE_LABEL = {
-  going: "Going",
-  interested: "Interested",
-  invited: "Invited",
-} as const
-
 const SECTION_TITLE: Record<
   Exclude<FeedOverviewSectionKind, "custom">,
   string
@@ -84,6 +77,27 @@ const SECTION_TITLE: Record<
   friends_going: "Friends are going",
   watchlist: "From your watchlist",
 }
+
+/** The same titles, for a card squeezed narrow (split screen). */
+const SECTION_TITLE_SHORT: typeof SECTION_TITLE = {
+  invited: "Invites",
+  selling_fast: "Selling fast",
+  plans: "Next plans",
+  friends_going: "Friends going",
+  watchlist: "Watchlist",
+}
+
+/**
+ * Both wordings, one shown: `FeedOverviewPanel.css` swaps to the short one
+ * when the card itself is narrow, so the choice follows the card's width
+ * rather than the window's and needs no measuring here.
+ */
+const Fit = ({ long, short }: { long: ReactNode; short: ReactNode }) => (
+  <>
+    <span className="mk-overview__long">{long}</span>
+    <span className="mk-overview__short">{short}</span>
+  </>
+)
 
 type FeedOverviewPanelProps = {
   /** The card's lists, or `null` for a guest. */
@@ -108,6 +122,7 @@ const FeedOverviewPanel = ({
 
   return (
     <Box
+      className="mk-overview"
       bg="bg.panel"
       borderWidth="1px"
       borderColor="border"
@@ -130,7 +145,10 @@ const FeedOverviewPanel = ({
           ))}
           {!overview.isPending && overview.sections.length === 0 ? (
             <p className="mk-overview__empty mk-overview__empty--alone">
-              Invites, your plans and what friends are going to show up here.
+              <Fit
+                long="Invites, your plans and what friends are going to show up here."
+                short="Invites and plans show up here."
+              />
             </p>
           ) : null}
           <CustomListPicker
@@ -140,10 +158,19 @@ const FeedOverviewPanel = ({
           />
         </>
       ) : (
-        <Section title="Plan cinema nights with friends">
+        <Section
+          title={
+            <Fit
+              long="Plan cinema nights with friends"
+              short="Cinema with friends"
+            />
+          }
+        >
           <p className="mk-overview__pitch">
-            See which friends are going, keep your seats in one agenda and
-            invite people to a screening.
+            <Fit
+              long="See which friends are going, keep your seats in one agenda and invite people to a screening."
+              short="See who's going and invite friends."
+            />
           </p>
           <div className="mk-overview__buttons">
             <Link to="/signup" className="mk-overview__button">
@@ -192,35 +219,29 @@ const OverviewSection = ({
   onApplyFilters: (params: FeedParams) => void
 }) => {
   const title =
-    section.kind === "custom"
-      ? (customList?.title ?? "Your list")
-      : SECTION_TITLE[section.kind]
+    section.kind === "custom" ? (
+      (customList?.title ?? "Your list")
+    ) : (
+      <Fit
+        long={SECTION_TITLE[section.kind]}
+        short={SECTION_TITLE_SHORT[section.kind]}
+      />
+    )
   const target = showMoreTarget(section.kind, feedParams, customList)
-  // The caret points where the rest will be: left, into the feed, for a list
-  // that puts its filters on it; right, away, for one that opens elsewhere.
+  // The caret points left, into the feed, where the rest will be.
   const action =
-    target?.kind === "notifications" ? (
-      <button
-        type="button"
-        className="mk-overview__show-more"
-        onClick={openNotificationPanel}
-      >
-        <span>Show more</span>
-        <PanelIcon.chevronRight
-          className="mk-overview__show-more-icon"
-          aria-hidden
-        />
-      </button>
-    ) : target?.kind === "filters" && isShowing(target.params, feedParams) ? (
+    target && isShowing(target.params, feedParams) ? (
       // The feed already is this list; a button that changes nothing reads broken.
       <span className="mk-overview__show-more mk-overview__show-more--current">
         <PanelIcon.chevronLeft
           className="mk-overview__show-more-icon"
           aria-hidden
         />
-        <span>Currently showing</span>
+        <span>
+          <Fit long="Currently showing" short="Showing" />
+        </span>
       </span>
-    ) : target?.kind === "filters" ? (
+    ) : target ? (
       <button
         type="button"
         className="mk-overview__show-more mk-overview__show-more--into-feed"
@@ -244,7 +265,10 @@ const OverviewSection = ({
           key={showtime.id}
           showtime={showtime}
           onSelect={onSelect}
-          accessory={<Accessory kind={section.kind} showtime={showtime} />}
+          showSeats={
+            section.kind === "selling_fast" ||
+            viewerTone(showtime) === "interested"
+          }
           note={
             section.kind === "invited" ? (
               <InvitedByNote showtime={showtime} />
@@ -254,33 +278,6 @@ const OverviewSection = ({
       ))}
     </Section>
   )
-}
-
-/** What each list is about, at the end of its rows. */
-const Accessory = ({
-  kind,
-  showtime,
-}: {
-  kind: FeedOverviewSectionKind
-  showtime: ShowtimePublic
-}) => {
-  switch (kind) {
-    case "selling_fast":
-      return <SeatMark showtime={showtime} withCount />
-    case "plans": {
-      const tone = viewerTone(showtime)
-      return tone === "none" ? null : (
-        <Tag palette={TONE_PALETTE[tone]} size="xs">
-          {TONE_LABEL[tone]}
-        </Tag>
-      )
-    }
-    // An invite still shows who is interested or going, like every other
-    // list: the inviter's name in this slot used to crowd those out. Who
-    // invited you goes on its own line under the screening (`InvitedByNote`).
-    default:
-      return <AvatarStack showtime={showtime} size={28} max={5} align="end" />
-  }
 }
 
 /**
@@ -306,10 +303,14 @@ const CustomListPicker = ({
       <span className="mk-overview__custom-label">
         {list ? (
           <>
-            Your list: <strong>{list.title}</strong>
+            <Fit long="Your list: " short="" />
+            <strong>{list.title}</strong>
           </>
         ) : (
-          "Add a list of your own to this card"
+          <Fit
+            long="Add a list of your own to this card"
+            short="Add your own list"
+          />
         )}
       </span>
       <MenuRoot positioning={{ placement: "bottom-end" }}>
@@ -380,7 +381,7 @@ const Section = ({
   footer,
   children,
 }: {
-  title: string
+  title: ReactNode
   /** "Show more", under the rows it continues. */
   footer?: ReactNode
   children: ReactNode
@@ -403,9 +404,18 @@ const InvitedByNote = ({ showtime }: { showtime: ShowtimePublic }) => {
     <span className="mk-overview__note">
       <PersonAvatar user={inviters[0]} size={16} />
       <span className="mk-overview__note-text">
-        {inviters.length === 1
-          ? `You were invited by ${first}`
-          : `You were invited by ${first} and ${inviters.length - 1} more`}
+        <Fit
+          long={
+            inviters.length === 1
+              ? `You were invited by ${first}`
+              : `You were invited by ${first} and ${inviters.length - 1} more`
+          }
+          short={
+            inviters.length === 1
+              ? `From ${first}`
+              : `From ${first} +${inviters.length - 1}`
+          }
+        />
       </span>
     </span>
   )
@@ -415,18 +425,22 @@ const InvitedByNote = ({ showtime }: { showtime: ShowtimePublic }) => {
 const OverviewRow = ({
   showtime,
   onSelect,
-  accessory,
+  showSeats,
   note,
 }: {
   showtime: ShowtimePublic
   onSelect: (showtime: ShowtimePublic) => void
-  accessory: ReactNode
+  /** "n of m seats left" in the row's meta line, where every list puts it. */
+  showSeats: boolean
   /** A line under when and where, about this row in particular. */
   note?: ReactNode
 }) => {
   // See `PortraitTicketCard`: whoever prints a day holds the day.
   useDayClock()
   const time = when(showtime)
+  // Your status reads the same in every list, as on Activity: a bar down the
+  // row's edge, never a badge. An invite also fills the row, to catch the eye.
+  const tone = viewerTone(showtime)
   // A `div` acting as the button, as `TicketRoot` does: a real `<button>`
   // cannot hold the cinema tag's link.
   const handleKeyDown = (event: KeyboardEvent) => {
@@ -438,14 +452,20 @@ const OverviewRow = ({
   }
   return (
     <div
-      className="mk-overview__row"
+      className={`mk-overview__row${
+        tone === "none"
+          ? ""
+          : ` mk-overview__row--toned mk-overview__row--${tone} ${paletteClass(TONE_PALETTE[tone])}`
+      }`}
       // biome-ignore lint/a11y/useSemanticElements: a row of block content, which a <button> may not hold
       role="button"
       tabIndex={0}
       onClick={() => onSelect(showtime)}
       onKeyDown={handleKeyDown}
     >
-      <Poster showtime={showtime} width="36px" radius="4px" />
+      <span className="mk-overview__poster">
+        <Poster showtime={showtime} width="100%" radius="4px" />
+      </span>
       <span className="mk-overview__body">
         <span className="mk-overview__film">{showtime.movie.title}</span>
         <span className="mk-overview__meta">
@@ -453,10 +473,20 @@ const OverviewRow = ({
             {time.dateShort} · {time.time}
           </span>
           <CinemaTagLink showtime={showtime} size="xs" />
+          {showSeats ? <SeatMark showtime={showtime} withCount /> : null}
         </span>
         {note}
       </span>
-      <span className="mk-overview__accessory">{accessory}</span>
+      <span className="mk-overview__accessory">
+        {/* Counted in `--mk-ov-u`, which the CSS shrinks on a narrow card. */}
+        <AvatarStack
+          showtime={showtime}
+          size={28}
+          unit="var(--mk-ov-u)"
+          max={4}
+          align="end"
+        />
+      </span>
     </div>
   )
 }

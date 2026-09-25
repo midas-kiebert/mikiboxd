@@ -15,29 +15,50 @@
  * them and the status write rebuild this showtime's visibility rows, and two of
  * those at once deadlock Postgres.
  *
+ * Marking a screening going for the first time also looks, in the background,
+ * for other screenings of the same film you'd marked interested, and offers to
+ * clear them (`RemoveInterestedElsewhereDialog`, as the app does). Not when
+ * another screening of it is already going: going twice is deliberate. The
+ * Settings page can switch this question off.
+ *
  * Rendered inside the panel's per-screening keyed body, so an answer given
  * here always lands on the screening it was asked about.
  */
 import { Box, Text } from "@chakra-ui/react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRef, useState } from "react"
-import type { GoingStatus, ShowtimePublic, UserPublic } from "shared"
-import { ShowtimesService } from "shared/client"
+import type {
+  GoingStatus,
+  ShowtimeInMoviePublic,
+  ShowtimePublic,
+  UserPublic,
+} from "shared"
+import { MoviesService, ShowtimesService } from "shared/client"
 
 import { PanelPressable } from "@/components/Showtimes/detail/PanelChrome"
 
 import { useIsSignedIn, useRequireAccount } from "@/auth/useSession"
 import InviteBeforePrivateDialog from "@/components/Showtimes/detail/InviteBeforePrivateDialog"
 import { personName } from "@/components/Showtimes/detail/PersonAvatar"
+import RemoveInterestedElsewhereDialog from "@/components/Showtimes/detail/RemoveInterestedElsewhereDialog"
 import ShowtimeStatusControl from "@/components/Showtimes/detail/ShowtimeStatusControl"
 import {
   hiddenAttendingFriendsQueryKey,
   useShowtimeInvites,
 } from "@/features/showtimes/useShowtimeInvites"
+import { isRemoveInterestedReminderEnabled } from "@/features/showtimes/interested-elsewhere-reminder"
+import {
+  putShowtimeInFeeds,
+  refetchStatusScopedFeeds,
+} from "@/features/showtimes/showtime-cache"
 import { useShowtimeSelection } from "@/features/showtimes/useShowtimeSelection"
 
 /** Stable, so the dialog's props don't change identity on every render. */
 const NO_FRIENDS: readonly UserPublic[] = []
+const NO_SHOWTIMES: readonly ShowtimeInMoviePublic[] = []
+
+/** Enough to cover every screening of one film a viewer could have marked. */
+const OTHER_SHOWTIMES_LIMIT = 50
 
 const isAttending = (status: GoingStatus) =>
   status === "GOING" || status === "INTERESTED"
@@ -76,10 +97,76 @@ const ShowtimeStatusSection = ({ showtime }: ShowtimeStatusSectionProps) => {
   // twice or race the invites it is waiting on.
   const hasAnsweredRef = useRef(true)
 
+  // Other screenings of this film still marked interested. Outlives the open
+  // flag, like `question`, so the list holds still on the way out.
+  const [staleInterested, setStaleInterested] =
+    useState<readonly ShowtimeInMoviePublic[]>(NO_SHOWTIMES)
+  const [isOfferingClear, setIsOfferingClear] = useState(false)
+  const hasAnsweredClearRef = useRef(true)
+
+  // Unawaited: the going press never waits on this; the dialog, if any,
+  // arrives after the status has already changed.
+  const checkInterestedElsewhere = async () => {
+    if (!isRemoveInterestedReminderEnabled()) return
+    try {
+      const movieId = showtime.movie.id
+      const others = (
+        await queryClient.fetchQuery({
+          queryKey: ["movies", movieId, "showtimes", "attendingStatuses"],
+          queryFn: () =>
+            MoviesService.readMovieShowtimes({
+              id: movieId,
+              selectedStatuses: ["GOING", "INTERESTED"],
+              // The viewer's own marks at any cinema, not just the ones the
+              // feed is showing.
+              allCinemas: true,
+              limit: OTHER_SHOWTIMES_LIMIT,
+            }),
+          staleTime: 0,
+        })
+      ).filter((other) => other.id !== showtimeId)
+      if (others.some((other) => other.viewer?.going === "GOING")) return
+      const interested = others.filter(
+        (other) => other.viewer?.going === "INTERESTED",
+      )
+      if (interested.length === 0) return
+      hasAnsweredClearRef.current = false
+      setStaleInterested(interested)
+      setIsOfferingClear(true)
+    } catch {
+      // Best-effort: nothing to fall back to.
+    }
+  }
+
+  const answerClear = async (selectedIds: readonly number[]) => {
+    if (hasAnsweredClearRef.current) return
+    hasAnsweredClearRef.current = true
+    setIsOfferingClear(false)
+    // One at a time: concurrent status writes can deadlock on visibility rows.
+    for (const id of selectedIds) {
+      try {
+        const updated = await ShowtimesService.updateShowtimeSelection({
+          showtimeId: id,
+          requestBody: { going_status: "NOT_GOING" },
+        })
+        putShowtimeInFeeds(queryClient, updated)
+      } catch {
+        // Best-effort, like the invites.
+      }
+    }
+    if (selectedIds.length > 0) {
+      refetchStatusScopedFeeds(queryClient)
+      queryClient.invalidateQueries({ queryKey: ["movie"] })
+      queryClient.invalidateQueries({ queryKey: ["movies"] })
+    }
+  }
+
   const handleChange = async (pressed: GoingStatus) => {
     if (!requireAccount()) return
     // What the press will set: pressing the status you hold clears it.
     const next = pressed === status ? "NOT_GOING" : pressed
+
+    if (next === "GOING") void checkInterestedElsewhere()
 
     if (isAttending(next) && !isAttending(status)) {
       try {
@@ -149,6 +236,13 @@ const ShowtimeStatusSection = ({ showtime }: ShowtimeStatusSectionProps) => {
         message={`These friends are already going or interested, but won't be able to see that you're ${
           question.status === "GOING" ? "going" : "interested"
         } unless you invite them.`}
+      />
+
+      <RemoveInterestedElsewhereDialog
+        open={isOfferingClear}
+        showtimes={staleInterested}
+        onConfirm={(ids) => void answerClear(ids)}
+        onSkip={() => void answerClear([])}
       />
     </Box>
   )

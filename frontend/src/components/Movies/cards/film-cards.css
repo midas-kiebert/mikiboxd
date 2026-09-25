@@ -139,9 +139,27 @@
   /* A no-descender word (most cinema names) leaves its line-box's descender
      space empty below the letters, which flex-centering still splits evenly —
      so the *ink* ends up sitting above centre. Nudged down to compensate. */
-  transform: translateY(1px);
+  transform: translateY(1.5px);
   line-height: 1.25;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The festival a screening is part of ("Trianon LIFF"): a badge in the badge,
+   in the cinema's own colours inverted. Never cut — the
+   name gives way, and a plate whose label won't fit takes two columns
+   (`plateSpan`). */
+.fc-plate__label-festival {
+  flex-shrink: 0;
+  margin-left: 3px;
+  /* Centred on the band with room above and below; the text a pixel low, like
+     the name beside it — by padding, so the chip itself stays centred. */
+  align-self: center;
+  padding: 1px 3px 0;
+  line-height: 1.1;
+  border-radius: 2px;
+  background: var(--p-secondary);
+  color: var(--p-primary);
   white-space: nowrap;
 }
 
@@ -542,8 +560,12 @@
  * the same colour.
  */
 .fr-film__plates {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  /* One line of plates, each a standard width — or, where its label needs
+     more, just that (`plateWidth` in FilmPlate.tsx is how the row counts
+     what fits). */
+  position: relative;
+  display: flex;
+  flex-wrap: nowrap;
   gap: 6px 5px;
   margin-top: auto;
   padding-top: 10px;
@@ -655,12 +677,29 @@
  * column (`fr-info`, below), so it only resolves inside it. */
 
 .fr-film__plates {
-  grid-template-columns: repeat(auto-fill, minmax(calc(96 * var(--fr-u)), 1fr));
   gap: calc(6 * var(--fr-u)) calc(5 * var(--fr-u));
 }
 
+/* Sized by its content with the standard width as the floor: the label
+   (never cut here) is what makes a plate wider. */
 .fr-film .fc-plate {
+  flex: 0 0 auto;
+  min-width: calc(96 * var(--fr-u));
   padding-bottom: calc(9 * var(--fr-u));
+}
+
+.fr-film .fc-plate__label-name {
+  overflow: visible;
+}
+
+/* Exactly one standard plate wide and invisible: how `FilmRow` reads what a
+   row pixel comes to at this row's size. */
+.fr-film__plate-probe {
+  position: absolute;
+  width: calc(96 * var(--fr-u));
+  height: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .fr-film .fc-plate__label {

@@ -5,6 +5,7 @@ from pydantic import BaseModel, computed_field
 
 from app.core.enums import GoingStatus, VisibilityMode
 from app.models.showtime import ShowtimeBase
+from app.schemas.cinema import FestivalPublic
 from app.schemas.legacy_viewer_compat import LEGACY_VIEWER_FIELD
 from app.schemas.seat_availability import ShowtimeSeatAvailabilityPublic
 
@@ -83,6 +84,10 @@ class ShowtimeInMovieViewerState(BaseModel):
     # this showtime, plus those pings' ids (used to dismiss the invite).
     invited_by: Sequence["UserPublic"] = []
     invite_ping_ids: Sequence[int] = []
+    # Whether any of those invites hasn't been opened yet: the app marks the
+    # card, and opening it (mark-seen for this showtime) clears the mark and
+    # takes it off both the Activity and the bell count.
+    has_unseen_invite: bool = False
     # Your friends who were also invited by someone who invited you (co-invitees),
     # excluding anyone you already invited yourself.
     co_invited_friends: Sequence["CoInvitedFriendPublic"] = []
@@ -144,6 +149,15 @@ class ShowtimePublic(ShowtimeBase):
     # `None` keeps the same meaning as an absent entry in the batch response:
     # nothing to say about this screening, and there never will be.
     seat_availability: ShowtimeSeatAvailabilityPublic | None = None
+    # Set for a festival screening; `cinema` is still where it plays.
+    festival: FestivalPublic | None = None
+    # Whether the Cineville pass gets you in, already resolved against the
+    # cinema — use this rather than `cinema.cineville`, which a festival
+    # overrides per screening.
+    cineville_pass: bool = False
+    # What a Cineville pass holder pays on top of the pass, in cents, when the
+    # ticket shop lists one; None when unknown or when the pass doesn't apply.
+    cineville_surcharge_cents: int | None = None
 
     # --- LEGACY_VIEWER_FIELDS: delete this whole block with the shim ---
     @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
@@ -218,6 +232,15 @@ class ShowtimeInMoviePublic(ShowtimeBase):
     viewer: "ShowtimeInMovieViewerState | None" = None
     # Same inline availability as `ShowtimePublic` — see its field.
     seat_availability: ShowtimeSeatAvailabilityPublic | None = None
+    # Set for a festival screening; `cinema` is still where it plays.
+    festival: FestivalPublic | None = None
+    # Whether the Cineville pass gets you in, already resolved against the
+    # cinema — use this rather than `cinema.cineville`, which a festival
+    # overrides per screening.
+    cineville_pass: bool = False
+    # What a Cineville pass holder pays on top of the pass, in cents, when the
+    # ticket shop lists one; None when unknown or when the pass doesn't apply.
+    cineville_surcharge_cents: int | None = None
 
     # --- LEGACY_VIEWER_FIELDS: delete this whole block with the shim ---
     @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362

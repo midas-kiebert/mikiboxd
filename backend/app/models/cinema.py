@@ -7,6 +7,7 @@ from sqlalchemy import String
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlmodel import Column, Field, Relationship, SQLModel
 
+from app.core.enums import CinemaKind
 from app.validators.cinema_seating import CinemaSeatingPreset
 
 if TYPE_CHECKING:
@@ -51,6 +52,19 @@ class CinemaBase(SQLModel):
             nullable=False,
         ),
         default=CinemaSeatingPreset.UNKNOWN,
+    )
+    kind: CinemaKind = Field(
+        sa_column=Column(
+            SAEnum(
+                CinemaKind,
+                native_enum=False,
+                length=20,
+                values_callable=lambda enum: [m.value for m in enum],
+            ),
+            nullable=False,
+            server_default=CinemaKind.CINEMA.value,
+        ),
+        default=CinemaKind.CINEMA,
     )
 
 

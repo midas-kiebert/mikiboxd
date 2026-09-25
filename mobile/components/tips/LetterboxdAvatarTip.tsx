@@ -1,5 +1,5 @@
 /**
- * Feature tip: use the Letterboxd profile picture as your avatar on MiKiNO.
+ * Feature tip: show your Letterboxd avatar on MiKiNO.
  *
  * Off by default (connecting Letterboxd for the watchlist is not consent to
  * show its picture), so this is where the option gets discovered. Only offered
@@ -42,15 +42,15 @@ export default function LetterboxdAvatarTip({ onClose }: { onClose?: () => void 
     <FeatureTipModal
       tipId="letterboxd-avatar"
       icon="account-circle"
-      title={isEnabled ? "Picture on" : "Use your Letterboxd picture?"}
+      title={isEnabled ? "Avatar on" : "Use your Letterboxd avatar?"}
       message={
         isEnabled
-          ? "Friends now see your Letterboxd picture. You can turn it off in Settings → Letterboxd."
+          ? "Friends now see your Letterboxd avatar. You can turn it off in Settings → Letterboxd."
           : avatarPreference.pictureUrl
-            ? "Show your Letterboxd profile picture to friends on MiKiNO instead of a coloured initial. It's off until you say so."
-            : "Show your Letterboxd profile picture to friends on MiKiNO instead of a coloured initial. We'll fetch it from Letterboxd as soon as you turn this on."
+            ? "Show your Letterboxd avatar to friends on MiKiNO instead of a coloured initial. It's off until you say so."
+            : "Show your Letterboxd avatar to friends on MiKiNO instead of a coloured initial. We'll fetch it from Letterboxd as soon as you turn this on."
       }
-      actionLabel={isEnabled ? "Done" : "Use my picture"}
+      actionLabel={isEnabled ? "Done" : "Use my avatar"}
       onAction={isEnabled ? undefined : handleEnable}
       closeOnAction={isEnabled}
       hideDismissForever={onClose !== undefined}

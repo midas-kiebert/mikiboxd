@@ -10,7 +10,8 @@
  *
  * Your own status is colour only — a bar down the row's edge, green going,
  * orange interested, blue invited — not a word: in a list of your own plans a "GOING" on most rows
- * was noise, and the colour is what the eye runs down.
+ * was noise, and the colour is what the eye runs down. An invite also fills
+ * the row in blue: it is waiting on you, so it should catch the eye.
  *
  * Laid out in columns across the width — when, film, where, who — so that a
  * wide screen reads as a table you can run your eye down, one fact per column,
@@ -140,7 +141,7 @@ const ActivityRow = ({ showtime, isSelected, onSelect }: ActivityRowProps) => {
 
   return (
     <div
-      className={`ac-row${palette ? ` ac-row--toned ${paletteClass(palette)}` : ""}`}
+      className={`ac-row${palette ? ` ac-row--toned ac-row--${tone} ${paletteClass(palette)}` : ""}`}
       // biome-ignore lint/a11y/useSemanticElements: a row of block content, which a <button> may not hold
       role="button"
       tabIndex={0}

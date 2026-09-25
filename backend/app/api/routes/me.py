@@ -571,6 +571,20 @@ def mark_my_showtime_pings_seen(
     return Message(message="Showtime invites marked as seen")
 
 
+@router.post("/pings/showtime/{showtime_id}/mark-seen", response_model=Message)
+def mark_my_showtime_pings_seen_for_showtime(
+    session: SessionDep,
+    current_user: CurrentUser,
+    showtime_id: int,
+) -> Message:
+    me_service.mark_showtime_pings_seen_for_showtime(
+        session=session,
+        user_id=current_user.id,
+        showtime_id=showtime_id,
+    )
+    return Message(message="Showtime invites marked as seen")
+
+
 @router.delete("/pings/{ping_id}", response_model=Message)
 def delete_my_showtime_ping(
     session: SessionDep,

@@ -308,6 +308,18 @@
   background: var(--p-secondary);
 }
 
+/* An invite also fills the row: it is waiting on you. Selected still lifts
+   it onto the panel's surface, as any row. */
+.ac-row--invited {
+  --mk-ring: var(--p-primary);
+  background-color: var(--p-primary);
+}
+
+.ac-row--invited:hover {
+  --mk-ring: color-mix(in srgb, var(--p-primary) 80%, var(--p-border));
+  background-color: color-mix(in srgb, var(--p-primary) 80%, var(--p-border));
+}
+
 /* When: the time leads, as in any agenda. */
 .ac-row__time {
   display: flex;
@@ -416,9 +428,10 @@
 .ac-row__who {
   display: flex;
   grid-area: who;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 7px;
+  /* Going and interested share one line; wrap only when the column runs out. */
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px 12px;
   min-width: 0;
 }
 

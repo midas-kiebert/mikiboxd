@@ -1,7 +1,7 @@
 /**
  * The "Letterboxd" card in Settings: the linked username, watchlist/watched
  * counts, a manual refresh button for each list, and the opt-in for using
- * the Letterboxd profile picture as the account's avatar. A linked name
+ * the Letterboxd avatar as the account's avatar. A linked name
  * Letterboxd answers 404 for gets a warning under the field (the backend looks
  * it up on every save, and again when a sync fails).
  *
@@ -200,17 +200,17 @@ export default function LetterboxdSection() {
 
           <View style={styles.avatarRow}>
             <View style={styles.syncTextBlock}>
-              <ThemedText style={styles.syncTitle}>Use my profile picture</ThemedText>
+              <ThemedText style={styles.syncTitle}>Use my avatar</ThemedText>
               <ThemedText style={styles.syncSubtitle}>
                 {avatarPreference.pictureUrl
-                  ? 'Show your Letterboxd profile picture to friends on MiKiNO.'
-                  : 'Show your Letterboxd profile picture to friends on MiKiNO. We\'ll fetch it from Letterboxd as soon as you turn this on.'}
+                  ? 'Show your Letterboxd avatar to friends on MiKiNO.'
+                  : 'Show your Letterboxd avatar to friends on MiKiNO. We\'ll fetch it from Letterboxd as soon as you turn this on.'}
               </ThemedText>
             </View>
             <AppSwitch
               value={avatarPreference.enabled}
               onValueChange={avatarPreference.setEnabled}
-              accessibilityLabel="Use my Letterboxd profile picture"
+              accessibilityLabel="Use my Letterboxd avatar"
             />
           </View>
         </>

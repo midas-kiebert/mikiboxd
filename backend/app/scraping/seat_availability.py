@@ -139,6 +139,11 @@ class SeatAvailability:
     # "nothing is taken". Persisted alongside the count so the seat picker can
     # be served from the database — see `services/seat_floor_plan.py`.
     taken_seats: tuple[TakenSeat, ...] | None = None
+    # What a Cineville pass holder pays on top of the pass, in cents, off the
+    # shop's own price list (every platform but Ticketmatic). `None` means the page
+    # listed no Cineville ticket — never "no pass": a shop may simply not
+    # offer it online.
+    cineville_surcharge_cents: int | None = None
 
     @property
     def is_known(self) -> bool:
@@ -189,6 +194,13 @@ _ZELITE_SOLD_OUT_LABEL = re.compile(
 )
 # "vr 11 september 2026, 21:30 - LAB 1" / "Wed 26 August 2026, 20:15 - Cinema 1".
 # Anchored on the start time so a room whose own name contains " - " survives.
+# The Cineville row of the price list: its label cell, then the price span
+# ("<td class="badge-type-label">Cineville</td><td>€ <span ...>5,00</span>").
+_ZELITE_CINEVILLE_PRICE = re.compile(
+    r'class="badge-type-label">\s*Cineville\s*</td>\s*<td[^>]*>[^<]*'
+    r"<span[^>]*class='badge_type_price'>\s*(\d+),(\d{2})\s*<",
+    re.IGNORECASE,
+)
 _ZELITE_ROOM = re.compile(r"id='show-starts-at'>[^<]*?,\s*\d{1,2}:\d{2}\s*-\s*([^<]+)<")
 
 
@@ -203,13 +215,27 @@ def parse_zelite_room(html: str) -> str | None:
     return normalize_room(match.group(1) if match else None)
 
 
+def parse_zelite_cineville_surcharge(html: str) -> int | None:
+    """The Cineville ticket's price in cents, or None when none is listed."""
+    match = _ZELITE_CINEVILLE_PRICE.search(html)
+    if match is None:
+        return None
+    return int(match.group(1)) * 100 + int(match.group(2))
+
+
 def _fetch_zelite(url: str, _feed_cache: EagerlyFeedCache) -> SeatAvailability:
     html = _get(url).text
     room = parse_zelite_room(html)
 
     quantity_maxima = [int(value) for value in _ZELITE_QUANTITY_MAX.findall(html)]
     if quantity_maxima:
-        return SeatAvailability(max(quantity_maxima), False, room, "z-elite")
+        return SeatAvailability(
+            max(quantity_maxima),
+            False,
+            room,
+            "z-elite",
+            cineville_surcharge_cents=parse_zelite_cineville_surcharge(html),
+        )
     if _ZELITE_SOLD_OUT_LABEL.search(html):
         return SeatAvailability(0, True, room, "z-elite")
     # No order form and no sold-out label: the show id no longer resolves (the
@@ -221,6 +247,24 @@ def _fetch_zelite(url: str, _feed_cache: EagerlyFeedCache) -> SeatAvailability:
 # --- Tricket ----------------------------------------------------------------
 
 TRICKET_URL_PATTERN = re.compile(r"^https://kassa\.[^/]+/#/checkout/([0-9a-f-]+)$")
+
+
+def _tricket_cineville_surcharge(screening: dict) -> int | None:
+    """The Cineville ticket's price in cents, or None when none is on sale.
+
+    Tricket classifies the pass ticket as CINEVILLE and prices in cents already:
+    0 normally, 400 for an NT Live broadcast at Cinecenter.
+    """
+    prices = [
+        ticket_type["price"]
+        for seat_type in screening.get("seatTypes") or []
+        if isinstance(seat_type, dict)
+        for ticket_type in seat_type.get("ticketTypes") or []
+        if isinstance(ticket_type, dict)
+        and ticket_type.get("classification") == "CINEVILLE"
+        and isinstance(ticket_type.get("price"), int)
+    ]
+    return min(prices) if prices else None
 
 
 def _fetch_tricket(url: str, _feed_cache: EagerlyFeedCache) -> SeatAvailability:
@@ -264,6 +308,7 @@ def _fetch_tricket(url: str, _feed_cache: EagerlyFeedCache) -> SeatAvailability:
             if host in TRICKET_SEAT_MAP_HOSTS
             else None
         ),
+        cineville_surcharge_cents=_tricket_cineville_surcharge(data),
     )
 
 
@@ -849,6 +894,37 @@ def fetch_eagerly_room_geometry(
     return None, "; ".join(rejected) or "no showtimes in the feed"
 
 
+def _fetch_eagerly_cineville_surcharge(
+    *, booking_host: str, cinema_id: str, show_time_id: str
+) -> int | None:
+    """The Cineville ticket's price in cents, or None when none is on sale.
+
+    `display_price` is what the buyer pays — `product_price` is what Cineville
+    settles with the cinema — so it is 0 normally and 5 for Kino's "Cineville
+    (70mm)". Matched by name: a tenant may sell several ("Cineville e Pizza"),
+    and the cheapest is the pass holder's. Best effort: a failure here costs
+    only the surcharge, never the seat reading it rides along with.
+    """
+    try:
+        response = _get(
+            f"https://{booking_host}/webservices/tickets/getTicketsAvailable"
+            f"?cinema_id={cinema_id}&show_time_id={show_time_id}"
+        )
+        rows = response.json().get("data")
+    except (SeatAvailabilityFetchError, ValueError, AttributeError):
+        return None
+    if not isinstance(rows, list):
+        return None
+    prices = [
+        row["display_price"]
+        for row in rows
+        if isinstance(row, dict)
+        and "cineville" in str(row.get("ticket_name") or "").lower()
+        and isinstance(row.get("display_price"), int | float)
+    ]
+    return round(min(prices) * 100) if prices else None
+
+
 def _fetch_eagerly(url: str, feed_cache: EagerlyFeedCache) -> SeatAvailability:
     match = EAGERLY_URL_PATTERN.match(url)
     if match is None:
@@ -880,6 +956,11 @@ def _fetch_eagerly(url: str, feed_cache: EagerlyFeedCache) -> SeatAvailability:
                 "eagerly",
                 capacity=seat_count.capacity,
                 taken_seats=seat_count.taken,
+                cineville_surcharge_cents=_fetch_eagerly_cineville_surcharge(
+                    booking_host=booking_host,
+                    cinema_id=show.cinema_id,
+                    show_time_id=provider_id,
+                ),
             )
 
     # No seat map wired up for this site yet (or its show id wasn't
@@ -999,6 +1080,23 @@ def _activetickets_seat_count(seats: list[dict]) -> _SeatCount:
     return _SeatCount(free=free, capacity=len(seats), taken=tuple(taken))
 
 
+def _activetickets_cineville_surcharge(edit_data: dict) -> int | None:
+    """The Cineville ticket's price in cents, or None when none is on sale.
+
+    The shop flags it (`IsCinevilleTicketType`) whatever the tenant calls it
+    ("Cineville kaart", "Cinevillekaart REG"). Some list one per seat rank
+    (a chair and a wheelchair place); the cheapest is what a pass holder pays.
+    """
+    prices = [
+        item["Price"]
+        for item in edit_data.get("Items") or []
+        if isinstance(item, dict)
+        and item.get("IsCinevilleTicketType")
+        and isinstance(item.get("Price"), int | float)
+    ]
+    return round(min(prices) * 100) if prices else None
+
+
 def _fetch_activetickets(url: str, _feed_cache: EagerlyFeedCache) -> SeatAvailability:
     match = ACTIVETICKETS_URL_PATTERN.match(url)
     if match is None:
@@ -1012,6 +1110,7 @@ def _fetch_activetickets(url: str, _feed_cache: EagerlyFeedCache) -> SeatAvailab
 
     edit_data = show.get("EditData") or {}
     room = normalize_room(show.get("Location"))
+    surcharge = _activetickets_cineville_surcharge(edit_data)
     seats = [seat for seat in (edit_data.get("Seats") or []) if isinstance(seat, dict)]
     if not seats:
         # Free seating: the room is not sold seat by seat, so there is no count
@@ -1020,7 +1119,11 @@ def _fetch_activetickets(url: str, _feed_cache: EagerlyFeedCache) -> SeatAvailab
         # as a plain bool so `_apply_reading` can clear a previous zero when a
         # sold-out screening has tickets handed back.
         return SeatAvailability(
-            None, bool(edit_data.get("SoldOut")), room, "activetickets"
+            None,
+            bool(edit_data.get("SoldOut")),
+            room,
+            "activetickets",
+            cineville_surcharge_cents=surcharge,
         )
 
     # Newer tenants (LUX) also carry `TicketsAvailable`/`TicketsCapacity`
@@ -1038,6 +1141,7 @@ def _fetch_activetickets(url: str, _feed_cache: EagerlyFeedCache) -> SeatAvailab
         "activetickets",
         capacity=count.capacity,
         taken_seats=count.taken,
+        cineville_surcharge_cents=surcharge,
     )
 
 
@@ -1273,6 +1377,28 @@ def _ticketlab_seat_name(seat: dict) -> TakenSeat | None:
     return (row, name) if row and name else None
 
 
+def _ticketlab_cineville_surcharge(page: str) -> int | None:
+    """The Cineville ticket's price in cents, or None when none is on sale.
+
+    Read off `util.ticket_types`, where the pass ticket is the one that
+    requires a Cineville card whatever the tenant calls it. Its `surcharge`
+    counts: Drom sells a drink-included special as "Cineville (0,00 + 3,00)".
+    """
+    try:
+        ticket_types = _ticketlab_js_object(page, "util").get("ticket_types")
+    except SeatAvailabilityFetchError:
+        return None
+    if not isinstance(ticket_types, dict):
+        return None
+    totals = [
+        (ticket_type.get("price") or 0) + (ticket_type.get("surcharge") or 0)
+        for ticket_type in ticket_types.values()
+        if isinstance(ticket_type, dict)
+        and (ticket_type.get("requires") or {}).get("type") == "cineville"
+    ]
+    return round(min(totals) * 100) if totals else None
+
+
 def _fetch_ticketlab(url: str, _feed_cache: EagerlyFeedCache) -> SeatAvailability:
     match = TICKETLAB_URL_PATTERN.match(url)
     if match is None:
@@ -1287,12 +1413,20 @@ def _fetch_ticketlab(url: str, _feed_cache: EagerlyFeedCache) -> SeatAvailabilit
         return SeatAvailability(None, None, None, "ticketlab")
 
     seating = _ticketlab_seating(page)
+    surcharge = _ticketlab_cineville_surcharge(page)
     room_key = _ticketlab_room_key(seating) if seating is not None else None
 
     if _TICKETLAB_SALE_CLOSED.search(page):
         # Sale closed: the room is still worth learning (see
         # `_TICKETLAB_SALE_CLOSED`), the count is not.
-        return SeatAvailability(None, None, room, "ticketlab", room_key=room_key)
+        return SeatAvailability(
+            None,
+            None,
+            room,
+            "ticketlab",
+            room_key=room_key,
+            cineville_surcharge_cents=surcharge,
+        )
 
     if not state.get("seated") or seating is None:
         # Free seating: the room is not sold seat by seat, so only the running
@@ -1305,11 +1439,19 @@ def _fetch_ticketlab(url: str, _feed_cache: EagerlyFeedCache) -> SeatAvailabilit
             room,
             "ticketlab",
             room_key=room_key,
+            cineville_surcharge_cents=surcharge,
         )
 
     seats = seating.get("seats")
     if not isinstance(seats, list) or not seats:
-        return SeatAvailability(None, None, room, "ticketlab", room_key=room_key)
+        return SeatAvailability(
+            None,
+            None,
+            room,
+            "ticketlab",
+            room_key=room_key,
+            cineville_surcharge_cents=surcharge,
+        )
 
     taken: list[TakenSeat] = []
     free = 0
@@ -1331,6 +1473,7 @@ def _fetch_ticketlab(url: str, _feed_cache: EagerlyFeedCache) -> SeatAvailabilit
         room_key=room_key,
         capacity=len(seats),
         taken_seats=tuple(taken),
+        cineville_surcharge_cents=surcharge,
     )
 
 

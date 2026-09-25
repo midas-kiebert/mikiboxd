@@ -803,6 +803,28 @@ def mark_received_showtime_pings_seen(
     return len(unseen_pings)
 
 
+def mark_received_showtime_pings_seen_for_showtime(
+    *,
+    session: Session,
+    receiver_id: UUID,
+    showtime_id: int,
+    seen_at: datetime,
+) -> int:
+    """`mark_received_showtime_pings_seen`, for one showtime's invites only."""
+    stmt = select(ShowtimePing).where(
+        ShowtimePing.receiver_id == receiver_id,
+        ShowtimePing.showtime_id == showtime_id,
+        col(ShowtimePing.seen_at).is_(None),
+        col(ShowtimePing.dismissed_at).is_(None),
+    )
+    unseen_pings = list(session.exec(stmt).all())
+    for ping in unseen_pings:
+        ping.seen_at = seen_at
+        session.add(ping)
+    session.flush()
+    return len(unseen_pings)
+
+
 def dismiss_received_showtime_ping(
     *,
     session: Session,

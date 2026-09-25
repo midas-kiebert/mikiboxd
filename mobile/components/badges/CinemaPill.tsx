@@ -6,10 +6,11 @@ import {
   TouchableOpacity,
   type GestureResponderEvent,
   type TextStyle,
+  View,
   type ViewStyle,
 } from "react-native";
 import { useRouter } from "expo-router";
-import type { CinemaPublic } from "shared";
+import type { CinemaPublic, FestivalPublic } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
 import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
@@ -19,6 +20,12 @@ import { getCinemaColorPalette } from "@/utils/cinema-color";
 
 type CinemaPillProps = {
   cinema: CinemaPublic;
+  /**
+   * The festival the screening is part of. Shown as a tag inside the pill,
+   * after the cinema — unless the screening is placed at the festival itself
+   * (its hall is unknown), where the cinema name already says it.
+   */
+  festival?: FestivalPublic | null;
   variant?: "compact" | "default";
   disabledIfSameId?: number;
   /**
@@ -38,6 +45,7 @@ const CINEMA_PILL_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
 
 export default function CinemaPill({
   cinema,
+  festival,
   variant = "default",
   disabledIfSameId,
   onNavigate,
@@ -75,6 +83,7 @@ export default function CinemaPill({
   const cinemaPalette = getCinemaColorPalette(cinema, colors);
   const cinemaBackground = cinemaPalette.primary;
   const cinemaText = cinemaPalette.secondary;
+  const shownFestival = festival && festival.id !== cinema.id ? festival : null;
 
   const isDisabled = disabledIfSameId !== undefined && cinema.id === disabledIfSameId;
 
@@ -103,6 +112,27 @@ export default function CinemaPill({
       >
         {cinema.name}
       </ThemedText>
+      {/* In the cinema's own colours inverted, so the tag belongs to it. */}
+      {shownFestival ? (
+        <View
+          style={[
+            styles.festivalTag,
+            variant === "compact" ? styles.festivalTagCompact : null,
+            { backgroundColor: cinemaText },
+          ]}
+        >
+          <ThemedText
+            style={[
+              styles.text,
+              sizeStyles.text,
+              { color: cinemaBackground },
+            ]}
+            numberOfLines={1}
+          >
+            {shownFestival.name}
+          </ThemedText>
+        </View>
+      ) : null}
     </TouchableOpacity>
   );
 }
@@ -112,18 +142,44 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     container: {
       borderWidth: 1,
       borderRadius: 3,
+      flexDirection: "row",
       justifyContent: "center",
       alignItems: "center",
       maxWidth: "65%",
       paddingHorizontal: 6,
     },
+    // Neither part shrinks: squeezed, the cinema's name gave way first and
+    // the pill read as just the festival, hiding where the screening is.
     text: {
       includeFontPadding: false,
+      flexShrink: 0,
+    },
+    // Centred with room above and below, clear of the pill's edges.
+    festivalTag: {
+      alignSelf: "center",
+      // The pill's padding lowers its content for the name's sake; the tag
+      // doesn't need that, so it goes back up.
+      top: -0.5,
+      marginVertical: 1,
+      marginLeft: 4,
+      marginRight: -3,
+      borderRadius: 2,
+      paddingHorizontal: 3,
+      flexShrink: 0,
+      justifyContent: "center",
+    },
+    festivalTagCompact: {
+      marginLeft: 3,
+      marginRight: -2,
+      paddingHorizontal: 2,
     },
     compactContainer: {
       borderRadius: 3,
       minHeight: 14,
-      paddingVertical: 1,
+      // Half a pixel more above than below: the name has no descenders, so
+      // centred on its line box the ink sat high; a full pixel sat low on iOS.
+      paddingTop: 1.5,
+      paddingBottom: 0.5,
       paddingHorizontal: 5,
     },
     compactText: {
@@ -132,7 +188,8 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     defaultContainer: {
       minHeight: 18,
-      paddingVertical: 1,
+      paddingTop: 1.5,
+      paddingBottom: 0.5,
       paddingHorizontal: 6,
     },
     defaultText: {

@@ -14,6 +14,7 @@ from app.core.enums import GoingStatus, SearchField, SeatAlertKind
 from app.core.viewer import ViewerId
 from app.crud import showtime_visibility as showtime_visibility_crud
 from app.crud import user_block as user_block_crud
+from app.crud.cinema_filter import showtime_at_cinemas
 from app.crud.movie import (
     apply_language_filter,
     apply_search_filter,
@@ -805,7 +806,7 @@ def _build_main_page_showtimes_query(
     stmt = select(Showtime).where(Showtime.datetime >= filters.snapshot_time)
 
     if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
-        stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
+        stmt = stmt.where(showtime_at_cinemas(filters.selected_cinema_ids))
 
     if filters.days is not None and len(filters.days) > 0:
         stmt = stmt.where(

@@ -56,7 +56,11 @@ const getCompactBadgeRowsForHeight = (height: number) => {
   return Math.max(1, Math.min(MAX_COMPACT_BADGE_ROWS, rows));
 };
 
-function ShowtimeCard({ showtime, onPress, onLongPress }: ShowtimeCardProps) {
+function ShowtimeCard({
+  showtime,
+  onPress,
+  onLongPress,
+}: ShowtimeCardProps) {
   // Read flow: props/state setup first, then helper handlers, then returned JSX.
   const router = useRouter();
   const goToMovie = useSingleFireNavigation((movieId: number) => router.push(`/movie/${movieId}`));
@@ -197,7 +201,11 @@ function ShowtimeCard({ showtime, onPress, onLongPress }: ShowtimeCardProps) {
                 </ThemedText>
               ) : null}
             </View>
-            <CinemaPill cinema={showtime.cinema} variant="compact" />
+            <CinemaPill
+              cinema={showtime.cinema}
+              festival={showtime.festival}
+              variant="compact"
+            />
           </View>
           <View
             style={styles.friendBadgeArea}
@@ -226,6 +234,15 @@ function ShowtimeCard({ showtime, onPress, onLongPress }: ShowtimeCardProps) {
             <SubtitlesBadges subtitles={showtime.subtitles} variant="compact" />
           </View>
         </View>
+        {/* A screening you were invited to and haven't opened yet — on every
+            feed. Last, so it draws over the date column it sits in. */}
+        {showtime.viewer?.has_unseen_invite ? (
+          <View
+            style={styles.unseenInviteDot}
+            pointerEvents="none"
+            accessibilityLabel="New invite"
+          />
+        ) : null}
       </TouchableOpacity>
     </View>
   );
@@ -238,6 +255,15 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       marginBottom: CARD_GAP,
       borderRadius: 12,
       backgroundColor: colors.cardBackground,
+    },
+    unseenInviteDot: {
+      position: "absolute",
+      top: 6,
+      left: 6,
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      backgroundColor: colors.notificationBadge,
     },
     cardGlowGoing: glowStyles.going,
     cardGlowInterested: glowStyles.interested,

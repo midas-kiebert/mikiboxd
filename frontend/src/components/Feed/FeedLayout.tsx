@@ -88,9 +88,12 @@ export const RAIL_WIDTH = { base: "360px", "2xl": "400px" }
  * request, once `LIST_MAX_WIDTH` below gave the list room to give up: a
  * showtime row does not need the width of a film's whole synopsis, and the
  * panel is the thing with a poster, a floor plan and five sections in it.
+ *
+ * Narrowest at `md`, which is where a half-screen window on a desktop lands:
+ * there every pixel the panel keeps is one the list cannot have.
  */
 export const DETAIL_WIDTH = {
-  base: "340px",
+  base: "300px",
   lg: "380px",
   xl: "420px",
   "2xl": "520px",
@@ -503,10 +506,21 @@ const FeedLayout = ({
   // Publish the toolbar's height for the panels to pin below. A layout effect
   // rather than an ordinary one, so the first paint already has the real number
   // and no card is drawn under the bar and then moved.
+  //
+  // Keyed on whether there is a toolbar at all: a cinema's or friend's header
+  // arrives once its subject loads, on a feed that had no toolbar at mount, and
+  // measuring only at mount left the panels pinning at 0 — sliding up under
+  // the header with the page until their bottoms came into view.
+  const hasToolbar = Boolean(toolbar)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: hasToolbar is the trigger; the toolbar node is read through its ref
   useLayoutEffect(() => {
     const bar = toolbarRef.current
     const scroller = scrollRef.current
-    if (!bar || !scroller) return
+    if (!scroller) return
+    if (!bar) {
+      scroller.style.setProperty(TOOLBAR_HEIGHT_VAR, "0px")
+      return
+    }
 
     const publish = () =>
       scroller.style.setProperty(TOOLBAR_HEIGHT_VAR, `${bar.offsetHeight}px`)
@@ -515,7 +529,7 @@ const FeedLayout = ({
     const observer = new ResizeObserver(publish)
     observer.observe(bar)
     return () => observer.disconnect()
-  }, [])
+  }, [hasToolbar])
 
   // On a desktop the content area fills the viewport and scrolls as one page,
   // with the toolbar and both panels pinned inside it. A phone has one column

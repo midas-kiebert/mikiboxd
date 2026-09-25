@@ -165,7 +165,11 @@ export function ShowtimesListContent({
   const renderItem = React.useCallback(
     ({ item, index }: { item: ShowtimePublic; index: number }) => (
       <FeedItemEntrance index={index} stagger={index < initialRowCountRef.current}>
-        <ShowtimeCard showtime={item} onPress={openModal} onLongPress={goToMovieFromLongPress} />
+        <ShowtimeCard
+          showtime={item}
+          onPress={openModal}
+          onLongPress={goToMovieFromLongPress}
+        />
       </FeedItemEntrance>
     ),
     [openModal, goToMovieFromLongPress]

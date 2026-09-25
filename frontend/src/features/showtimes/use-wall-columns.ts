@@ -35,7 +35,8 @@ export const effectiveWallColumns = (
     ? stored
     : (Math.min(stored, MAX_COLUMNS_BESIDE_RAIL) as WallColumns)
 
-export const DEFAULT_WALL_COLUMNS: WallColumns = 3
+// The grid drops tickets a row wherever four do not fit (`TicketWall`).
+export const DEFAULT_WALL_COLUMNS: WallColumns = 4
 
 const STORAGE_KEY = "mikino.feed.wallColumns.v1"
 

@@ -113,6 +113,7 @@ def test_watched_sync_keeps_existing_rows_when_scrape_is_incomplete(
         "app.services.watched.scrape_watched",
         return_value=SlugScrapeResult(slugs=["the-thing"], is_complete=False),
     )
+    mocker.patch("app.services.watched.get_recent_watched_slugs", return_value=None)
 
     with pytest.raises(LetterboxdTemporarilyUnavailable):
         watched_service.sync_watched(session=db_transaction, user_id=user.id)
@@ -303,3 +304,91 @@ def test_watchlist_sync_keeps_existing_rows_when_scrape_is_incomplete(
         letterboxd_username=user.letterboxd_username,
     )
     assert user.letterboxd.last_watchlist_sync is None
+
+
+def test_watched_sync_blocked_overdue_walk_tops_up_from_feed(
+    mocker: MockerFixture,
+    db_transaction: Session,
+    user_factory,
+):
+    # Regression: an overdue full walk that Letterboxd blocks used to fail
+    # every sync forever, since the walk stayed due and the feed was skipped.
+    user = _user_without_syncs(user_factory)
+    watched_crud.add_watched_selection(
+        session=db_transaction,
+        letterboxd_username=user.letterboxd_username,
+        letterboxd_slug="heat",
+    )
+    stale_full_sync = (
+        now_amsterdam_naive() - watched_service.WATCHED_FULL_RESYNC_INTERVAL
+    )
+    user.letterboxd.last_watched_full_sync = stale_full_sync
+    db_transaction.flush()
+    mocker.patch(
+        "app.services.watched.scrape_watched",
+        side_effect=LetterboxdTemporarilyUnavailable(),
+    )
+    mocker.patch(
+        "app.services.watched.get_recent_watched_slugs",
+        return_value=["the-thing"],
+    )
+    capture = mocker.patch("app.services.watched.sentry_sdk.capture_message")
+
+    watched_service.sync_watched(session=db_transaction, user_id=user.id)
+
+    # Rescued by the feed, but the block itself must still be reported.
+    capture.assert_called_once()
+
+    for slug in ("heat", "the-thing"):
+        assert watched_crud.does_watched_selection_exist(
+            session=db_transaction,
+            letterboxd_slug=slug,
+            letterboxd_username=user.letterboxd_username,
+        )
+    assert user.letterboxd.last_watched_sync is not None
+    # The walk is still owed, so the next sync tries it again.
+    assert user.letterboxd.last_watched_full_sync == stale_full_sync
+
+
+def test_watched_sync_blocked_overdue_walk_without_feed_still_fails(
+    mocker: MockerFixture,
+    db_transaction: Session,
+    user_factory,
+):
+    user = _user_without_syncs(user_factory)
+    watched_crud.add_watched_selection(
+        session=db_transaction,
+        letterboxd_username=user.letterboxd_username,
+        letterboxd_slug="heat",
+    )
+    db_transaction.flush()
+    mocker.patch(
+        "app.services.watched.scrape_watched",
+        side_effect=LetterboxdTemporarilyUnavailable(),
+    )
+    mocker.patch("app.services.watched.get_recent_watched_slugs", return_value=None)
+
+    with pytest.raises(LetterboxdTemporarilyUnavailable):
+        watched_service.sync_watched(session=db_transaction, user_id=user.id)
+
+    assert user.letterboxd.last_watched_sync is None
+
+
+def test_watched_sync_blocked_first_sync_does_not_consult_feed(
+    mocker: MockerFixture,
+    db_transaction: Session,
+    user_factory,
+):
+    # With nothing stored, the feed's handful of recent films would be
+    # mistaken for the member's whole watched list.
+    user = _user_without_syncs(user_factory)
+    mocker.patch(
+        "app.services.watched.scrape_watched",
+        side_effect=LetterboxdTemporarilyUnavailable(),
+    )
+    mock_rss = mocker.patch("app.services.watched.get_recent_watched_slugs")
+
+    with pytest.raises(LetterboxdTemporarilyUnavailable):
+        watched_service.sync_watched(session=db_transaction, user_id=user.id)
+
+    mock_rss.assert_not_called()

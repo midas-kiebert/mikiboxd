@@ -12,8 +12,9 @@
  * Neither of the first two applies to the tips in `ALWAYS_SHOW_TIP_IDS`, which
  * are unfinished business rather than suggestions.
  *
- * A snoozed tip leaves an unseen reminder in the notification centre, so a
- * suggestion the user waved away is recoverable rather than gone. Those
+ * A snoozed tip leaves a reminder in the notification centre (never counted in
+ * the bell badge), so a suggestion the user waved away is recoverable rather
+ * than gone. Those
  * reminders are session-scoped too: after a restart the tip itself is back.
  *
  * On top of dismissal, `rollForFeatureTip` caps *how often* a tip can appear
@@ -32,7 +33,6 @@ export type FeatureTipId =
   | 'verify-email'
   | 'invite'
   | 'sold-out'
-  | 'friend-request'
   | 'watchlist-digest'
   | 'letterboxd-username'
   | 'letterboxd-avatar'
@@ -46,7 +46,6 @@ const FEATURE_TIP_IDS: readonly FeatureTipId[] = [
   'verify-email',
   'invite',
   'sold-out',
-  'friend-request',
   'watchlist-digest',
   'letterboxd-username',
   'letterboxd-avatar',
@@ -59,7 +58,7 @@ const FEATURE_TIP_IDS: readonly FeatureTipId[] = [
 
 /**
  * Tips answering something that just happened while the app was closed — an
- * invite, a sold-out screening, a friend request — that the user never heard
+ * invite or a sold-out screening — that the user never heard
  * about because that notification is off or cannot reach them. They are only
  * ever eligible for events since the app was last in use (see
  * `utils/away-events`), so each one is offered once per thing missed.
@@ -71,7 +70,6 @@ const FEATURE_TIP_IDS: readonly FeatureTipId[] = [
 export const EVENT_TIP_IDS: ReadonlySet<FeatureTipId> = new Set<FeatureTipId>([
   'invite',
   'sold-out',
-  'friend-request',
 ]);
 
 /**
@@ -127,11 +125,9 @@ const TIP_COOLDOWN_MS: Record<FeatureTipId, number> = {
   // Never consulted either — see EVENT_TIP_IDS.
   'invite': 0,
   'sold-out': 0,
-  'friend-request': 0,
   'cinema-presets': ONE_DAY_MS,
   'add-friends': ONE_DAY_MS,
   'letterboxd-username': THREE_DAYS_MS,
-  'letterboxd-avatar': THREE_DAYS_MS,
   'filter-presets': THREE_DAYS_MS,
   // The quietest of the lot: a niche convenience the user has lived without,
   // and one the backend only offers at all once it is switched on there.
@@ -139,6 +135,8 @@ const TIP_COOLDOWN_MS: Record<FeatureTipId, number> = {
   // Low-priority conveniences, offered rarely.
   'interest-reminders': A_WEEK_MS,
   'cineville-pass': A_WEEK_MS,
+  // The lowest priority of all: cosmetic only.
+  'letterboxd-avatar': A_WEEK_MS,
 };
 
 /**
@@ -431,9 +429,6 @@ export const useFeatureTipsEnabled = (): [boolean, (enabled: boolean) => void] =
 export const useDismissedTipCount = (): number => useFeatureTipsState().dismissedForever.size;
 
 export const useSnoozedTips = (): readonly SnoozedTip[] => useFeatureTipsState().snoozedTips;
-
-export const useUnseenSnoozedTipCount = (): number =>
-  useFeatureTipsState().snoozedTips.filter((tip) => !tip.seen).length;
 
 export type FeatureTipCandidate = {
   id: FeatureTipId;

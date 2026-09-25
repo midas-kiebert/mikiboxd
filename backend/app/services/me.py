@@ -1181,6 +1181,23 @@ def mark_showtime_pings_seen(
     session.commit()
 
 
+def mark_showtime_pings_seen_for_showtime(
+    *,
+    session: Session,
+    user_id: UUID,
+    showtime_id: int,
+) -> None:
+    """Opening one invited screening: its invites stop counting as unseen, on
+    the Activity tab and the bell alike (both count unseen pings)."""
+    showtime_ping_crud.mark_received_showtime_pings_seen_for_showtime(
+        session=session,
+        receiver_id=user_id,
+        showtime_id=showtime_id,
+        seen_at=now_amsterdam_naive(),
+    )
+    session.commit()
+
+
 def delete_received_showtime_ping(
     *,
     session: Session,

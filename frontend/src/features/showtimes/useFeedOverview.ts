@@ -165,15 +165,10 @@ const NO_SECTIONS: FeedOverviewSection[] = []
 
 /**
  * Where "Show more" goes for a list: the filters on the feed that come
- * closest to it, or for invites, which no filter describes, the notification
- * panel.
- * Close rather than exact: the feed has no "selling fast" filter, so that one
- * shows every screening you or your friends marked, which is where the
- * fast-selling ones are.
+ * closest to it. None for invites and "selling fast", which no filter
+ * describes.
  */
-export type ShowMoreTarget =
-  | { kind: "filters"; params: FeedParams }
-  | { kind: "notifications" }
+export type ShowMoreTarget = { kind: "filters"; params: FeedParams }
 
 export const showMoreTarget = (
   kind: FeedOverviewSectionKind,
@@ -190,7 +185,7 @@ export const showMoreTarget = (
   }
   switch (kind) {
     case "invited":
-      return { kind: "notifications" }
+      return null
     case "plans":
       return {
         kind: "filters",
@@ -203,7 +198,10 @@ export const showMoreTarget = (
             params: { ...customList.params, group: feedParams.group },
           }
         : null
+    // No filter narrows the feed to what is selling fast, so there is no
+    // "more" to show.
     case "selling_fast":
+      return null
     case "friends_going":
       // Friends go everywhere, so the section never narrowed to your cinemas.
       return {

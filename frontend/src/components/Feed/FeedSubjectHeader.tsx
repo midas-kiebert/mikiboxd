@@ -33,7 +33,7 @@ import {
   MdPeople,
   MdPersonAddAlt,
 } from "react-icons/md"
-import type { UserWithFriendStatus } from "shared"
+import type { CinemaKind, UserWithFriendStatus } from "shared"
 import { getCinemaPaletteKey } from "shared/cinemas/cinema-color"
 import { UsersService } from "shared/client"
 import { resolveCinemaSelection } from "shared/filters/cinema-selection"
@@ -465,6 +465,8 @@ type CinemaLike = {
   url: string
   badge_bg_color: string
   cineville: boolean
+  /** Absent from an older API and from a cinema built out of route params. */
+  kind?: CinemaKind
   city: { name: string }
 }
 
@@ -512,7 +514,14 @@ const CinemaHeader = ({
               {cinema.name}
             </Text>
           )}
-          {cinema.cineville ? (
+          {/* What the place is. A festival's `cineville` only says Cineville
+              lists it — the pass covers part of a festival, per screening
+              (`cineville_pass`) — so a festival says it's a festival. */}
+          {cinema.kind === "festival" || cinema.kind === "venue" ? (
+            <Text fontSize="xs" fontWeight="600" color="fg.muted">
+              {cinema.kind === "festival" ? "Film festival" : "Festival venue"}
+            </Text>
+          ) : cinema.cineville ? (
             <Text fontSize="xs" fontWeight="600" color="fg.muted">
               Cineville
             </Text>

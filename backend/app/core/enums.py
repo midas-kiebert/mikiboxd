@@ -28,6 +28,24 @@ class Environment(str, Enum):
 
 
 @unique
+class CinemaKind(str, Enum):
+    """What sort of place a `Cinema` row is.
+
+    - cinema:   a film theatre with its own programme.
+    - venue:    a place that only shows films during a festival (a community
+                centre, a museum) — a location, not a cinema anyone follows.
+    - festival: the festival itself. Showtimes point at it through
+                `Showtime.festival_id` for the festival badge, and a screening
+                whose real location is unknown (Cineville lists a festival as a
+                single venue) is placed at it.
+    """
+
+    CINEMA = "cinema"
+    VENUE = "venue"
+    FESTIVAL = "festival"
+
+
+@unique
 class GoingStatus(str, Enum):
     """Whether a user intends to attend a showtime.
 

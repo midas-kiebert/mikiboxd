@@ -11,6 +11,15 @@
 # showtimes and when a user searches by cinema, so a rename can neither break
 # ingestion nor make the cinema unsearchable under its old name.
 #
+# Optional `kind` (defined in app/core/enums.py as CinemaKind):
+# - cinema (default if omitted) — a film theatre with its own programme
+# - venue                       — a place that only shows films during a festival
+# - festival                    — the festival itself: the badge on its screenings,
+#                                 and where a screening goes when its real location
+#                                 is unknown. `aliases` must hold Cineville's venue
+#                                 name for it, since Cineville lists every festival
+#                                 as a single venue.
+#
 # Optional `seating` presets per cinema (defined in app/validators/cinema_seating.py):
 # - unknown (default if omitted) — row and seat accept a letter or 1-2 digits
 # - free                        — no assigned seating, no seat input allowed
@@ -636,3 +645,187 @@
   cineville: true
   badge_bg_color: "pink"
   url: "https://desienfilm.nl"
+
+# --- Festivals -------------------------------------------------------------
+# Cineville lists each of these as one venue. A festival with its own scraper
+# (app/scraping/festivals/) has its screenings moved to the real location.
+
+- key: liff
+  name: LIFF
+  aliases: ["LIFF", "Leiden International Film Festival"]
+  city: Leiden
+  cineville: true
+  badge_bg_color: "liff"
+  url: "https://www.liff.nl"
+  kind: festival
+
+- key: leiden-shorts
+  name: Leiden Shorts
+  aliases: ["Leiden Shorts Filmfestival"]
+  city: Leiden
+  cineville: true
+  badge_bg_color: "orange"
+  url: "https://www.leidenshorts.nl"
+  kind: festival
+
+- key: idfa
+  name: IDFA
+  aliases: ["IDFA", "International Documentary Film Festival Amsterdam"]
+  city: Amsterdam
+  cineville: true
+  badge_bg_color: "red"
+  url: "https://www.idfa.nl"
+  kind: festival
+
+- key: kaboom
+  name: Kaboom Animation Festival
+  aliases: ["Kaboom Animation Festival", "Kaboom"]
+  city: Utrecht
+  cineville: true
+  badge_bg_color: "pink"
+  url: "https://www.kaboomfestival.nl"
+  kind: festival
+
+- key: cinedans
+  name: Cinedans
+  aliases: ["Cinedans"]
+  city: Amsterdam
+  cineville: true
+  badge_bg_color: "purple"
+  url: "https://cinedans.nl"
+  kind: festival
+
+- key: amsterdam-spanish-film-festival
+  name: Amsterdam Spanish Film Festival
+  aliases: ["Amsterdam Spanish Film Festival", "ASFF"]
+  city: Amsterdam
+  cineville: true
+  badge_bg_color: "yellow"
+  url: "https://www.amsterdamspanishfilmfestival.com"
+  kind: festival
+
+- key: nederlands-film-festival
+  name: Nederlands Film Festival
+  aliases: ["Nederlands Film Festival", "NFF"]
+  city: Utrecht
+  cineville: true
+  badge_bg_color: "orange"
+  url: "https://www.filmfestival.nl"
+  kind: festival
+
+- key: queer-film-festival-utrecht
+  name: Queer Film Festival Utrecht
+  aliases: ["Queer Film Festival Utrecht"]
+  city: Utrecht
+  cineville: true
+  badge_bg_color: "purple"
+  url: "https://qffu.nl"
+  kind: festival
+
+- key: wildlife-film-festival
+  name: Wildlife Film Festival
+  aliases: ["Wildlife Film Festival"]
+  city: Rotterdam
+  cineville: true
+  badge_bg_color: "green"
+  url: "https://wffr.nl"
+  kind: festival
+
+- key: movies-that-matter
+  name: Movies That Matter
+  aliases: ["Movies That Matter"]
+  city: Den Haag
+  cineville: true
+  badge_bg_color: "blue"
+  url: "https://moviesthatmatter.nl"
+  kind: festival
+
+- key: inscience
+  name: InScience
+  aliases: ["InScience Filmfestival Nijmegen", "InScience Film Festival"]
+  city: Nijmegen
+  cineville: true
+  badge_bg_color: "cyan"
+  url: "https://www.insciencefestival.nl"
+  kind: festival
+
+- key: go-short
+  name: Go Short
+  aliases: ["Go short", "Go Short"]
+  city: Nijmegen
+  cineville: true
+  badge_bg_color: "yellow"
+  url: "https://www.goshort.nl"
+  kind: festival
+
+- key: playgrounds
+  name: Playgrounds Festival
+  aliases: ["Playgrounds Festival"]
+  city: Eindhoven
+  cineville: true
+  badge_bg_color: "teal"
+  url: "https://www.playgroundsfestival.nl"
+  kind: festival
+
+- key: noordelijk-film-festival
+  name: Noordelijk Film Festival
+  aliases: ["Noordelijk Film Festival"]
+  city: Leeuwarden
+  cineville: true
+  badge_bg_color: "blue"
+  url: "https://noordelijkfilmfestival.nl"
+  kind: festival
+
+# --- Festival venues -------------------------------------------------------
+# Not cinemas: only festivals show films here. `cineville: false`, because a
+# festival says per screening whether the pass counts (Showtime.cineville_pass).
+# `url` stays empty where the place has no site of its own — never a guessed one.
+
+- key: volkshuis-leiden
+  name: Volkshuis
+  aliases: ["Volkshuis Leiden"]
+  city: Leiden
+  cineville: false
+  badge_bg_color: "green"
+  url: ""
+  seating: "free"
+  kind: venue
+
+- key: wibar-leiden
+  name: Wibar
+  aliases: []
+  city: Leiden
+  cineville: false
+  badge_bg_color: "yellow"
+  url: ""
+  seating: "free"
+  kind: venue
+
+- key: naturalis
+  name: Naturalis
+  aliases: []
+  city: Leiden
+  cineville: false
+  badge_bg_color: "green"
+  url: "https://www.naturalis.nl"
+  seating: "free"
+  kind: venue
+
+- key: stadsgehoorzaal-leiden
+  name: Stadsgehoorzaal
+  aliases: ["Stadsgehoorzaal Leiden"]
+  city: Leiden
+  cineville: false
+  badge_bg_color: "purple"
+  url: "https://www.stadsgehoorzaal.nl"
+  kind: venue
+
+- key: rijksmuseum-van-oudheden
+  name: Rijksmuseum van Oudheden
+  aliases: ["RMO"]
+  city: Leiden
+  cineville: false
+  badge_bg_color: "orange"
+  url: "https://www.rmo.nl"
+  seating: "free"
+  kind: venue

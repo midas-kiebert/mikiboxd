@@ -153,6 +153,19 @@ export type Body_login_login_access_token = {
   client_secret?: string | null
 }
 
+/**
+ * What sort of place a `Cinema` row is.
+ *
+ * - cinema:   a film theatre with its own programme.
+ * - venue:    a place that only shows films during a festival (a community
+ * centre, a museum) — a location, not a cinema anyone follows.
+ * - festival: the festival itself. Showtimes point at it through
+ * `Showtime.festival_id` for the festival badge, and a screening
+ * whose real location is unknown (Cineville lists a festival as a
+ * single venue) is placed at it.
+ */
+export type CinemaKind = "cinema" | "venue" | "festival"
+
 export type CinemaPresetCreate = {
   name: string
   cinema_ids?: Array<number>
@@ -193,6 +206,7 @@ export type CinemaPublic = {
   badge_bg_color: string
   url: string
   seating?: CinemaSeatingPreset
+  kind?: CinemaKind
   id: number
   city: CityPublic
   /**
@@ -322,6 +336,19 @@ export type FeedOverviewSectionKind =
   | "plans"
   | "friends_going"
   | "watchlist"
+
+/**
+ * The festival a screening is part of, for its badge.
+ *
+ * A `Cinema` row of kind "festival" — that is also where a screening goes
+ * when the festival's listing doesn't say which hall it is in.
+ */
+export type FestivalPublic = {
+  id: number
+  name: string
+  url: string
+  badge_bg_color: string
+}
 
 export type FriendStatusSharingUpdate = {
   shares_status: boolean
@@ -836,10 +863,14 @@ export type ShowtimeInMoviePublic = {
   subtitles?: Array<string> | null
   scrape_source?: string | null
   tmdb_cache_id?: number | null
+  festival_id?: number | null
+  cineville_pass?: boolean
   id: number
   cinema: CinemaPublic
   viewer?: ShowtimeInMovieViewerState | null
   seat_availability?: ShowtimeSeatAvailabilityPublic | null
+  festival?: FestivalPublic | null
+  cineville_surcharge_cents?: number | null
   /**
    * @deprecated
    */
@@ -897,6 +928,7 @@ export type ShowtimeInMovieViewerState = {
   friends_interested?: Array<UserPublic>
   invited_by?: Array<UserPublic>
   invite_ping_ids?: Array<number>
+  has_unseen_invite?: boolean
   co_invited_friends?: Array<CoInvitedFriendPublic>
   pending_invited_friends?: Array<UserPublic>
   friends_of_friends_going?: Array<UserWithFriendStatus>
@@ -942,11 +974,15 @@ export type ShowtimePublic = {
   subtitles?: Array<string> | null
   scrape_source?: string | null
   tmdb_cache_id?: number | null
+  festival_id?: number | null
+  cineville_pass?: boolean
   id: number
   movie: MovieInShowtime
   cinema: CinemaPublic
   viewer?: ShowtimeViewerState | null
   seat_availability?: ShowtimeSeatAvailabilityPublic | null
+  festival?: FestivalPublic | null
+  cineville_surcharge_cents?: number | null
   /**
    * @deprecated
    */
@@ -1071,6 +1107,7 @@ export type ShowtimeSeatAvailabilityPublic = {
   checking?: boolean
   trackable?: boolean
   can_request_check?: boolean
+  cineville_surcharge_cents?: number | null
 }
 
 export type ShowtimeSelectionUpdate = {
@@ -1095,6 +1132,7 @@ export type ShowtimeViewerState = {
   friends_interested?: Array<UserPublic>
   invited_by?: Array<UserPublic>
   invite_ping_ids?: Array<number>
+  has_unseen_invite?: boolean
   co_invited_friends?: Array<CoInvitedFriendPublic>
   pending_invited_friends?: Array<UserPublic>
   friends_of_friends_going?: Array<UserWithFriendStatus>
@@ -2042,6 +2080,12 @@ export type MeGetMyShowtimePingsResponse = Array<ShowtimePingPublic>
 export type MeGetMyUnseenShowtimePingCountResponse = number
 
 export type MeMarkMyShowtimePingsSeenResponse = Message
+
+export type MeMarkMyShowtimePingsSeenForShowtimeData = {
+  showtimeId: number
+}
+
+export type MeMarkMyShowtimePingsSeenForShowtimeResponse = Message
 
 export type MeDeleteMyShowtimePingData = {
   pingId: number

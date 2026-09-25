@@ -7,7 +7,9 @@
  *  - it has started without them ever looking at their invites (app or
  *    website): "You missed an invite", with the invite they missed.
  *
- * Eligibility and which invite to show live in `FeatureTipsHost`.
+ * A missed invite takes precedence over an upcoming one, and only the one
+ * with the earliest screening is shown. Eligibility and that choice live in
+ * `FeatureTipsHost`.
  */
 import type { AwayInvite } from "shared/client";
 

@@ -2,6 +2,11 @@ name: Deploy to Staging
 
 on:
   workflow_dispatch:
+    inputs:
+      keep_database:
+        description: "Keep staging's database (skip the copy of prod)"
+        type: boolean
+        default: false
   push:
     branches:
       - dev
@@ -41,6 +46,10 @@ jobs:
           TELEGRAM_USER_ID=${{ secrets.TELEGRAM_USER_ID }}
           TMDB_KEY=${{ secrets.TMDB_KEY }}
           SCRAPE_MONITOR_API_KEY=${{ secrets.SCRAPE_MONITOR_API_KEY }}
+          # One full scrape a day (09:00 Amsterdam) instead of prod's weekly
+          # shape: each deploy copies prod's database anyway, and scraping at
+          # prod's cadence would double the load we put on the cinemas.
+          SCRAPE_SLOT_HOURS=9
           FRONTEND_HOST=https://staging.mikino.nl
           PUBLIC_HOST=https://staging.mikino.nl
           API_HOST=https://api.staging.mikino.nl
@@ -66,6 +75,10 @@ jobs:
           EOF
       - run: docker compose -f docker-compose.yml --project-name mikiboxd-staging build
       - name: Stop staging app containers before the database copy
+        # Skipped to keep what is being tested on staging (scraped screenings
+        # prod doesn't have yet): a manual run with `keep_database`, or a push
+        # whose head commit says `[keep staging db]`. Migrations still run.
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.keep_database) && !contains(github.event.head_commit.message, '[keep staging db]') }}
         # The database is dropped and replaced with prod's below; the previous
         # deploy's backend and scheduler would otherwise act on a half-restored
         # database while it happens.
@@ -82,6 +95,10 @@ jobs:
           done
           echo "staging db did not become healthy" >&2; exit 1
       - name: Mirror the production database into staging
+        # Skipped, like the stop above, to keep what is being tested on staging (scraped screenings
+        # prod doesn't have yet): a manual run with `keep_database`, or a push
+        # whose head commit says `[keep staging db]`. Migrations still run.
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.keep_database) && !contains(github.event.head_commit.message, '[keep staging db]') }}
         # Staging becomes an exact copy of prod at deploy time — users,
         # statuses, notifications *and* content — and dev's migrations then
         # run on top in prestart (prod's head is always an ancestor of dev's:

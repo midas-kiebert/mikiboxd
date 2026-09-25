@@ -126,7 +126,7 @@ export const CinemaChecklist = ({
   onDeselect: (cinemaIds: readonly number[]) => void
 }) => {
   const sections = useMemo(() => {
-    const { groupedCities, ungrouped } = groupCinemas(cinemas)
+    const { groupedCities, ungrouped, festivals } = groupCinemas(cinemas)
     return [
       ...groupedCities.map((group) => ({
         key: `city-${group.city.id}`,
@@ -143,6 +143,19 @@ export const CinemaChecklist = ({
               key: "other-cinemas",
               title: "Other cinemas",
               cinemas: ungrouped,
+              canSelectAll: false,
+              showCity: true,
+            },
+          ]
+        : []),
+      // Apart from the cinemas, and only while one is on (the server lists a
+      // festival or venue only with screenings coming up).
+      ...(festivals.length > 0
+        ? [
+            {
+              key: "festivals",
+              title: "Festivals",
+              cinemas: festivals,
               canSelectAll: false,
               showCity: true,
             },

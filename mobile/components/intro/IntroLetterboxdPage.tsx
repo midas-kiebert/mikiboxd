@@ -9,7 +9,7 @@
  * Saving looks the account up on Letterboxd there and then. A name with no
  * account behind it keeps the user here, with a warning under the field and
  * the name still in it to correct (or a way to keep it anyway). Otherwise the
- * page turns into the question whether the Letterboxd profile picture may be
+ * page turns into the question whether the Letterboxd avatar may be
  * used as the avatar — a page of its own with the already-fetched picture in
  * the middle, not a switch under the field, so it is actually seen. Off unless
  * the user says yes. If saying yes still brings no picture back (none on the
@@ -149,7 +149,7 @@ function AvatarQuestion({ onDone }: { onDone: () => void }) {
     return (
       <IntroPageShell
         icon="account-circle"
-        title="No picture found"
+        title="No avatar found"
         message="Your coloured initial is used for now."
         primaryLabel="Continue"
         onPrimary={onDone}
@@ -164,7 +164,7 @@ function AvatarQuestion({ onDone }: { onDone: () => void }) {
             />
             <View style={styles.missingNote}>
               <ThemedText style={styles.missingNoteText}>
-                {`Letterboxd didn't give us a profile picture for "${currentUser.letterboxd_username ?? ""}": either the account has none, or Letterboxd couldn't be reached just now. If you add one later, your avatar updates by itself.`}
+                {`Letterboxd didn't give us an avatar for "${currentUser.letterboxd_username ?? ""}": either the account has none, or Letterboxd couldn't be reached just now. If you add one later, your avatar updates by itself.`}
               </ThemedText>
               <ThemedText style={styles.missingNoteText}>
                 You can change your Letterboxd username any time in Settings → Letterboxd.
@@ -179,13 +179,13 @@ function AvatarQuestion({ onDone }: { onDone: () => void }) {
   return (
     <IntroPageShell
       icon="account-circle"
-      title="Use your Letterboxd picture?"
+      title="Use your Letterboxd avatar?"
       message={
         avatarPreference.pictureUrl
-          ? "Show your Letterboxd profile picture to friends on MiKiNO instead of a coloured initial."
-          : "Show your Letterboxd profile picture to friends on MiKiNO instead of a coloured initial. We'll fetch it from Letterboxd as soon as you say yes."
+          ? "Show your Letterboxd avatar to friends on MiKiNO instead of a coloured initial."
+          : "Show your Letterboxd avatar to friends on MiKiNO instead of a coloured initial. We'll fetch it from Letterboxd as soon as you say yes."
       }
-      primaryLabel="Use my picture"
+      primaryLabel="Use my avatar"
       onPrimary={handleUse}
       isPrimaryBusy={avatarPreference.isSaving}
       secondaryLabel="Not now"

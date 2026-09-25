@@ -118,6 +118,8 @@ import type {
   MeGetMyShowtimePingsResponse,
   MeGetMyUnseenShowtimePingCountResponse,
   MeMarkMyShowtimePingsSeenResponse,
+  MeMarkMyShowtimePingsSeenForShowtimeData,
+  MeMarkMyShowtimePingsSeenForShowtimeResponse,
   MeDeleteMyShowtimePingData,
   MeDeleteMyShowtimePingResponse,
   MeDismissMyShowtimePingData,
@@ -1780,6 +1782,28 @@ export class MeService {
     return __request(OpenAPI, {
       method: "POST",
       url: "/api/v1/me/pings/mark-seen",
+    })
+  }
+
+  /**
+   * Mark My Showtime Pings Seen For Showtime
+   * @param data The data for the request.
+   * @param data.showtimeId
+   * @returns Message Successful Response
+   * @throws ApiError
+   */
+  public static markMyShowtimePingsSeenForShowtime(
+    data: MeMarkMyShowtimePingsSeenForShowtimeData,
+  ): CancelablePromise<MeMarkMyShowtimePingsSeenForShowtimeResponse> {
+    return __request(OpenAPI, {
+      method: "POST",
+      url: "/api/v1/me/pings/showtime/{showtime_id}/mark-seen",
+      path: {
+        showtime_id: data.showtimeId,
+      },
+      errors: {
+        422: "Validation Error",
+      },
     })
   }
 

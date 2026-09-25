@@ -267,10 +267,13 @@ export const Tag = ({
   children,
   palette,
   size = "sm",
+  trailing,
 }: {
   children: string
   palette?: string
   size?: "xs" | "sm"
+  /** Kept whole after the (truncating) text, like the cinema tag's festival. */
+  trailing?: ReactNode
 }) => (
   <span
     className={`mk-tag${size === "xs" ? " mk-tag--xs" : ""}${
@@ -278,8 +281,25 @@ export const Tag = ({
     }`}
   >
     <span className="mk-ellipsis">{children}</span>
+    {trailing}
   </span>
 )
+
+/**
+ * The festival a screening is part of, as a tag inside its cinema's tag
+ * ("Trianon | LIFF"), in the cinema's own colours inverted so it belongs to
+ * that badge. Not drawn when the screening is placed at the festival
+ * itself (its hall is unknown): the cinema name already says it.
+ */
+export const FestivalMark = ({ showtime }: { showtime: ShowtimePublic }) => {
+  const { festival } = showtime
+  if (!festival || festival.id === showtime.cinema.id) return null
+  return (
+    <span className="mk-tag__festival" title={festival.name}>
+      {festival.name}
+    </span>
+  )
+}
 
 export const CinemaTag = ({
   showtime,
@@ -288,7 +308,11 @@ export const CinemaTag = ({
   showtime: ShowtimePublic
   size?: "xs" | "sm"
 }) => (
-  <Tag palette={getCinemaPaletteKey(showtime.cinema)} size={size}>
+  <Tag
+    palette={getCinemaPaletteKey(showtime.cinema)}
+    size={size}
+    trailing={<FestivalMark showtime={showtime} />}
+  >
     {showtime.cinema.name}
   </Tag>
 )

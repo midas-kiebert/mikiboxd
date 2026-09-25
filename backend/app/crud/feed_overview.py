@@ -25,6 +25,7 @@ from app.models.showtime import Showtime
 from app.models.showtime_ping import ShowtimePing
 from app.models.showtime_selection import ShowtimeSelection
 from app.models.showtime_visibility import ShowtimeVisibilityEffective
+from app.models.watchlist_selection import WatchlistSelection
 
 # How much a friend's "going" counts for against an "interested" when ranking
 # the screenings friends picked: a firm plan is worth two maybes.
@@ -103,6 +104,7 @@ def get_showtimes_friends_picked(
     now: datetime,
     languages: Sequence[Language] | None,
     limit: int,
+    with_seat_data: bool = False,
 ) -> list[tuple[Showtime, int]]:
     """Upcoming screenings the viewer's friends are going to or interested in,
     each with its friend score.
@@ -116,6 +118,9 @@ def get_showtimes_friends_picked(
     Every cinema, not just the viewer's usual ones: a friend at a cinema they
     never picked is exactly the kind of thing this section is for. Screenings
     the viewer is going to or interested in are left out; those are plans.
+
+    `with_seat_data` keeps only screenings we have a seat reading for, as
+    `get_interested_showtimes_with_seat_data` does.
     """
     weight = case(
         (
@@ -151,6 +156,13 @@ def get_showtimes_friends_picked(
             col(Showtime.id).not_in(_viewer_selection_ids(user_id)),
         )
     )
+    if with_seat_data:
+        ranked = ranked.where(
+            or_(
+                col(Showtime.seats_left).is_not(None),
+                col(Showtime.seats_level_floor).is_not(None),
+            )
+        )
     if languages:
         ranked = ranked.join(Movie, col(Movie.id) == col(Showtime.movie_id))
         ranked = apply_language_filter(
@@ -184,3 +196,16 @@ def get_viewer_selected_showtime_ids(
         col(ShowtimeSelection.showtime_id).in_(showtime_ids),
     )
     return set(session.exec(stmt).all())
+
+
+def get_watchlisted_movie_ids(
+    *, session: Session, letterboxd_username: str, movie_ids: Sequence[int]
+) -> set[int]:
+    """Which of `movie_ids` are on this Letterboxd user's watchlist."""
+    if not movie_ids:
+        return set()
+    stmt = select(WatchlistSelection.movie_id).where(
+        col(WatchlistSelection.letterboxd_username) == letterboxd_username,
+        col(WatchlistSelection.movie_id).in_(movie_ids),
+    )
+    return {movie_id for movie_id in session.exec(stmt).all() if movie_id is not None}

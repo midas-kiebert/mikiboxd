@@ -1,5 +1,5 @@
 /**
- * A person: their Letterboxd profile picture when they have one linked and
+ * A person: their Letterboxd avatar when they have one linked and
  * synced, a coloured initial otherwise — and always the initial underneath,
  * so a picture that fails to load (a stale URL, a network hiccup) falls back
  * to it rather than leaving a blank circle.

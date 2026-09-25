@@ -21,6 +21,7 @@ from app.models.showtime import Showtime
 from app.models.showtime_source_presence import ShowtimeSourcePresence
 from app.scraping.letterboxd.load_letterboxd_data import (
     backfill_missing_letterboxd_data,
+    backfill_missing_posters,
     consume_letterboxd_failure_events,
     reset_letterboxd_request_budget,
 )
@@ -1688,6 +1689,10 @@ def run() -> None:
                 letterboxd_backfill_summary.skipped,
                 letterboxd_backfill_summary.failed,
             )
+            try:
+                backfill_missing_posters()
+            except Exception:
+                logger.error("Letterboxd poster retry failed", exc_info=True)
     except Exception as e:
         fatal_error = e
         summary.errors.append(str(e))

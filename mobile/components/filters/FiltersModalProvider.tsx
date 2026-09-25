@@ -8,11 +8,12 @@ import { DateTime } from 'luxon';
 import { useQuery } from '@tanstack/react-query';
 import useAuth from 'shared/hooks/useAuth';
 
-import { useAuthStatus, useIsSignedIn } from '@/utils/auth-session';
+import { useIsSignedIn } from '@/utils/auth-session';
 import { MoviesService, ShowtimesService } from 'shared';
 import { useSharedTabFilters } from '@/hooks/useSharedTabFilters';
 import FiltersModal from '@/components/filters/FiltersModal';
 import CinemaFilterModal from '@/components/filters/CinemaFilterModal';
+import { useStackAboveKey } from '@/components/sheets/use-stack-above-key';
 import type { OpenCinemaModalOptions } from '@/components/filters/CinemaFilterModal';
 import { getSelectedStatusesFromShowtimeFilter } from '@/components/filters/shared-tab-filters';
 import { resolveDaySelectionsForApi } from '@/components/filters/day-filter-utils';
@@ -74,17 +75,6 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
   // statements about an account. Hidden for a guest here, in the one place
   // every screen opens this sheet through, rather than at each call site.
   const isSignedIn = useIsSignedIn();
-  // Whether these tabs are here to stay, fixed at mount. A signed-out cold
-  // start mounts the tabs for a moment (the launch URL is the tabs home) and
-  // then replaces them with /login. A warm-up started in that moment loses its
-  // owner before gorhom has marked the sheet presented, and gorhom's unmount
-  // path skips cleanup for a sheet still in that state, so the Filters sheet
-  // was left open, invisible, over the login screen and took every tap
-  // (Android, 1.1.4). Signing in mounts fresh tabs, which warm then.
-  const authStatus = useAuthStatus();
-  const [shouldWarmSheets] = useState(
-    () => authStatus === 'signed-in' || authStatus === 'guest'
-  );
   const hasLetterboxdUsername = Boolean(user?.letterboxd_username?.trim());
   const effectiveWatchlistOnly = hasLetterboxdUsername ? watchlistOnly : false;
   const effectiveHideWatched = hasLetterboxdUsername ? hideWatched : false;
@@ -141,16 +131,29 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
 
   const resultCount = isMovies ? moviesCount : showtimesCount;
 
+  // Cinemas opens on top of Filters, so it must draw in front of it.
+  const {
+    key: cinemaSheetKey,
+    onLowerOpen: onFiltersOpen,
+    onUpperOpen: onCinemaOpen,
+  } = useStackAboveKey();
+  const filtersVisibleRef = useRef(visible);
+  useEffect(() => {
+    filtersVisibleRef.current = visible;
+  });
+
   const openFiltersModal = useCallback((config?: OpenConfig) => {
+    onFiltersOpen();
     if (config?.showGroupByMovie !== undefined) setShowGroupByMovieConfig(config.showGroupByMovie);
     setShowPresetsConfig(config?.showPresets ?? false);
     setVisible(true);
-  }, []);
+  }, [onFiltersOpen]);
 
   const openCinemaModal = useCallback((options?: OpenCinemaModalOptions) => {
+    onCinemaOpen(filtersVisibleRef.current);
     setCinemaEditPresetId(options?.editPresetId ?? null);
     setCinemaModalVisible(true);
-  }, []);
+  }, [onCinemaOpen]);
 
   const handleCloseCinemaModal = useCallback(() => {
     setCinemaModalVisible(false);
@@ -171,10 +174,6 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
   return (
     <FiltersModalContext.Provider value={value}>
       {children}
-      {/* Order matters and is load-bearing: both sheets warm their portals at
-          mount, in mount order, and the cinema sheet has to draw in front of
-          the filters sheet it opens from — so it must stay below it here. See
-          `components/sheets/sheet-warm-up.ts`. */}
       <FiltersModal
         visible={visible}
         onClose={handleCloseFiltersModal}
@@ -208,15 +207,14 @@ export function FiltersModalProvider({ children }: { children: ReactNode }) {
         setWatchedOnly={setWatchedOnly}
         showLists
         resultCount={resultCount}
-        warmUpOnMount={shouldWarmSheets}
       />
       <CinemaFilterModal
+        key={cinemaSheetKey}
         visible={cinemaModalVisible}
         onClose={handleCloseCinemaModal}
         onBack={cinemaModalBack}
         initialPage="selection"
         initialEditPresetId={cinemaEditPresetId}
-        warmUpOnMount={shouldWarmSheets}
       />
     </FiltersModalContext.Provider>
   );

@@ -31,13 +31,15 @@ const SETTINGS_STEPS: readonly string[] =
         "Tap “Open settings” below.",
         "Tap “Notifications”.",
         "Switch on “Allow Notifications”.",
-        "Come back to MiKiNO — that's it.",
+        "Come back to MiKiNO.",
       ]
     : [
         "Tap “Open settings” below.",
         "Tap “Notifications”.",
-        "Switch on “All MiKiNO notifications”.",
-        "Come back to MiKiNO — that's it.",
+        // Not quoted: the switch is "All MiKiNO notifications" on a Pixel,
+        // "Allow notifications" on Samsung and "Show notifications" on Xiaomi.
+        "Switch notifications on.",
+        "Come back to MiKiNO.",
       ];
 
 /** Never rejects: nothing a caller could do about a locked-down device. */

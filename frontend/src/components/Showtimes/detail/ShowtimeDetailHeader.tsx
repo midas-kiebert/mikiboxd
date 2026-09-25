@@ -28,7 +28,10 @@ import { Box, Flex, Text } from "@chakra-ui/react"
 import { Link as RouterLink } from "@tanstack/react-router"
 import { DateTime } from "luxon"
 import type { ShowtimePublic } from "shared"
-import { getCinemaPaletteKey } from "shared/cinemas/cinema-color"
+import {
+  FESTIVAL_TAG_TEXT,
+  getCinemaPaletteKey,
+} from "shared/cinemas/cinema-color"
 import { formatLanguageCode } from "shared/movies/language"
 import { isSyntheticMovieId } from "shared/movies/synthetic-movie"
 import { formatShowtimeTimeRange } from "shared/showtimes/showtime-time"
@@ -127,7 +130,9 @@ const HeaderBadge = ({
   <Flex
     align="center"
     px="6px"
-    py="1px"
+    // A pixel more above than below: centred on its line box, the ink sat high.
+    pt="2px"
+    pb="0"
     borderRadius="3px"
     borderWidth="1px"
     borderColor={borderColor ?? "transparent"}
@@ -316,6 +321,29 @@ const ShowtimeDetailHeader = ({ showtime }: ShowtimeDetailHeaderProps) => {
                 {showtime.cinema.name}
               </HeaderBadge>
             </RouterLink>
+
+            {/* The festival, when the screening is part of one and plays in
+                a real cinema (placed at the festival itself, the badge above
+                already names it). Goes to the festival's own site. */}
+            {showtime.festival &&
+            showtime.festival.id !== showtime.cinema.id ? (
+              <a
+                href={showtime.festival.url}
+                target="_blank"
+                rel="noreferrer"
+                style={{ minWidth: 0, maxWidth: "100%" }}
+              >
+                <HeaderBadge
+                  bg={`app.${getCinemaPaletteKey(showtime.festival)}.secondary`}
+                  color={
+                    FESTIVAL_TAG_TEXT[getCinemaPaletteKey(showtime.festival)] ??
+                    `app.${getCinemaPaletteKey(showtime.festival)}.primary`
+                  }
+                >
+                  {showtime.festival.name}
+                </HeaderBadge>
+              </a>
+            ) : null}
 
             {showtime.room ? (
               <HeaderBadge bg="app.surfaceMuted" color="fg.muted">

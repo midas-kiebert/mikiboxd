@@ -15,8 +15,7 @@
  * that opening the app clears the event half and leaves the friend-request
  * half lit, which is the truth of it.
  *
- * Local feature tips are deliberately left out even though they count towards
- * the bell: they are nudges the app invented, not something that happened to
+ * Local feature tips are deliberately left out, as they are from the bell: they are nudges the app invented, not something that happened to
  * the user, and badging the home screen for one is noise.
  *
  * The backend computes the same sum in `push_notifications.badge_count` and

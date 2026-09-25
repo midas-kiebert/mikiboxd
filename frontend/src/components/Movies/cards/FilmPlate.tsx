@@ -43,7 +43,7 @@ import type { ShowtimeInMoviePublic } from "shared"
  * 15px, flush, from 4px in, with 3.5px of ring outside each box, so five end
  * at 82.5px. The seat mark in the opposite corner starts at 81px, so a plate
  * carrying one gets four. It was two and a tally, which left most of every
- * plate's edge empty ("allow some more user profile pictures to show up,
+ * plate's edge empty ("allow some more user avatars to show up,
  * there is plenty of space").
  */
 const MAX_CIRCLES = 5
@@ -159,6 +159,48 @@ const PlateFaces = ({
   )
 }
 
+/**
+ * The festival shown on a plate's label, if any. None where the screening is
+ * placed at the festival itself (its hall unknown): the name already says it.
+ */
+const labelFestival = (time: FilmTime) => {
+  const { festival } = time.showtime
+  return festival && festival.id !== time.cinema.id ? festival : null
+}
+
+/**
+ * How many characters of label a one-column plate holds before its name is
+ * cut. Counted rather than measured: a row lays its plates out once, from the
+ * data, and measuring would mean rendering every plate twice.
+ */
+// "Filmhuis Den Haag" (17) is the longest name that has to fit, and does.
+const ONE_COLUMN_LABEL_CHARS = 18
+
+/** Label width per character, in row pixels: 9.5px bold, erring wide. */
+const LABEL_CHAR_WIDTH = 6.2
+/** The label's own side padding plus the festival tag's, in row pixels. */
+const LABEL_PADDING = 8
+const FESTIVAL_TAG_PADDING = 9
+
+/**
+ * How wide a plate in a film row will lay out, for fitting a line of them:
+ * the standard width, or — where the label (the cinema, plus the festival
+ * tag) needs more, "Filmhuis Den Haag LIFF" — just that. The plate itself is
+ * sized by its content (`film-cards.css`); this is the row's estimate of it,
+ * on the wide side so a line never overflows.
+ */
+export const plateWidth = (time: FilmTime, standardWidth: number): number => {
+  const festival = labelFestival(time)
+  const chars = time.cinema.name.length + (festival ? festival.name.length : 0)
+  if (chars <= ONE_COLUMN_LABEL_CHARS) return standardWidth
+  const unit = standardWidth / 96
+  const label =
+    chars * LABEL_CHAR_WIDTH +
+    LABEL_PADDING +
+    (festival ? FESTIVAL_TAG_PADDING : 0)
+  return Math.max(standardWidth, Math.ceil(label * unit))
+}
+
 export const Plate = ({
   time,
   isSelected,
@@ -176,6 +218,7 @@ export const Plate = ({
   showDate?: boolean
 }) => {
   const people = audienceOfTime(time.showtime)
+  const festival = labelFestival(time)
   const mine = time.showtime.viewer?.going
   const tone =
     mine === "GOING"
@@ -197,6 +240,9 @@ export const Plate = ({
     >
       <span className="fc-plate__label">
         <span className="fc-plate__label-name">{time.cinema.name}</span>
+        {festival ? (
+          <span className="fc-plate__label-festival">{festival.name}</span>
+        ) : null}
       </span>
       {showDate ? (
         <span className="fc-plate__date">{time.datePlate}</span>

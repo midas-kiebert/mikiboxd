@@ -36,7 +36,7 @@ const TIP_PRESENTATION: Record<FeatureTipId, Presentation> = {
   },
   "letterboxd-avatar": {
     icon: "account-circle",
-    title: "Use your Letterboxd picture",
+    title: "Use your Letterboxd avatar",
     subtitle: "Let friends recognise you at a glance",
   },
   "add-friends": {
@@ -63,11 +63,6 @@ const TIP_PRESENTATION: Record<FeatureTipId, Presentation> = {
     icon: "event-busy",
     title: "Turn on seat availability notifications",
     subtitle: "Hear before a screening you want sells out",
-  },
-  "friend-request": {
-    icon: "person-add",
-    title: "Turn on friend request notifications",
-    subtitle: "Hear when someone adds you",
   },
   "interest-reminders": {
     icon: "alarm",

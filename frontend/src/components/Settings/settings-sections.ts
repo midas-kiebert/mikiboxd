@@ -10,6 +10,7 @@ import type { ComponentType } from "react"
 import {
   MdBlock,
   MdConfirmationNumber,
+  MdEventAvailable,
   MdInfoOutline,
   MdLockOutline,
   MdManageAccounts,
@@ -29,6 +30,7 @@ export type SettingsSectionId =
   | "notifications"
   | "privacy"
   | "blocked"
+  | "statuses"
   | "appearance"
   | "cineville"
   | "about"
@@ -60,6 +62,12 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionMeta[] = [
   },
   { id: "privacy", label: "Privacy", icon: MdVisibility, guest: false },
   { id: "blocked", label: "Blocked accounts", icon: MdBlock, guest: false },
+  {
+    id: "statuses",
+    label: "Going & interested",
+    icon: MdEventAvailable,
+    guest: false,
+  },
   { id: "appearance", label: "Appearance", icon: MdPalette, guest: false },
   {
     id: "cineville",

@@ -122,6 +122,14 @@ export const Colors = {
       secondary: '#b62b2f',
       border: '#dc6a6e',
     },
+    // LIFF's own red (liff.nl's hero, #d20c0c), for its festival badge: the
+    // one palette entry that is a brand's colour rather than ours. `secondary`
+    // is the strong one, as everywhere — it fills the festival tag.
+    liff: {
+      primary: '#fdeaea',
+      secondary: '#d20c0c',
+      border: '#d20c0c',
+    },
     // "Last few seats", and nothing else: a hotter, more saturated red than the
     // error `red`, so the urgent end of the busyness scale reads as urgent
     // without borrowing the tone every form error already uses.
@@ -242,6 +250,12 @@ export const Colors = {
       primary: '#5a1c1c',
       secondary: '#ffb8b8',
       border: '#ffb8b8',
+    },
+    // LIFF's red on a dark ground.
+    liff: {
+      primary: '#2b0303',
+      secondary: '#e01510',
+      border: '#f0302a',
     },
     // The dark-mode twin of `redHot`: on a dark ground urgency reads as more
     // saturation, not more darkness, so it sits between `red` and `redDeep`.

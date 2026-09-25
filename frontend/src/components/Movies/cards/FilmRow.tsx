@@ -86,7 +86,7 @@ export const FILM_ROW_LAYOUT = {
  * the layout settles. Watching the grid, a row that counted one slot in that
  * frame had nothing left to watch and stayed that way.
  */
-const DEFAULT_PLATE_SLOTS = 6
+const DEFAULT_PLATE_SLOTS = 12
 
 const usePlateSlots = () => {
   const infoRef = useRef<HTMLDivElement>(null)
@@ -217,15 +217,15 @@ const FilmRow = ({
   const times = timesOf(movie)
   const { infoRef, platesRef, slots } = usePlateSlots()
   const synopsisRef = useSynopsisFit(infoRef)
-  // One slot short of the full line whenever there isn't room for all of
-  // them, so the "+N" tile below can take the last spot instead of pushing a
-  // plate onto a second line. Never fewer than one plate, though: a row too
-  // narrow for two slots still shows its next screening beside the tile.
+  // The grid's tracks are half a plate wide (`film-cards.css`): a plate takes
+  // two, and one whose label won't fit (`plateSpan`) three — half a plate
+  // more, not a whole one. So the line is filled by tracks, not plate count.
   //
-  // A plate with a long label takes two slots (`plateSpan`), so the line is
-  // filled by slots rather than by count — and a row with a single column
-  // has no second one to give it.
-  const spans = times.map((time) => (slots > 1 ? plateSpan(time) : 1))
+  // One plate's worth short of the full line whenever there isn't room for
+  // all of them, so the "+N" tile below can take the last spot instead of
+  // pushing a plate onto a second line. Never fewer than one plate, though: a
+  // row too narrow for two still shows its next screening beside the tile.
+  const spans = times.map((time) => (slots > 4 ? plateSpan(time) : 2))
   const fitCount = (budget: number) => {
     let used = 0
     let count = 0
@@ -239,15 +239,15 @@ const FilmRow = ({
   const hasOverflow = fitCount(slots) < times.length
   const shown = times.slice(
     0,
-    hasOverflow ? Math.max(1, fitCount(slots - 1)) : times.length,
+    hasOverflow ? Math.max(1, fitCount(slots - 2)) : times.length,
   )
-  // The one plate a too-narrow row keeps beside the "+N" tile goes back to a
-  // single column (its name cut) rather than wrapping the row.
-  if (hasOverflow && fitCount(slots - 1) === 0) spans[0] = 1
-  // What the plates leave of the line goes to the "+N" tile, so a two-column
-  // plate that didn't fit leaves no hole before it.
+  // The one plate a too-narrow row keeps beside the "+N" tile goes back to
+  // normal width (its name cut) rather than wrapping the row.
+  if (hasOverflow && fitCount(slots - 2) === 0) spans[0] = 2
+  // What the plates leave of the line goes to the "+N" tile, so a wide plate
+  // that didn't fit leaves no hole before it.
   const moreSpan = Math.max(
-    1,
+    2,
     slots - shown.reduce((used, _, index) => used + spans[index], 0),
   )
   const hiddenCount = times.length - shown.length
@@ -326,7 +326,7 @@ const FilmRow = ({
                 search={links.filmSearch() as never}
                 className="fc-plate fc-plate--more"
                 style={
-                  moreSpan > 1 ? { gridColumn: `span ${moreSpan}` } : undefined
+                  { gridColumn: `span ${moreSpan}` }
                 }
                 title={`${hiddenCount} more screening${hiddenCount === 1 ? "" : "s"} on the film's page`}
               >

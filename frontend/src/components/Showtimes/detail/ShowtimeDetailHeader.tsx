@@ -28,7 +28,10 @@ import { Box, Flex, Text } from "@chakra-ui/react"
 import { Link as RouterLink } from "@tanstack/react-router"
 import { DateTime } from "luxon"
 import type { ShowtimePublic } from "shared"
-import { getCinemaPaletteKey } from "shared/cinemas/cinema-color"
+import {
+  FESTIVAL_TAG_TEXT,
+  getCinemaPaletteKey,
+} from "shared/cinemas/cinema-color"
 import { formatLanguageCode } from "shared/movies/language"
 import { isSyntheticMovieId } from "shared/movies/synthetic-movie"
 import { formatShowtimeTimeRange } from "shared/showtimes/showtime-time"
@@ -332,7 +335,10 @@ const ShowtimeDetailHeader = ({ showtime }: ShowtimeDetailHeaderProps) => {
               >
                 <HeaderBadge
                   bg={`app.${getCinemaPaletteKey(showtime.festival)}.secondary`}
-                  color={`app.${getCinemaPaletteKey(showtime.festival)}.primary`}
+                  color={
+                    FESTIVAL_TAG_TEXT[getCinemaPaletteKey(showtime.festival)] ??
+                    `app.${getCinemaPaletteKey(showtime.festival)}.primary`
+                  }
                 >
                   {showtime.festival.name}
                 </HeaderBadge>

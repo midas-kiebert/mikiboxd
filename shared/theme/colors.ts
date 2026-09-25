@@ -126,8 +126,7 @@ export const Colors = {
     // one palette entry that is a brand's colour rather than ours. `secondary`
     // is the strong one, as everywhere — it fills the festival tag.
     liff: {
-      // White, as liff.nl sets its type on the red.
-      primary: '#ffffff',
+      primary: '#fdeaea',
       secondary: '#d20c0c',
       border: '#d20c0c',
     },
@@ -252,9 +251,9 @@ export const Colors = {
       secondary: '#ffb8b8',
       border: '#ffb8b8',
     },
-    // LIFF's red on a dark ground, white type as on their site.
+    // LIFF's red on a dark ground.
     liff: {
-      primary: '#ffffff',
+      primary: '#2b0303',
       secondary: '#e01510',
       border: '#f0302a',
     },

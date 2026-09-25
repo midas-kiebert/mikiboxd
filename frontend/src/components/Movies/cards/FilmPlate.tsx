@@ -178,14 +178,15 @@ const labelFestival = (time: FilmTime) => {
 const ONE_COLUMN_LABEL_CHARS = 18
 
 /**
- * Grid columns a plate takes in a film row: two where its label (the cinema,
- * plus the festival tag) would not fit one — "Filmhuis Den Haag LIFF" — so
- * the name is shown whole rather than cut.
+ * Half-plate grid tracks a plate takes in a film row: two, or three where its
+ * label (the cinema, plus the festival tag) would not fit a plate's width —
+ * "Filmhuis Den Haag LIFF" — so the name is shown whole rather than cut,
+ * at half a plate wider rather than double.
  */
-export const plateSpan = (time: FilmTime): 1 | 2 => {
+export const plateSpan = (time: FilmTime): 2 | 3 => {
   const festival = labelFestival(time)
   const chars = time.cinema.name.length + (festival ? festival.name.length + 2 : 0)
-  return chars > ONE_COLUMN_LABEL_CHARS ? 2 : 1
+  return chars > ONE_COLUMN_LABEL_CHARS ? 3 : 2
 }
 
 export const Plate = ({
@@ -193,13 +194,13 @@ export const Plate = ({
   isSelected,
   onSelect,
   showDate = true,
-  span = 1,
+  span,
 }: {
   time: FilmTime
   isSelected: boolean
   onSelect?: (time: FilmTime) => void
-  /** Grid columns to take — see `plateSpan`. */
-  span?: 1 | 2
+  /** Grid tracks to take in a film row — see `plateSpan`. None elsewhere. */
+  span?: 2 | 3
   /**
    * False where something above the plate already says which day it is — the
    * film page groups its run under day headings, and a plate repeating
@@ -227,7 +228,7 @@ export const Plate = ({
       className={`fc-plate ${paletteClass(getCinemaPaletteKey(time.cinema))}${tone}${
         isSelected ? " fc-plate--on" : ""
       }`}
-      style={span > 1 ? { gridColumn: `span ${span}` } : undefined}
+      style={span ? { gridColumn: `span ${span}` } : undefined}
     >
       <span className="fc-plate__label">
         <span className="fc-plate__label-name">{time.cinema.name}</span>

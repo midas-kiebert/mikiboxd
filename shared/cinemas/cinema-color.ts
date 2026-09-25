@@ -35,6 +35,16 @@ export const CINEMA_PALETTE_KEYS = [...GENERAL_PALETTE_KEYS, "liff"] as const;
 
 export type CinemaPaletteKey = (typeof CINEMA_PALETTE_KEYS)[number];
 
+/**
+ * Text on a festival tag (the badge inside a cinema's badge), where it is not
+ * the palette's own `primary`. LIFF sets its type white on its red, and its
+ * tag does the same — without whitening `primary`, which is also the fill of
+ * any badge that *is* the festival.
+ */
+export const FESTIVAL_TAG_TEXT: Partial<Record<CinemaPaletteKey, string>> = {
+  liff: "#ffffff",
+};
+
 const isCinemaPaletteKey = (value: string): value is CinemaPaletteKey =>
   (CINEMA_PALETTE_KEYS as readonly string[]).includes(value);
 

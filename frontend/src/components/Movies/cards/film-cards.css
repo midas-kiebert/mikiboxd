@@ -157,7 +157,7 @@
   padding: 1px 3px 0;
   border-radius: 2px;
   background: var(--p-secondary);
-  color: var(--p-primary);
+  color: var(--p-tag-text, var(--p-primary));
   line-height: 1.25;
   white-space: nowrap;
 }
@@ -560,7 +560,9 @@
  */
 .fr-film__plates {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  /* Half-plate tracks: a plate spans two (96px with the gap between), a plate
+     with a long label three — see `plateSpan` in FilmPlate.tsx. */
+  grid-template-columns: repeat(auto-fill, minmax(45.5px, 1fr));
   gap: 6px 5px;
   margin-top: auto;
   padding-top: 10px;
@@ -672,7 +674,10 @@
  * column (`fr-info`, below), so it only resolves inside it. */
 
 .fr-film__plates {
-  grid-template-columns: repeat(auto-fill, minmax(calc(96 * var(--fr-u)), 1fr));
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(calc(45.5 * var(--fr-u)), 1fr)
+  );
   gap: calc(6 * var(--fr-u)) calc(5 * var(--fr-u));
 }
 

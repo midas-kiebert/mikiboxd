@@ -54,6 +54,8 @@
   --p-border: var(--chakra-colors-app-red\.border);
 }
 .mk-pal-liff {
+  /* `FESTIVAL_TAG_TEXT` in shared/cinemas/cinema-color.ts. */
+  --p-tag-text: #ffffff;
   --p-primary: var(--chakra-colors-app-liff\.primary);
   --p-secondary: var(--chakra-colors-app-liff\.secondary);
   --p-border: var(--chakra-colors-app-liff\.border);
@@ -217,7 +219,7 @@
   padding: 2px 3px 0;
   border-radius: 2px;
   background: var(--p-secondary);
-  color: var(--p-primary);
+  color: var(--p-tag-text, var(--p-primary));
   line-height: 1.3;
 }
 

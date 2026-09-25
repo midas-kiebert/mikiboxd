@@ -17,6 +17,7 @@ import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useInheritFiltersParams } from "@/hooks/usePageFilters";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { getCinemaColorPalette } from "@/utils/cinema-color";
+import { FESTIVAL_TAG_TEXT, getCinemaPaletteKey } from "shared/cinemas/cinema-color";
 
 type CinemaPillProps = {
   cinema: CinemaPublic;
@@ -124,7 +125,15 @@ export default function CinemaPill({
           ]}
         >
           <ThemedText
-            style={[styles.text, sizeStyles.text, { color: festivalPalette.primary }]}
+            style={[
+              styles.text,
+              sizeStyles.text,
+              {
+                color:
+                  FESTIVAL_TAG_TEXT[getCinemaPaletteKey(shownFestival)] ??
+                  festivalPalette.primary,
+              },
+            ]}
             numberOfLines={1}
           >
             {shownFestival.name}
@@ -146,9 +155,11 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       maxWidth: "65%",
       paddingHorizontal: 6,
     },
+    // Neither part shrinks: squeezed, the cinema's name gave way first and
+    // the pill read as just the festival, hiding where the screening is.
     text: {
       includeFontPadding: false,
-      flexShrink: 1,
+      flexShrink: 0,
     },
     festivalTag: {
       marginLeft: 4,

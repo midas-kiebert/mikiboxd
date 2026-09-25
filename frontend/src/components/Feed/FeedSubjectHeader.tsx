@@ -33,7 +33,7 @@ import {
   MdPeople,
   MdPersonAddAlt,
 } from "react-icons/md"
-import type { UserWithFriendStatus } from "shared"
+import type { CinemaKind, UserWithFriendStatus } from "shared"
 import { getCinemaPaletteKey } from "shared/cinemas/cinema-color"
 import { UsersService } from "shared/client"
 import { resolveCinemaSelection } from "shared/filters/cinema-selection"
@@ -466,7 +466,7 @@ type CinemaLike = {
   badge_bg_color: string
   cineville: boolean
   /** Absent from an older API and from a cinema built out of route params. */
-  kind?: CinemaPublic["kind"]
+  kind?: CinemaKind
   city: { name: string }
 }
 

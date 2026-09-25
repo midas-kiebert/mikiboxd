@@ -1539,7 +1539,11 @@ export default function ShowtimeActionModal({
     ? null
     : showtime.cineville_pass === false && (showtime.festival || showtime.cinema.cineville)
       ? "No Cineville pass"
-      : cinevilleSurchargeLabel(showtime.cineville_surcharge_cents);
+      : cinevilleSurchargeLabel(
+          // The availability refetches when a reading lands; the showtime
+          // only when its list does.
+          seatAvailability?.cineville_surcharge_cents ?? showtime.cineville_surcharge_cents,
+        );
   const handleOpenTicketLink = async () => {
     const ticketLink = showtime?.ticket_link;
     if (!ticketLink) return;

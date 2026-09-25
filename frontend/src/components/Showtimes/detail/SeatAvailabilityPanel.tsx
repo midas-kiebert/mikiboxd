@@ -332,7 +332,12 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
     : showtime.cineville_pass === false &&
         (showtime.festival || showtime.cinema.cineville)
       ? "No Cineville pass"
-      : cinevilleSurchargeLabel(showtime.cineville_surcharge_cents)
+      : cinevilleSurchargeLabel(
+          // The availability refetches when a reading lands; the showtime
+          // only on a page load.
+          availability?.cineville_surcharge_cents ??
+            showtime.cineville_surcharge_cents,
+        )
 
   if (!showBusyness && !hasTicketLink && !showSeatRow) return null
 

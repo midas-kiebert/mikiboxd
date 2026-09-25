@@ -1107,6 +1107,7 @@ export type ShowtimeSeatAvailabilityPublic = {
   checking?: boolean
   trackable?: boolean
   can_request_check?: boolean
+  cineville_surcharge_cents?: number | null
 }
 
 export type ShowtimeSelectionUpdate = {

@@ -878,6 +878,7 @@ def to_public(
             checking=checking,
             trackable=trackable,
             can_request_check=can_request_check,
+            cineville_surcharge_cents=showtime.cineville_surcharge_cents,
         )
     return ShowtimeSeatAvailabilityPublic(
         showtime_id=showtime.id,
@@ -889,6 +890,7 @@ def to_public(
         checking=checking,
         trackable=trackable,
         can_request_check=can_request_check,
+        cineville_surcharge_cents=showtime.cineville_surcharge_cents,
     )
 
 

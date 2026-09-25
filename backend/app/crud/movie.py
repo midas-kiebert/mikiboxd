@@ -25,6 +25,7 @@ from app.models.showtime_visibility import ShowtimeVisibilityEffective
 from app.models.user import User
 from app.models.watched_selection import WatchedSelection
 from app.models.watchlist_selection import WatchlistSelection
+from app.utils import now_amsterdam_naive
 
 DAY_BUCKET_CUTOFF = time(4, 0)
 DAY_BUCKET_OFFSET = timedelta(
@@ -338,6 +339,30 @@ def get_movies_without_letterboxd_slug(*, session: Session) -> list[Movie]:
     result = session.execute(stmt)
     movies: list[Movie] = list(result.scalars().all())
     return movies
+
+
+def get_upcoming_movies_without_poster(*, session: Session) -> list[Movie]:
+    """Movies with a Letterboxd slug but no poster, still to be screened.
+
+    Letterboxd adds posters to new films late, often after the film was first
+    fetched, and nothing else asks again once a slug is stored. Limited to
+    films with a screening ahead, which is where a missing poster shows.
+    """
+    upcoming = (
+        select(Showtime.id)
+        .where(
+            col(Showtime.movie_id) == col(Movie.id),
+            col(Showtime.datetime) >= now_amsterdam_naive(),
+        )
+        .exists()
+    )
+    stmt = select(Movie).where(
+        col(Movie.letterboxd_slug).is_not(None),
+        col(Movie.poster_link).is_(None),
+        col(Movie.id) >= 0,
+        upcoming,
+    )
+    return list(session.execute(stmt).scalars().all())
 
 
 def update_movie(*, db_movie: Movie, movie_update: MovieUpdate) -> Movie:

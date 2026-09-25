@@ -1207,6 +1207,46 @@ class LetterboxdBackfillSummary:
     failed: int
 
 
+def backfill_missing_posters() -> int:
+    """Ask Letterboxd again for the posters of upcoming films that have none.
+
+    Letterboxd adds a poster to a new film late — often after we first fetched
+    the film (Paper Tiger at LIFF 2026) — and the slug backfill never looks at
+    a film again once it has a slug. One request per film, to the same poster
+    endpoint the first fetch used. Returns how many posters were found.
+    """
+    with get_db_context() as session:
+        candidates = [
+            (movie.id, movie.letterboxd_slug)
+            for movie in movies_crud.get_upcoming_movies_without_poster(
+                session=session
+            )
+        ]
+    found = 0
+    for tmdb_id, slug in candidates:
+        if not slug:
+            continue
+        try:
+            poster_url = get_poster_url(slug)
+        except Exception:
+            logger.exception(f"Letterboxd poster retry failed for {slug}")
+            continue
+        if not poster_url:
+            continue
+        with get_db_context() as session:
+            db_movie = movies_crud.get_movie_by_id(session=session, id=tmdb_id)
+            if db_movie is None or db_movie.poster_link:
+                continue
+            db_movie.poster_link = poster_url
+            session.add(db_movie)
+            session.commit()
+            found += 1
+    logger.info(
+        "Letterboxd poster retry: candidates=%s found=%s", len(candidates), found
+    )
+    return found
+
+
 def backfill_missing_letterboxd_data() -> LetterboxdBackfillSummary:
     with get_db_context() as session:
         candidate_ids = [

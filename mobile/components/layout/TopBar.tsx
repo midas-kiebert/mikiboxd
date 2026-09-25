@@ -9,7 +9,6 @@ import { useFetchNotificationUnseenCount } from "shared/hooks/useFetchNotificati
 
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { useNotificationCenter } from "@/components/notifications/NotificationCenterProvider";
-import { useUnseenSnoozedTipCount } from "@/utils/feature-tips";
 import { useIsSignedIn } from "@/utils/auth-session";
 import { IconSymbol, type IconSymbolName } from "@/components/ui/icon-symbol";
 
@@ -74,12 +73,10 @@ export default function TopBar({
   const { data: unseenCount = 0 } = useFetchNotificationUnseenCount({
     enabled: showBell,
   });
-  // Snoozed feature tips are local reminders that sit in the same feed, so they
-  // count towards the same badge.
-  const unseenTipCount = useUnseenSnoozedTipCount();
-  const totalUnseenCount = unseenCount + unseenTipCount;
-  const showBadge = totalUnseenCount > 0;
-  const badgeLabel = totalUnseenCount > 99 ? "99+" : String(totalUnseenCount);
+  // Snoozed feature tips sit in the same feed but are deliberately left out of
+  // the badge: they are nudges the app invented, not something that happened.
+  const showBadge = unseenCount > 0;
+  const badgeLabel = unseenCount > 99 ? "99+" : String(unseenCount);
 
   const handleOpenLink = async () => {
     if (!linkUrl) return;

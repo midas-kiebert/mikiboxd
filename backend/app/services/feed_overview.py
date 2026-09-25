@@ -17,7 +17,8 @@ one matters right now. In priority order (`FeedOverviewSectionKind`):
 Sections with nothing in them are skipped, and the card has a budget: at most
 `MAX_SECTIONS` lists, `MAX_PER_SECTION` rows each, `MAX_TOTAL` rows in all.
 Lists are filled in priority order until the budget runs out, so the later
-ones are the ones that shrink or drop. A screening already shown higher up is
+ones are the ones that shrink or drop. Each list is sent in time order,
+whatever order its rows were picked in. A screening already shown higher up is
 never repeated further down — except in the custom list, which is the viewer's
 own and always shows what its filters match (and claims nothing either).
 
@@ -387,7 +388,11 @@ def get_feed_overview(
     return FeedOverviewPublic(
         sections=[
             FeedOverviewSection(
-                kind=kind, showtimes=[public[showtime.id] for showtime in rows]
+                kind=kind,
+                showtimes=[
+                    public[showtime.id]
+                    for showtime in sorted(rows, key=lambda row: row.datetime)
+                ],
             )
             for kind, rows in picked
         ]

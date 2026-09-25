@@ -12,8 +12,9 @@
  * Neither of the first two applies to the tips in `ALWAYS_SHOW_TIP_IDS`, which
  * are unfinished business rather than suggestions.
  *
- * A snoozed tip leaves an unseen reminder in the notification centre, so a
- * suggestion the user waved away is recoverable rather than gone. Those
+ * A snoozed tip leaves a reminder in the notification centre (never counted in
+ * the bell badge), so a suggestion the user waved away is recoverable rather
+ * than gone. Those
  * reminders are session-scoped too: after a restart the tip itself is back.
  *
  * On top of dismissal, `rollForFeatureTip` caps *how often* a tip can appear
@@ -428,9 +429,6 @@ export const useFeatureTipsEnabled = (): [boolean, (enabled: boolean) => void] =
 export const useDismissedTipCount = (): number => useFeatureTipsState().dismissedForever.size;
 
 export const useSnoozedTips = (): readonly SnoozedTip[] => useFeatureTipsState().snoozedTips;
-
-export const useUnseenSnoozedTipCount = (): number =>
-  useFeatureTipsState().snoozedTips.filter((tip) => !tip.seen).length;
 
 export type FeatureTipCandidate = {
   id: FeatureTipId;

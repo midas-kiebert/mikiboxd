@@ -428,9 +428,10 @@
 .ac-row__who {
   display: flex;
   grid-area: who;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 7px;
+  /* Going and interested share one line; wrap only when the column runs out. */
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px 12px;
   min-width: 0;
 }
 

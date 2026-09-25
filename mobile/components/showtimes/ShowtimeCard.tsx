@@ -234,16 +234,16 @@ function ShowtimeCard({
             <SubtitlesBadges subtitles={showtime.subtitles} variant="compact" />
           </View>
         </View>
+        {/* A screening you were invited to and haven't opened yet — on every
+            feed. Last, so it draws over the date column it sits in. */}
+        {showtime.viewer?.has_unseen_invite ? (
+          <View
+            style={styles.unseenInviteDot}
+            pointerEvents="none"
+            accessibilityLabel="New invite"
+          />
+        ) : null}
       </TouchableOpacity>
-      {/* A screening you were invited to and haven't opened yet — on every
-          feed. Outside the card, which clips: the dot sits over its corner. */}
-      {showtime.viewer?.has_unseen_invite ? (
-        <View
-          style={styles.unseenInviteDot}
-          pointerEvents="none"
-          accessibilityLabel="New invite"
-        />
-      ) : null}
     </View>
   );
 }
@@ -258,13 +258,11 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     unseenInviteDot: {
       position: "absolute",
-      top: -4,
-      right: -4,
-      width: 12,
-      height: 12,
-      borderRadius: 6,
-      borderWidth: 2,
-      borderColor: colors.background,
+      top: 6,
+      left: 6,
+      width: 10,
+      height: 10,
+      borderRadius: 5,
       backgroundColor: colors.notificationBadge,
     },
     cardGlowGoing: glowStyles.going,

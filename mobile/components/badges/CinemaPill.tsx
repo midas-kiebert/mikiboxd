@@ -17,7 +17,6 @@ import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
 import { useInheritFiltersParams } from "@/hooks/usePageFilters";
 import { useThemeColors } from "@/hooks/use-theme-color";
 import { getCinemaColorPalette } from "@/utils/cinema-color";
-import { FESTIVAL_TAG_TEXT, getCinemaPaletteKey } from "shared/cinemas/cinema-color";
 
 type CinemaPillProps = {
   cinema: CinemaPublic;
@@ -85,9 +84,6 @@ export default function CinemaPill({
   const cinemaBackground = cinemaPalette.primary;
   const cinemaText = cinemaPalette.secondary;
   const shownFestival = festival && festival.id !== cinema.id ? festival : null;
-  const festivalPalette = shownFestival
-    ? getCinemaColorPalette(shownFestival, colors)
-    : null;
 
   const isDisabled = disabledIfSameId !== undefined && cinema.id === disabledIfSameId;
 
@@ -116,23 +112,20 @@ export default function CinemaPill({
       >
         {cinema.name}
       </ThemedText>
-      {shownFestival && festivalPalette ? (
+      {/* In the cinema's own colours inverted, so the tag belongs to it. */}
+      {shownFestival ? (
         <View
           style={[
             styles.festivalTag,
             variant === "compact" ? styles.festivalTagCompact : null,
-            { backgroundColor: festivalPalette.secondary },
+            { backgroundColor: cinemaText },
           ]}
         >
           <ThemedText
             style={[
               styles.text,
               sizeStyles.text,
-              {
-                color:
-                  FESTIVAL_TAG_TEXT[getCinemaPaletteKey(shownFestival)] ??
-                  festivalPalette.primary,
-              },
+              { color: cinemaBackground },
             ]}
             numberOfLines={1}
           >

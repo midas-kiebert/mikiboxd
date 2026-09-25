@@ -17,28 +17,25 @@ const GROUPING_MINIMUM = 3;
  * Split cinemas into per-city sections, alphabetically, with the cities too
  * small to earn a section collected into one "other" bucket.
  *
- * Festivals and their venues (`kind` other than "cinema") are kept apart in
- * `festivals`: they come and go with the festival — the server only lists one
- * while it has screenings coming up — so they get a section of their own
- * rather than turning up among a city's cinemas. The festival itself first,
- * then its venues.
+ * Festivals themselves (`kind` "festival") are kept apart in `festivals`: a
+ * festival can span cities, and comes and goes with its dates. A festival
+ * venue (Volkshuis during LIFF) is a place in its city like any cinema, so it
+ * sits in its city's section — temporarily, since the server only lists a
+ * festival or venue while it has screenings coming up.
  */
 export function groupCinemas(cinemas: readonly CinemaPublic[]): {
   groupedCities: CityGroup[];
   ungrouped: CinemaPublic[];
   festivals: CinemaPublic[];
 } {
-  const isCinema = (cinema: CinemaPublic) => (cinema.kind ?? "cinema") === "cinema";
+  const isFestival = (cinema: CinemaPublic) => cinema.kind === "festival";
   const festivals = cinemas
-    .filter((cinema) => !isCinema(cinema))
-    .sort((a, b) => {
-      const aFestival = a.kind === "festival" ? 0 : 1;
-      const bFestival = b.kind === "festival" ? 0 : 1;
-      if (aFestival !== bFestival) return aFestival - bFestival;
-      return a.name.localeCompare(b.name);
-    });
+    .filter(isFestival)
+    .sort((a, b) => a.name.localeCompare(b.name));
   const groupedByCity = new Map<number, CityGroup>();
-  cinemas.filter(isCinema).forEach((cinema) => {
+  cinemas
+    .filter((cinema) => !isFestival(cinema))
+    .forEach((cinema) => {
     const existing = groupedByCity.get(cinema.city.id);
     if (existing) {
       existing.cinemas.push(cinema);

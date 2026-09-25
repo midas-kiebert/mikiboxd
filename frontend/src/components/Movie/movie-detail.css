@@ -244,12 +244,24 @@
   border-top: 1px dashed var(--mk-tear);
 }
 
-/* The feed row's own plate track. The row gap is the wider of the two because
-   friends stand ten pixels below their plate's bottom edge. */
+/* The same rules as a film row's plates: a standard width, grown by just
+   what a long label needs ("Filmhuis Den Haag LIFF"), never stretched to fill
+   the line. Unlike a row, a day wraps onto more lines. The row gap is the
+   wider of the two because friends stand ten pixels below their plate's
+   bottom edge. */
 .mp-day__plates {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 12px 5px;
+}
+
+.mp-day__plates .fc-plate {
+  flex: 0 0 auto;
+  min-width: 96px;
+}
+
+.mp-day__plates .fc-plate__label-name {
+  overflow: visible;
 }
 
 /* A plate drawn without its day line (`showDate={false}`) has nothing between

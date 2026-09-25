@@ -54,8 +54,6 @@
   --p-border: var(--chakra-colors-app-red\.border);
 }
 .mk-pal-liff {
-  /* `FESTIVAL_TAG_TEXT` in shared/cinemas/cinema-color.ts. */
-  --p-tag-text: #ffffff;
   --p-primary: var(--chakra-colors-app-liff\.primary);
   --p-secondary: var(--chakra-colors-app-liff\.secondary);
   --p-border: var(--chakra-colors-app-liff\.border);
@@ -208,9 +206,9 @@
   color: var(--p-secondary);
 }
 
-/* The festival inside a cinema tag: a badge in the badge, in the festival's
-   own palette at full strength, so it reads as a label on the cinema rather
-   than a second cinema. Same shape as on a film row's plate. */
+/* The festival inside a cinema tag: a badge in the badge, in the cinema's
+   own palette inverted, so it reads as a label on that cinema rather than a
+   second cinema. Same shape and colours as on a film row's plate. */
 .mk-tag__festival {
   flex-shrink: 0;
   /* Undoes the tag's own lopsided padding (2px top, 0 bottom), so the chip
@@ -219,7 +217,7 @@
   padding: 2px 3px 0;
   border-radius: 2px;
   background: var(--p-secondary);
-  color: var(--p-tag-text, var(--p-primary));
+  color: var(--p-primary);
   line-height: 1.3;
 }
 

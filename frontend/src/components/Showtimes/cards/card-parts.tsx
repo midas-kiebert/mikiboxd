@@ -287,17 +287,15 @@ export const Tag = ({
 
 /**
  * The festival a screening is part of, as a tag inside its cinema's tag
- * ("Trianon | LIFF"). Not drawn when the screening is placed at the festival
+ * ("Trianon | LIFF"), in the cinema's own colours inverted so it belongs to
+ * that badge. Not drawn when the screening is placed at the festival
  * itself (its hall is unknown): the cinema name already says it.
  */
 export const FestivalMark = ({ showtime }: { showtime: ShowtimePublic }) => {
   const { festival } = showtime
   if (!festival || festival.id === showtime.cinema.id) return null
   return (
-    <span
-      className={`mk-tag__festival ${paletteClass(getCinemaPaletteKey(festival))}`}
-      title={festival.name}
-    >
+    <span className="mk-tag__festival" title={festival.name}>
       {festival.name}
     </span>
   )

@@ -146,7 +146,7 @@
 }
 
 /* The festival a screening is part of ("Trianon LIFF"): a badge in the badge,
-   in the festival's own palette (its class is on this span). Never cut — the
+   in the cinema's own colours inverted. Never cut — the
    name gives way, and a plate whose label won't fit takes two columns
    (`plateSpan`). */
 .fc-plate__label-festival {
@@ -157,7 +157,7 @@
   padding: 1px 3px 0;
   border-radius: 2px;
   background: var(--p-secondary);
-  color: var(--p-tag-text, var(--p-primary));
+  color: var(--p-primary);
   line-height: 1.25;
   white-space: nowrap;
 }

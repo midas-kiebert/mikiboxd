@@ -241,11 +241,7 @@ export const Plate = ({
       <span className="fc-plate__label">
         <span className="fc-plate__label-name">{time.cinema.name}</span>
         {festival ? (
-          <span
-            className={`fc-plate__label-festival ${paletteClass(getCinemaPaletteKey(festival))}`}
-          >
-            {festival.name}
-          </span>
+          <span className="fc-plate__label-festival">{festival.name}</span>
         ) : null}
       </span>
       {showDate ? (

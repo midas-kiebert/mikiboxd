@@ -135,9 +135,14 @@ class LIFFScraper(BaseCinemaScraper):
         posts: list[dict[str, Any]] = []
         page = 1
         while True:
+            params: dict[str, str | int] = {
+                "per_page": PAGE_SIZE,
+                "page": page,
+                "_fields": fields,
+            }
             response = self.http.get(
                 f"{API}/{post_type}",
-                params={"per_page": PAGE_SIZE, "page": page, "_fields": fields},
+                params=params,
                 timeout=REQUEST_TIMEOUT_SECONDS,
             )
             response.raise_for_status()

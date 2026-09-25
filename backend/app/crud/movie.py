@@ -349,7 +349,7 @@ def get_upcoming_movies_without_poster(*, session: Session) -> list[Movie]:
     films with a screening ahead, which is where a missing poster shows.
     """
     upcoming = (
-        select(Showtime.id)
+        select(col(Showtime.id))
         .where(
             col(Showtime.movie_id) == col(Movie.id),
             col(Showtime.datetime) >= now_amsterdam_naive(),

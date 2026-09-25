@@ -2150,9 +2150,11 @@ export default function ShowtimeActionModal({
                     onNavigate={onClose}
                   />
                   <SubtitlesBadges subtitles={showtime.subtitles} />
-                  {/* A festival screening in a Cineville cinema that the pass
-                      doesn't cover. `=== false`: an older API sends no flag. */}
-                  {showtime.cineville_pass === false && showtime.cinema.cineville ? (
+                  {/* A festival screening the pass doesn't cover, wherever it
+                      plays (Volkshuis too). `=== false`: an older API sends
+                      no flag. */}
+                  {showtime.cineville_pass === false &&
+                  (showtime.festival || showtime.cinema.cineville) ? (
                     <View style={styles.noPassBadge}>
                       <ThemedText style={styles.noPassBadgeText}>No Cineville pass</ThemedText>
                     </View>

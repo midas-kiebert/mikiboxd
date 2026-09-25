@@ -42,7 +42,7 @@ import { useDayClock } from "@/features/showtimes/day-clock"
 import { useUnfilteredLinks } from "@/features/showtimes/unfiltered-links"
 import "@/components/Showtimes/cards/PortraitTicketCard.css"
 
-import { Plate } from "./FilmPlate"
+import { Plate, plateSpan } from "./FilmPlate"
 import {
   type FilmCardProps,
   FilmPoster,
@@ -221,8 +221,29 @@ const FilmRow = ({
   // them, so the "+N" tile below can take the last spot instead of pushing a
   // plate onto a second line. Never fewer than one plate, though: a row too
   // narrow for two slots still shows its next screening beside the tile.
-  const hasOverflow = times.length > slots
-  const shown = times.slice(0, hasOverflow ? Math.max(1, slots - 1) : slots)
+  //
+  // A plate with a long label takes two slots (`plateSpan`), so the line is
+  // filled by slots rather than by count — and a row with a single column
+  // has no second one to give it.
+  const spans = times.map((time) => (slots > 1 ? plateSpan(time) : 1))
+  const fitCount = (budget: number) => {
+    let used = 0
+    let count = 0
+    for (const span of spans) {
+      if (used + span > budget) break
+      used += span
+      count += 1
+    }
+    return count
+  }
+  const hasOverflow = fitCount(slots) < times.length
+  const shown = times.slice(
+    0,
+    hasOverflow ? Math.max(1, fitCount(slots - 1)) : times.length,
+  )
+  // The one plate a too-narrow row keeps beside the "+N" tile goes back to a
+  // single column (its name cut) rather than wrapping the row.
+  if (hasOverflow && fitCount(slots - 1) === 0) spans[0] = 1
   const hiddenCount = times.length - shown.length
   const counts = countsOf(movie)
   const until = runsUntilOf(movie)
@@ -283,12 +304,13 @@ const FilmRow = ({
             that is only short of room. */}
         {times.length ? (
           <div className="fr-film__plates" ref={platesRef}>
-            {shown.map((time) => (
+            {shown.map((time, index) => (
               <Plate
                 key={time.id}
                 time={time}
                 isSelected={time.id === selectedTimeId}
                 onSelect={onSelectTime}
+                span={spans[index]}
               />
             ))}
             {hiddenCount > 0 ? (

@@ -2150,6 +2150,13 @@ export default function ShowtimeActionModal({
                     onNavigate={onClose}
                   />
                   <SubtitlesBadges subtitles={showtime.subtitles} />
+                  {/* A festival screening in a Cineville cinema that the pass
+                      doesn't cover. `=== false`: an older API sends no flag. */}
+                  {showtime.cineville_pass === false && showtime.cinema.cineville ? (
+                    <View style={styles.noPassBadge}>
+                      <ThemedText style={styles.noPassBadgeText}>No Cineville pass</ThemedText>
+                    </View>
+                  ) : null}
                 </View>
               </View>
               {/* Friends' Letterboxd relationship to this film — deliberately just
@@ -3122,6 +3129,24 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     dateText: { fontSize: 12.5, fontWeight: "600", color: colors.text, marginTop: -4 },
     timeText: { fontSize: 12.5, color: colors.textSecondary, marginTop: -4 },
     cinemaBadgeRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+    // Same shape and tone as the subtitle badges beside it.
+    noPassBadge: {
+      minHeight: 18,
+      paddingTop: 2,
+      paddingBottom: 0,
+      paddingHorizontal: 6,
+      borderRadius: 3,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: colors.surfaceMuted,
+    },
+    noPassBadgeText: {
+      includeFontPadding: false,
+      fontSize: 11,
+      lineHeight: 12,
+      fontWeight: "600",
+      color: colors.textSecondary,
+    },
     moreInfoLink: {
       flexDirection: "row",
       alignItems: "center",

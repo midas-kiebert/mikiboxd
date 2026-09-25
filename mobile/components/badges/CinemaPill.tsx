@@ -166,7 +166,10 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     compactContainer: {
       borderRadius: 3,
       minHeight: 14,
-      paddingVertical: 1,
+      // A pixel more above than below: the name has no descenders, so centred
+      // on its line box the ink sat high.
+      paddingTop: 2,
+      paddingBottom: 0,
       paddingHorizontal: 5,
     },
     compactText: {
@@ -175,7 +178,8 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     defaultContainer: {
       minHeight: 18,
-      paddingVertical: 1,
+      paddingTop: 2,
+      paddingBottom: 0,
       paddingHorizontal: 6,
     },
     defaultText: {

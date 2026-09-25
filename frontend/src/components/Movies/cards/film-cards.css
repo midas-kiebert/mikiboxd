@@ -139,22 +139,25 @@
   /* A no-descender word (most cinema names) leaves its line-box's descender
      space empty below the letters, which flex-centering still splits evenly —
      so the *ink* ends up sitting above centre. Nudged down to compensate. */
-  transform: translateY(1px);
+  transform: translateY(1.5px);
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* The festival a screening is part of ("Trianon LIFF"), in the cinema's own
-   colours inverted: a label on the venue, never cut — the name gives way. */
+/* The festival a screening is part of ("Trianon LIFF"): a badge in the badge,
+   in the festival's own palette (its class is on this span). Never cut — the
+   name gives way, and a plate whose label won't fit takes two columns
+   (`plateSpan`). */
 .fc-plate__label-festival {
   flex-shrink: 0;
   margin-left: 3px;
-  padding: 0 3px;
+  /* The text a pixel low, like the name beside it — by padding, so the chip
+     itself stays centred on the band. */
+  padding: 1px 3px 0;
   border-radius: 2px;
   background: var(--p-secondary);
   color: var(--p-primary);
-  transform: translateY(1px);
   line-height: 1.25;
   white-space: nowrap;
 }

@@ -159,15 +159,45 @@ const PlateFaces = ({
   )
 }
 
+/**
+ * The festival shown on a plate's label, if any. None where the screening is
+ * placed at the festival itself (its hall unknown): the name already says it.
+ */
+const labelFestival = (time: FilmTime) => {
+  const { festival } = time.showtime
+  return festival && festival.id !== time.cinema.id ? festival : null
+}
+
+/**
+ * How many characters of label a one-column plate holds before its name is
+ * cut. Counted rather than measured: a row lays its plates out once, from the
+ * data, and measuring would mean rendering every plate twice.
+ */
+const ONE_COLUMN_LABEL_CHARS = 15
+
+/**
+ * Grid columns a plate takes in a film row: two where its label (the cinema,
+ * plus the festival tag) would not fit one — "Filmhuis Den Haag LIFF" — so
+ * the name is shown whole rather than cut.
+ */
+export const plateSpan = (time: FilmTime): 1 | 2 => {
+  const festival = labelFestival(time)
+  const chars = time.cinema.name.length + (festival ? festival.name.length + 2 : 0)
+  return chars > ONE_COLUMN_LABEL_CHARS ? 2 : 1
+}
+
 export const Plate = ({
   time,
   isSelected,
   onSelect,
   showDate = true,
+  span = 1,
 }: {
   time: FilmTime
   isSelected: boolean
   onSelect?: (time: FilmTime) => void
+  /** Grid columns to take — see `plateSpan`. */
+  span?: 1 | 2
   /**
    * False where something above the plate already says which day it is — the
    * film page groups its run under day headings, and a plate repeating
@@ -176,6 +206,7 @@ export const Plate = ({
   showDate?: boolean
 }) => {
   const people = audienceOfTime(time.showtime)
+  const festival = labelFestival(time)
   const mine = time.showtime.viewer?.going
   const tone =
     mine === "GOING"
@@ -194,13 +225,15 @@ export const Plate = ({
       className={`fc-plate ${paletteClass(getCinemaPaletteKey(time.cinema))}${tone}${
         isSelected ? " fc-plate--on" : ""
       }`}
+      style={span > 1 ? { gridColumn: `span ${span}` } : undefined}
     >
       <span className="fc-plate__label">
         <span className="fc-plate__label-name">{time.cinema.name}</span>
-        {time.showtime.festival &&
-        time.showtime.festival.id !== time.cinema.id ? (
-          <span className="fc-plate__label-festival">
-            {time.showtime.festival.name}
+        {festival ? (
+          <span
+            className={`fc-plate__label-festival ${paletteClass(getCinemaPaletteKey(festival))}`}
+          >
+            {festival.name}
           </span>
         ) : null}
       </span>

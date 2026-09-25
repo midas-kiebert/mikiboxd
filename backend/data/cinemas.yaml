@@ -655,7 +655,7 @@
   aliases: ["LIFF", "Leiden International Film Festival"]
   city: Leiden
   cineville: true
-  badge_bg_color: "red"
+  badge_bg_color: "liff"
   url: "https://www.liff.nl"
   kind: festival
 

@@ -13,7 +13,8 @@
  */
 import type { CinemaPublic } from "../client";
 
-export const CINEMA_PALETTE_KEYS = [
+/** The general-purpose accents: what an unconfigured cinema's name hashes into. */
+const GENERAL_PALETTE_KEYS = [
   "pink",
   "purple",
   "green",
@@ -24,6 +25,13 @@ export const CINEMA_PALETTE_KEYS = [
   "red",
   "cyan",
 ] as const;
+
+/**
+ * Plus the brand colours a festival is given by name in cinemas.yaml. Kept
+ * out of the hash, so no unconfigured venue ever lands on a brand's colour
+ * and adding one doesn't reshuffle every hashed venue's colour.
+ */
+export const CINEMA_PALETTE_KEYS = [...GENERAL_PALETTE_KEYS, "liff"] as const;
 
 export type CinemaPaletteKey = (typeof CINEMA_PALETTE_KEYS)[number];
 
@@ -39,5 +47,5 @@ export function getCinemaPaletteKey(
   const hash = cinema.name
     .split("")
     .reduce((accumulator, char) => accumulator * 31 + char.charCodeAt(0), 0);
-  return CINEMA_PALETTE_KEYS[Math.abs(hash) % CINEMA_PALETTE_KEYS.length];
+  return GENERAL_PALETTE_KEYS[Math.abs(hash) % GENERAL_PALETTE_KEYS.length];
 }

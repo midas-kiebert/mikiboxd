@@ -33,6 +33,7 @@ const SCALE_KEYS = [
   "red",
   "redHot",
   "redDeep",
+  "liff",
   "gray",
   "cyan",
   "friendGoing",

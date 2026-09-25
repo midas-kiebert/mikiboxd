@@ -127,7 +127,9 @@ const HeaderBadge = ({
   <Flex
     align="center"
     px="6px"
-    py="1px"
+    // A pixel more above than below: centred on its line box, the ink sat high.
+    pt="2px"
+    pb="0"
     borderRadius="3px"
     borderWidth="1px"
     borderColor={borderColor ?? "transparent"}
@@ -335,6 +337,16 @@ const ShowtimeDetailHeader = ({ showtime }: ShowtimeDetailHeaderProps) => {
                   {showtime.festival.name}
                 </HeaderBadge>
               </a>
+            ) : null}
+
+            {/* Only where it says something the cinema doesn't: a festival
+                screening in a Cineville cinema that the pass doesn't cover
+                (at LIFF, everything outside the competitions). `=== false`
+                on purpose — an older API sends no flag at all. */}
+            {showtime.cineville_pass === false && showtime.cinema.cineville ? (
+              <HeaderBadge bg="app.surfaceMuted" color="fg.muted">
+                No Cineville pass
+              </HeaderBadge>
             ) : null}
 
             {showtime.room ? (

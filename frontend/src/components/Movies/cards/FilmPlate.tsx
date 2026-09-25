@@ -173,7 +173,9 @@ const labelFestival = (time: FilmTime) => {
  * cut. Counted rather than measured: a row lays its plates out once, from the
  * data, and measuring would mean rendering every plate twice.
  */
-const ONE_COLUMN_LABEL_CHARS = 15
+// "Filmhuis Den Haag" (17) is the longest name that has to fit, and does;
+// the festival tag's own padding counts as two more characters.
+const ONE_COLUMN_LABEL_CHARS = 18
 
 /**
  * Grid columns a plate takes in a film row: two where its label (the cinema,

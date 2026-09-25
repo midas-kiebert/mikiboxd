@@ -244,6 +244,12 @@ const FilmRow = ({
   // The one plate a too-narrow row keeps beside the "+N" tile goes back to a
   // single column (its name cut) rather than wrapping the row.
   if (hasOverflow && fitCount(slots - 1) === 0) spans[0] = 1
+  // What the plates leave of the line goes to the "+N" tile, so a two-column
+  // plate that didn't fit leaves no hole before it.
+  const moreSpan = Math.max(
+    1,
+    slots - shown.reduce((used, _, index) => used + spans[index], 0),
+  )
   const hiddenCount = times.length - shown.length
   const counts = countsOf(movie)
   const until = runsUntilOf(movie)
@@ -319,6 +325,9 @@ const FilmRow = ({
                 params={{ movieId: `${movie.id}` }}
                 search={links.filmSearch() as never}
                 className="fc-plate fc-plate--more"
+                style={
+                  moreSpan > 1 ? { gridColumn: `span ${moreSpan}` } : undefined
+                }
                 title={`${hiddenCount} more screening${hiddenCount === 1 ? "" : "s"} on the film's page`}
               >
                 <span className="fc-plate__more-num">+{hiddenCount}</span>

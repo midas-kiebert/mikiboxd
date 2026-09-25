@@ -211,8 +211,10 @@
    than a second cinema. Same shape as on a film row's plate. */
 .mk-tag__festival {
   flex-shrink: 0;
-  margin: -1px -3px 1px 5px;
-  padding: 1px 3px 0;
+  /* Undoes the tag's own lopsided padding (2px top, 0 bottom), so the chip
+     sits centred in the tag; its text gets the same pixel-low nudge inside. */
+  margin: -2px -3px 0 5px;
+  padding: 2px 3px 0;
   border-radius: 2px;
   background: var(--p-secondary);
   color: var(--p-primary);

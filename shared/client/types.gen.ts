@@ -865,6 +865,7 @@ export type ShowtimeInMoviePublic = {
   tmdb_cache_id?: number | null
   festival_id?: number | null
   cineville_pass?: boolean
+  cineville_surcharge_cents?: number | null
   id: number
   cinema: CinemaPublic
   viewer?: ShowtimeInMovieViewerState | null
@@ -975,6 +976,7 @@ export type ShowtimePublic = {
   tmdb_cache_id?: number | null
   festival_id?: number | null
   cineville_pass?: boolean
+  cineville_surcharge_cents?: number | null
   id: number
   movie: MovieInShowtime
   cinema: CinemaPublic

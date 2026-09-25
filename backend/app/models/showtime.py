@@ -104,6 +104,11 @@ class Showtime(ShowtimeBase, table=True):
     # under-reads, which makes the "nearly full" test fire late, never early.
     seats_capacity: int | None = None
     seats_checked_at: dt.datetime | None = None
+    # What a Cineville pass holder pays on top of the pass, in cents, read by
+    # the same poller off the ticket shop's price list (Eye charges e.g. €5
+    # for a live-music screening). None means the shop has not said — never
+    # "free" — and a reading that finds no Cineville price leaves it alone.
+    cineville_surcharge_cents: int | None = None
     # The fullest level this screening has ever reached, which is a floor its
     # displayed level never drops below. A capacity that grows (a better reading,
     # or the room's total learned from a sibling screening) makes an unchanged

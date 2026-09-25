@@ -139,6 +139,11 @@ class SeatAvailability:
     # "nothing is taken". Persisted alongside the count so the seat picker can
     # be served from the database — see `services/seat_floor_plan.py`.
     taken_seats: tuple[TakenSeat, ...] | None = None
+    # What a Cineville pass holder pays on top of the pass, in cents, off the
+    # shop's own price list (only Z-ELITE lists one). `None` means the page
+    # listed no Cineville ticket — never "no pass": a shop may simply not
+    # offer it online.
+    cineville_surcharge_cents: int | None = None
 
     @property
     def is_known(self) -> bool:
@@ -189,6 +194,13 @@ _ZELITE_SOLD_OUT_LABEL = re.compile(
 )
 # "vr 11 september 2026, 21:30 - LAB 1" / "Wed 26 August 2026, 20:15 - Cinema 1".
 # Anchored on the start time so a room whose own name contains " - " survives.
+# The Cineville row of the price list: its label cell, then the price span
+# ("<td class="badge-type-label">Cineville</td><td>€ <span ...>5,00</span>").
+_ZELITE_CINEVILLE_PRICE = re.compile(
+    r'class="badge-type-label">\s*Cineville\s*</td>\s*<td[^>]*>[^<]*'
+    r"<span[^>]*class='badge_type_price'>(\d+),(\d{2})<",
+    re.IGNORECASE,
+)
 _ZELITE_ROOM = re.compile(r"id='show-starts-at'>[^<]*?,\s*\d{1,2}:\d{2}\s*-\s*([^<]+)<")
 
 
@@ -203,13 +215,27 @@ def parse_zelite_room(html: str) -> str | None:
     return normalize_room(match.group(1) if match else None)
 
 
+def parse_zelite_cineville_surcharge(html: str) -> int | None:
+    """The Cineville ticket's price in cents, or None when none is listed."""
+    match = _ZELITE_CINEVILLE_PRICE.search(html)
+    if match is None:
+        return None
+    return int(match.group(1)) * 100 + int(match.group(2))
+
+
 def _fetch_zelite(url: str, _feed_cache: EagerlyFeedCache) -> SeatAvailability:
     html = _get(url).text
     room = parse_zelite_room(html)
 
     quantity_maxima = [int(value) for value in _ZELITE_QUANTITY_MAX.findall(html)]
     if quantity_maxima:
-        return SeatAvailability(max(quantity_maxima), False, room, "z-elite")
+        return SeatAvailability(
+            max(quantity_maxima),
+            False,
+            room,
+            "z-elite",
+            cineville_surcharge_cents=parse_zelite_cineville_surcharge(html),
+        )
     if _ZELITE_SOLD_OUT_LABEL.search(html):
         return SeatAvailability(0, True, room, "z-elite")
     # No order form and no sold-out label: the show id no longer resolves (the

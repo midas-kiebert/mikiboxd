@@ -72,6 +72,7 @@ import {
   type UserWithFriendStatus,
   type VisibilityMode,
 } from "shared";
+import { cinevilleSurchargeLabel } from "shared/cineville/surcharge";
 import useAuth from "shared/hooks/useAuth";
 import { useFetchFriends } from "shared/hooks/useFetchFriends";
 import {
@@ -1528,6 +1529,17 @@ export default function ShowtimeActionModal({
 
   // Truthy only once storage has been read and holds a card.
   const hasCinevilleCard = Boolean(useCinevilleCardDigits());
+  // The Get ticket row's warning. A festival screening the pass doesn't cover
+  // (at LIFF, all but the competitions), wherever it plays — said here, before
+  // the ticket shop does. Else, what the pass costs on top here (Eye's
+  // live-music screenings), which is moot where there's no pass at all. Only
+  // with a saved card: to anyone else it says nothing. `=== false`: an older
+  // API sends no flag.
+  const ticketWarning = !hasCinevilleCard || !showtime
+    ? null
+    : showtime.cineville_pass === false && (showtime.festival || showtime.cinema.cineville)
+      ? "No Cineville pass"
+      : cinevilleSurchargeLabel(showtime.cineville_surcharge_cents);
   const handleOpenTicketLink = async () => {
     const ticketLink = showtime?.ticket_link;
     if (!ticketLink) return;
@@ -2507,17 +2519,10 @@ export default function ShowtimeActionModal({
                       accessible={false}
                     />
                     <ThemedText style={styles.seatInfoTicketText}>Get ticket</ThemedText>
-                    {/* A festival screening the pass doesn't cover (at LIFF,
-                        all but the competitions), wherever it plays — said here,
-                        before the ticket shop does. Only with a saved card: to
-                        anyone else it says nothing. `=== false`: an older API
-                        sends no flag. */}
-                    {hasCinevilleCard &&
-                    showtime.cineville_pass === false &&
-                    (showtime.festival || showtime.cinema.cineville) ? (
+                    {ticketWarning ? (
                       <View style={styles.noPassWarning}>
                         <MaterialIcons name="warning" size={12} color={colors.yellow.secondary} />
-                        <ThemedText style={styles.noPassWarningText}>No Cineville pass</ThemedText>
+                        <ThemedText style={styles.noPassWarningText}>{ticketWarning}</ThemedText>
                       </View>
                     ) : null}
                     <MaterialIcons name="chevron-right" size={18} color={colors.tint} />

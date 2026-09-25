@@ -1133,6 +1133,10 @@ def _apply_reading(
     room_key = availability.room_key or availability.room
     if room_key is not None:
         showtime.room_key = room_key
+    # Same rule: a page that listed no Cineville price (sales closed, show
+    # gone) says nothing about whether one applies.
+    if availability.cineville_surcharge_cents is not None:
+        showtime.cineville_surcharge_cents = availability.cineville_surcharge_cents
 
     # A manual entry in `seat_capacity_overrides.yaml` is the room's size,
     # full stop. Cinemas almost never change how many seats a room has, and

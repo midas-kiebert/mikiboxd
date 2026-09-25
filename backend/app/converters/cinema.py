@@ -30,3 +30,14 @@ def cineville_pass(showtime: Showtime) -> bool:
     if showtime.cineville_pass is not None:
         return showtime.cineville_pass
     return showtime.cinema.cineville
+
+
+def cineville_surcharge_cents(showtime: Showtime) -> int | None:
+    """The extra a pass holder pays, only where the pass applies at all.
+
+    A screening the pass doesn't cover shows "No Cineville pass" instead, and
+    a surcharge on top of that would say nothing.
+    """
+    if not cineville_pass(showtime):
+        return None
+    return showtime.cineville_surcharge_cents

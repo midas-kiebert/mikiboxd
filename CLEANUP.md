@@ -748,6 +748,7 @@ Legend:
 - [x] `movies/language.ts` — ISO-639-1 code to a spoken-language name, for `movie.original_language`. Shared so a film is not "Nederlands" on one client and "Dutch" on the other (moved out of `mobile/utils/language.ts`, which now wraps it)
 - [x] `movies/synthetic-movie.ts` — Listings with no TMDB counterpart (currently just the sneak preview, whose film the cinemas keep secret) use negative ids and show their unknown metadata as "???". Mirrors `is_synthetic_movie_id` in the backend; shared because the placeholder is wording, and two clients writing it differently is two products (moved out of `mobile/constants/synthetic-movies.ts`, which now wraps it)
 - [x] `cinemas/cinema-color.ts` — Which palette entry a cinema's accent is. `badge_bg_color` is a palette *key*, not a colour, and both clients hold the same palette — resolving it in one place is what keeps a venue the same colour in the app's pill, the website's badge and the header of its own page. The name-hash fallback is shared too, so a cinema with no key configured is not a different colour on each client (moved out of `mobile/utils/cinema-color.ts`, which now wraps it)
+- [ ] `cineville/surcharge.ts` — "+€5,00" for a Cineville screening that costs extra on top of the pass (`showtime.cineville_surcharge_cents`, read off the Z-ELITE price list by the seat poller). Shared so both clients' Get ticket rows say it the same way (created 2026-09-25)
 
 ---
 

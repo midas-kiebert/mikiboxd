@@ -462,11 +462,12 @@ def to_public(
         )
 
     return ShowtimePublic(
-        **showtime.model_dump(exclude={"cineville_pass"}),
+        **showtime.model_dump(exclude={"cineville_pass", "cineville_surcharge_cents"}),
         festival=cinema_converters.festival_to_public(
             session=session, showtime=showtime
         ),
         cineville_pass=cinema_converters.cineville_pass(showtime),
+        cineville_surcharge_cents=cinema_converters.cineville_surcharge_cents(showtime),
         movie=movie,
         cinema=cinema,
         viewer=viewer,
@@ -515,11 +516,12 @@ def to_in_movie_public(
         )
 
     return ShowtimeInMoviePublic(
-        **showtime.model_dump(exclude={"cineville_pass"}),
+        **showtime.model_dump(exclude={"cineville_pass", "cineville_surcharge_cents"}),
         festival=cinema_converters.festival_to_public(
             session=session, showtime=showtime
         ),
         cineville_pass=cinema_converters.cineville_pass(showtime),
+        cineville_surcharge_cents=cinema_converters.cineville_surcharge_cents(showtime),
         cinema=cinema,
         seat_availability=seat_availability_service.to_public(showtime),
         viewer=viewer,

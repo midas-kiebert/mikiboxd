@@ -155,6 +155,9 @@ class ShowtimePublic(ShowtimeBase):
     # cinema — use this rather than `cinema.cineville`, which a festival
     # overrides per screening.
     cineville_pass: bool = False
+    # What a Cineville pass holder pays on top of the pass, in cents, when the
+    # ticket shop lists one; None when unknown or when the pass doesn't apply.
+    cineville_surcharge_cents: int | None = None
 
     # --- LEGACY_VIEWER_FIELDS: delete this whole block with the shim ---
     @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362
@@ -235,6 +238,9 @@ class ShowtimeInMoviePublic(ShowtimeBase):
     # cinema — use this rather than `cinema.cineville`, which a festival
     # overrides per screening.
     cineville_pass: bool = False
+    # What a Cineville pass holder pays on top of the pass, in cents, when the
+    # ticket shop lists one; None when unknown or when the pass doesn't apply.
+    cineville_surcharge_cents: int | None = None
 
     # --- LEGACY_VIEWER_FIELDS: delete this whole block with the shim ---
     @computed_field(deprecated=LEGACY_VIEWER_FIELD)  # type: ignore[prop-decorator]  # known mypy false positive: python/mypy#1362

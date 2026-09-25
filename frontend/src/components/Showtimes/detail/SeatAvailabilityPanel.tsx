@@ -33,6 +33,7 @@ import { Box, Flex, Image, Input, Spinner, Text } from "@chakra-ui/react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { type ReactNode, useEffect, useState } from "react"
 import type { ShowtimePublic } from "shared"
+import { cinevilleSurchargeLabel } from "shared/cineville/surcharge"
 import { MeService, ShowtimesService } from "shared/client"
 import type { ShowtimeSeatAvailabilityPublic } from "shared/client"
 import {
@@ -182,6 +183,33 @@ type SeatAvailabilityPanelProps = {
   showtime: ShowtimePublic
 }
 
+/** A yellow chip on the Get ticket row: "No Cineville pass", "+€5,00". */
+const TicketRowWarning = ({ children }: { children: ReactNode }) => (
+  <Flex
+    align="center"
+    gap="3px"
+    flexShrink={0}
+    px="6px"
+    pt="2px"
+    pb="1px"
+    borderRadius="3px"
+    bg="app.yellow.primary"
+    color="app.yellow.secondary"
+    fontSize="11px"
+    fontWeight="700"
+    lineHeight="1.4"
+  >
+    <Box
+      as={PanelIcon.warning}
+      boxSize="12px"
+      position="relative"
+      top="-1px"
+      aria-hidden
+    />
+    {children}
+  </Flex>
+)
+
 const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
   // Read flow: prepare derived values/handlers first, then return component JSX.
   const showtimeId = showtime.id
@@ -293,6 +321,18 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
   const showSeatRow = showtime.viewer?.going === "GOING" && seating !== "free"
   const hasTicketLink = Boolean(showtime.ticket_link)
   const hasCinevilleCard = useCinevilleCardDigits() !== null
+  // The Get ticket row's warning. A festival screening the pass doesn't cover
+  // (at LIFF, all but the competitions), wherever it plays — where you'd
+  // otherwise find out at the ticket shop. Else, what the pass costs on top
+  // here (Eye's live-music screenings), which is moot where there's no pass
+  // at all. Only for someone with a saved Cineville card: to anyone else it
+  // says nothing. `=== false` on purpose: an older API sends no flag at all.
+  const ticketWarning = !hasCinevilleCard
+    ? null
+    : showtime.cineville_pass === false &&
+        (showtime.festival || showtime.cinema.cineville)
+      ? "No Cineville pass"
+      : cinevilleSurchargeLabel(showtime.cineville_surcharge_cents)
 
   if (!showBusyness && !hasTicketLink && !showSeatRow) return null
 
@@ -628,37 +668,8 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
             >
               Get ticket
             </Text>
-            {/* A festival screening the pass doesn't cover (at LIFF, all
-                but the competitions), wherever it plays — where you'd
-                otherwise find out at the ticket shop. Only for someone with a
-                saved Cineville card: to anyone else it says nothing. `=== false`
-                on purpose: an older API sends no flag at all. */}
-            {hasCinevilleCard &&
-            showtime.cineville_pass === false &&
-            (showtime.festival || showtime.cinema.cineville) ? (
-              <Flex
-                align="center"
-                gap="3px"
-                flexShrink={0}
-                px="6px"
-                pt="2px"
-                pb="1px"
-                borderRadius="3px"
-                bg="app.yellow.primary"
-                color="app.yellow.secondary"
-                fontSize="11px"
-                fontWeight="700"
-                lineHeight="1.4"
-              >
-                <Box
-                  as={PanelIcon.warning}
-                  boxSize="12px"
-                  position="relative"
-                  top="-1px"
-                  aria-hidden
-                />
-                No Cineville pass
-              </Flex>
+            {ticketWarning ? (
+              <TicketRowWarning>{ticketWarning}</TicketRowWarning>
             ) : null}
             <Box
               as={PanelIcon.chevronRight}

@@ -2150,15 +2150,7 @@ export default function ShowtimeActionModal({
                     onNavigate={onClose}
                   />
                   <SubtitlesBadges subtitles={showtime.subtitles} />
-                  {/* A festival screening the pass doesn't cover, wherever it
-                      plays (Volkshuis too). `=== false`: an older API sends
-                      no flag. */}
-                  {showtime.cineville_pass === false &&
-                  (showtime.festival || showtime.cinema.cineville) ? (
-                    <View style={styles.noPassBadge}>
-                      <ThemedText style={styles.noPassBadgeText}>No Cineville pass</ThemedText>
-                    </View>
-                  ) : null}
+
                 </View>
               </View>
               {/* Friends' Letterboxd relationship to this film — deliberately just
@@ -2513,6 +2505,17 @@ export default function ShowtimeActionModal({
                       accessible={false}
                     />
                     <ThemedText style={styles.seatInfoTicketText}>Get ticket</ThemedText>
+                    {/* A festival screening the pass doesn't cover (at LIFF,
+                        all but the competitions), wherever it plays — said here,
+                        before the ticket shop does. `=== false`: an older API
+                        sends no flag. */}
+                    {showtime.cineville_pass === false &&
+                    (showtime.festival || showtime.cinema.cineville) ? (
+                      <View style={styles.noPassWarning}>
+                        <MaterialIcons name="warning" size={12} color={colors.yellow.secondary} />
+                        <ThemedText style={styles.noPassWarningText}>No Cineville pass</ThemedText>
+                      </View>
+                    ) : null}
                     <MaterialIcons name="chevron-right" size={18} color={colors.tint} />
                   </TouchableOpacity>
                 ) : null}
@@ -3131,23 +3134,24 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     dateText: { fontSize: 12.5, fontWeight: "600", color: colors.text, marginTop: -4 },
     timeText: { fontSize: 12.5, color: colors.textSecondary, marginTop: -4 },
     cinemaBadgeRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-    // Same shape and tone as the subtitle badges beside it.
-    noPassBadge: {
+    // Yellow: a warning about the ticket, on the ticket row.
+    noPassWarning: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 3,
       minHeight: 18,
       paddingTop: 2,
-      paddingBottom: 0,
+      paddingBottom: 1,
       paddingHorizontal: 6,
       borderRadius: 3,
-      justifyContent: "center",
-      alignItems: "center",
-      backgroundColor: colors.surfaceMuted,
+      backgroundColor: colors.yellow.primary,
     },
-    noPassBadgeText: {
+    noPassWarningText: {
       includeFontPadding: false,
       fontSize: 11,
       lineHeight: 12,
-      fontWeight: "600",
-      color: colors.textSecondary,
+      fontWeight: "700",
+      color: colors.yellow.secondary,
     },
     moreInfoLink: {
       flexDirection: "row",

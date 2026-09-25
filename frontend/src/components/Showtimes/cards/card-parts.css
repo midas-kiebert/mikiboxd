@@ -211,14 +211,18 @@
    second cinema. Same shape and colours as on a film row's plate. */
 .mk-tag__festival {
   flex-shrink: 0;
-  /* Undoes the tag's own lopsided padding (2px top, 0 bottom), so the chip
-     sits centred in the tag; its text gets the same pixel-low nudge inside. */
-  margin: -2px -3px 0 5px;
-  padding: 2px 3px 0;
+  /* Clear of the tag's top and bottom edges alike. The tag's own padding is
+     lopsided (2px top, 0 bottom, to set its text a pixel low), which would
+     put a centred chip a pixel low too — `top: -1px` takes that back. */
+  position: relative;
+  top: -1px;
+  align-self: center;
+  margin: 0 -3px 0 5px;
+  padding: 1px 3px 0;
   border-radius: 2px;
   background: var(--p-secondary);
   color: var(--p-primary);
-  line-height: 1.3;
+  line-height: 1.15;
 }
 
 .mk-tag--xs .mk-tag__festival {

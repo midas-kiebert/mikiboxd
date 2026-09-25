@@ -154,7 +154,10 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
       includeFontPadding: false,
       flexShrink: 0,
     },
+    // Centred with room above and below, clear of the pill's edges.
     festivalTag: {
+      alignSelf: "center",
+      marginVertical: 1,
       marginLeft: 4,
       marginRight: -3,
       borderRadius: 2,

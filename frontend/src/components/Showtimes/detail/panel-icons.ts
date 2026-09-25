@@ -47,6 +47,7 @@ import {
   MdTune,
   MdVisibility,
   MdVisibilityOff,
+  MdWarning,
   MdWhatshot,
 } from "react-icons/md"
 
@@ -91,6 +92,7 @@ export const PanelIcon = {
   shareLink: FiLink,
   tune: MdTune,
   visibilityOff: MdVisibilityOff,
+  warning: MdWarning,
 } as const
 
 /** The glyph `shared/showtimes/seat-availability-level` names, for the web. */

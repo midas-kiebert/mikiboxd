@@ -345,18 +345,6 @@ const ShowtimeDetailHeader = ({ showtime }: ShowtimeDetailHeaderProps) => {
               </a>
             ) : null}
 
-            {/* A festival screening the pass doesn't cover (at LIFF,
-                everything outside the competitions), wherever it plays — a
-                festival venue like Volkshuis included. Outside festivals only
-                where it contradicts a Cineville cinema. `=== false` on
-                purpose: an older API sends no flag at all. */}
-            {showtime.cineville_pass === false &&
-            (showtime.festival || showtime.cinema.cineville) ? (
-              <HeaderBadge bg="app.surfaceMuted" color="fg.muted">
-                No Cineville pass
-              </HeaderBadge>
-            ) : null}
-
             {showtime.room ? (
               <HeaderBadge bg="app.surfaceMuted" color="fg.muted">
                 {showtime.room}

@@ -152,13 +152,14 @@
 .fc-plate__label-festival {
   flex-shrink: 0;
   margin-left: 3px;
-  /* The text a pixel low, like the name beside it — by padding, so the chip
-     itself stays centred on the band. */
+  /* Centred on the band with room above and below; the text a pixel low, like
+     the name beside it — by padding, so the chip itself stays centred. */
+  align-self: center;
   padding: 1px 3px 0;
+  line-height: 1.1;
   border-radius: 2px;
   background: var(--p-secondary);
   color: var(--p-primary);
-  line-height: 1.25;
   white-space: nowrap;
 }
 

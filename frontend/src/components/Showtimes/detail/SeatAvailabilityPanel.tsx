@@ -624,6 +624,36 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
             >
               Get ticket
             </Text>
+            {/* A festival screening the pass doesn't cover (at LIFF, all
+                but the competitions), wherever it plays — where you'd
+                otherwise find out at the ticket shop. `=== false` on purpose:
+                an older API sends no flag at all. */}
+            {showtime.cineville_pass === false &&
+            (showtime.festival || showtime.cinema.cineville) ? (
+              <Flex
+                align="center"
+                gap="3px"
+                flexShrink={0}
+                px="6px"
+                pt="2px"
+                pb="1px"
+                borderRadius="3px"
+                bg="app.yellow.primary"
+                color="app.yellow.secondary"
+                fontSize="11px"
+                fontWeight="700"
+                lineHeight="1.4"
+              >
+                <Box
+                  as={PanelIcon.warning}
+                  boxSize="12px"
+                  position="relative"
+                  top="-1px"
+                  aria-hidden
+                />
+                No Cineville pass
+              </Flex>
+            ) : null}
             <Box
               as={PanelIcon.chevronRight}
               boxSize="18px"

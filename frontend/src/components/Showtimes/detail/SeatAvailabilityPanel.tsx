@@ -65,7 +65,10 @@ import {
   PanelIcon,
   SEAT_LEVEL_ICON,
 } from "@/components/Showtimes/detail/panel-icons"
-import { copyCinevilleCardForTicketLink } from "@/features/cineville/cineville-card"
+import {
+  copyCinevilleCardForTicketLink,
+  useCinevilleCardDigits,
+} from "@/features/cineville/cineville-card"
 import { putShowtimeInFeeds } from "@/features/showtimes/showtime-cache"
 import { useShowtimeSelection } from "@/features/showtimes/useShowtimeSelection"
 import useCustomToast from "@/hooks/useCustomToast"
@@ -289,6 +292,7 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
   )
   const showSeatRow = showtime.viewer?.going === "GOING" && seating !== "free"
   const hasTicketLink = Boolean(showtime.ticket_link)
+  const hasCinevilleCard = useCinevilleCardDigits() !== null
 
   if (!showBusyness && !hasTicketLink && !showSeatRow) return null
 
@@ -626,9 +630,11 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
             </Text>
             {/* A festival screening the pass doesn't cover (at LIFF, all
                 but the competitions), wherever it plays — where you'd
-                otherwise find out at the ticket shop. `=== false` on purpose:
-                an older API sends no flag at all. */}
-            {showtime.cineville_pass === false &&
+                otherwise find out at the ticket shop. Only for someone with a
+                saved Cineville card: to anyone else it says nothing. `=== false`
+                on purpose: an older API sends no flag at all. */}
+            {hasCinevilleCard &&
+            showtime.cineville_pass === false &&
             (showtime.festival || showtime.cinema.cineville) ? (
               <Flex
                 align="center"

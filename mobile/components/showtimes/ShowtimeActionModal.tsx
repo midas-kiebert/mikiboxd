@@ -139,7 +139,7 @@ import { formatLanguageCode } from "@/utils/language";
 import { useSharedValue } from "react-native-reanimated";
 import { measureInSheetForSpotlight, type MeasuredRect } from "@/utils/spotlight-measure";
 import * as Clipboard from "expo-clipboard";
-import { loadCinevilleCardDigits } from "@/utils/cineville-card";
+import { loadCinevilleCardDigits, useCinevilleCardDigits } from "@/utils/cineville-card";
 import { isCinevilleAutoCopyEnabled } from "@/utils/cineville-auto-copy";
 import { useAnimatedValue } from "@/hooks/useAnimatedValue";
 
@@ -1526,6 +1526,8 @@ export default function ShowtimeActionModal({
     onDismissInvite?.();
   };
 
+  // Truthy only once storage has been read and holds a card.
+  const hasCinevilleCard = Boolean(useCinevilleCardDigits());
   const handleOpenTicketLink = async () => {
     const ticketLink = showtime?.ticket_link;
     if (!ticketLink) return;
@@ -2507,9 +2509,11 @@ export default function ShowtimeActionModal({
                     <ThemedText style={styles.seatInfoTicketText}>Get ticket</ThemedText>
                     {/* A festival screening the pass doesn't cover (at LIFF,
                         all but the competitions), wherever it plays — said here,
-                        before the ticket shop does. `=== false`: an older API
+                        before the ticket shop does. Only with a saved card: to
+                        anyone else it says nothing. `=== false`: an older API
                         sends no flag. */}
-                    {showtime.cineville_pass === false &&
+                    {hasCinevilleCard &&
+                    showtime.cineville_pass === false &&
                     (showtime.festival || showtime.cinema.cineville) ? (
                       <View style={styles.noPassWarning}>
                         <MaterialIcons name="warning" size={12} color={colors.yellow.secondary} />

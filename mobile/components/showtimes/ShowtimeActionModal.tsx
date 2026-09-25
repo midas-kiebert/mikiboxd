@@ -1529,7 +1529,7 @@ export default function ShowtimeActionModal({
   const handleOpenTicketLink = async () => {
     const ticketLink = showtime?.ticket_link;
     if (!ticketLink) return;
-    if (showtime?.cinema?.cineville && (await isCinevilleAutoCopyEnabled())) {
+    if (showtime?.cineville_pass && (await isCinevilleAutoCopyEnabled())) {
       const digits = await loadCinevilleCardDigits();
       if (digits) {
         await Clipboard.setStringAsync(digits);
@@ -2145,6 +2145,7 @@ export default function ShowtimeActionModal({
                 <View style={styles.cinemaBadgeRow}>
                   <CinemaPill
                     cinema={showtime.cinema}
+                    festival={showtime.festival}
                     disabledIfSameId={disabledCinemaId}
                     onNavigate={onClose}
                   />

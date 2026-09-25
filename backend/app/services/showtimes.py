@@ -58,11 +58,24 @@ def _apply_upsert_update(
     existing_showtime.movie_id = showtime_create.movie_id
     existing_showtime.tmdb_cache_id = showtime_create.tmdb_cache_id
     existing_showtime.datetime = showtime_create.datetime
-    existing_showtime.ticket_link = showtime_create.ticket_link
+    # Cineville carries no ticket link for festival events, and would otherwise
+    # blank the festival site's link on every run.
+    if (
+        showtime_create.ticket_link is not None
+        or existing_showtime.festival_id is None
+    ):
+        existing_showtime.ticket_link = showtime_create.ticket_link
     if showtime_create.end_datetime is not None:
         existing_showtime.end_datetime = showtime_create.end_datetime
     if showtime_create.subtitles is not None:
         existing_showtime.subtitles = showtime_create.subtitles
+    # Cineville's own listing of a festival screening in a cinema (Filmhuis Den
+    # Haag's "Mouse - LIFF") knows nothing of the festival, so a source that
+    # does not say leaves what the festival scraper set.
+    if showtime_create.festival_id is not None:
+        existing_showtime.festival_id = showtime_create.festival_id
+    if showtime_create.cineville_pass is not None:
+        existing_showtime.cineville_pass = showtime_create.cineville_pass
     # Only some sources name the room, and the seat availability poller fills it
     # in for the rest — so a scrape that does not know it must leave what is
     # already there alone rather than blanking it on every run.

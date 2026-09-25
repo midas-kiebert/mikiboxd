@@ -197,6 +197,12 @@ export const Plate = ({
     >
       <span className="fc-plate__label">
         <span className="fc-plate__label-name">{time.cinema.name}</span>
+        {time.showtime.festival &&
+        time.showtime.festival.id !== time.cinema.id ? (
+          <span className="fc-plate__label-festival">
+            {time.showtime.festival.name}
+          </span>
+        ) : null}
       </span>
       {showDate ? (
         <span className="fc-plate__date">{time.datePlate}</span>

@@ -201,7 +201,11 @@ function ShowtimeCard({
                 </ThemedText>
               ) : null}
             </View>
-            <CinemaPill cinema={showtime.cinema} variant="compact" />
+            <CinemaPill
+              cinema={showtime.cinema}
+              festival={showtime.festival}
+              variant="compact"
+            />
           </View>
           <View
             style={styles.friendBadgeArea}

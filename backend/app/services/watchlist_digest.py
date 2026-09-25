@@ -55,6 +55,7 @@ from app.core.enums import DigestFrequency, Environment, GoingStatus
 from app.crud import cinema_preset as cinema_preset_crud
 from app.crud import movie_set_filters
 from app.crud import watchlist_digest_source as sources_crud
+from app.crud.cinema_filter import showtime_at_cinemas
 from app.mailer import (
     DigestSource,
     EmailDeliveryError,
@@ -340,7 +341,7 @@ def _resolve_movie_entries(
         if horizon is not None:
             stmt = stmt.where(col(Showtime.datetime) <= now + horizon)
         if cinema_ids:
-            stmt = stmt.where(col(Showtime.cinema_id).in_(cinema_ids))
+            stmt = stmt.where(showtime_at_cinemas(cinema_ids))
         next_showtime = session.exec(
             stmt.order_by(col(Showtime.datetime).asc())
         ).first()

@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from sqlmodel import Field
+from sqlmodel import Field, SQLModel
 
 from app.models.cinema import CINEMA_ALIASES_DESCRIPTION, CinemaBase
 
@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "CinemaPublic",
+    "FestivalPublic",
 ]
 
 
@@ -21,3 +22,16 @@ class CinemaPublic(CinemaBase):
     aliases: list[str] = Field(
         default_factory=list, description=CINEMA_ALIASES_DESCRIPTION
     )
+
+
+class FestivalPublic(SQLModel):
+    """The festival a screening is part of, for its badge.
+
+    A `Cinema` row of kind "festival" — that is also where a screening goes
+    when the festival's listing doesn't say which hall it is in.
+    """
+
+    id: int
+    name: str
+    url: str
+    badge_bg_color: str

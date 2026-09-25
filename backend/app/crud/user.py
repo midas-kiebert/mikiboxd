@@ -19,6 +19,7 @@ from app.core.enums import (
 )
 from app.core.security import get_password_hash, verify_password
 from app.crud import showtime_visibility as showtime_visibility_crud
+from app.crud.cinema_filter import showtime_at_cinemas
 from app.crud.movie import apply_language_filter, apply_search_filter
 from app.inputs.movie import Filters
 from app.models.cinema_selection import CinemaSelection
@@ -701,7 +702,7 @@ def _build_selected_showtimes_query(
         )
 
     if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
-        stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
+        stmt = stmt.where(showtime_at_cinemas(filters.selected_cinema_ids))
 
     if filters.days is not None and len(filters.days) > 0:
         stmt = stmt.where(

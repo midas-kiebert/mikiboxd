@@ -12,6 +12,7 @@ from sqlmodel import Session, Time, and_, cast, col, or_
 
 from app.core.enums import GoingStatus, SearchField
 from app.core.viewer import ViewerId
+from app.crud.cinema_filter import showtime_at_cinemas
 from app.crud.movie_set_filters import apply_movie_set_filters
 from app.inputs.movie import Filters
 from app.models.cinema import Cinema
@@ -451,7 +452,7 @@ def apply_search_filter(
 
     if filters.search_field == SearchField.CINEMA:
         return stmt.where(
-            col(Showtime.cinema_id).in_(_matching_cinema_ids_subquery(filters.query))
+            showtime_at_cinemas(_matching_cinema_ids_subquery(filters.query))
         )
 
     # SearchField.FRIEND
@@ -690,7 +691,7 @@ def get_cinemas_for_movies(
         .distinct()
     )
     if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
-        stmt = stmt.where(col(Cinema.id).in_(filters.selected_cinema_ids))
+        stmt = stmt.where(showtime_at_cinemas(filters.selected_cinema_ids))
 
     if filters.days is not None and len(filters.days) > 0:
         stmt = stmt.where(
@@ -746,7 +747,7 @@ def get_last_showtime_datetimes(
         col(Showtime.movie_id).in_(movie_ids)
     )
     if filters.selected_cinema_ids:
-        stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
+        stmt = stmt.where(showtime_at_cinemas(filters.selected_cinema_ids))
     stmt = stmt.group_by(col(Showtime.movie_id))
     result = session.execute(stmt)
     return dict(result.tuples().all())
@@ -764,7 +765,7 @@ def get_total_number_of_future_showtimes_for_movies(
         col(Showtime.datetime) >= filters.snapshot_time,
     )
     if filters.selected_cinema_ids:
-        stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
+        stmt = stmt.where(showtime_at_cinemas(filters.selected_cinema_ids))
     stmt = stmt.group_by(col(Showtime.movie_id))
     result = session.execute(stmt)
     return dict(result.tuples().all())
@@ -798,7 +799,7 @@ def get_showtimes_for_movies(
         col(Showtime.datetime) >= filters.snapshot_time,
     )
     if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
-        stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
+        stmt = stmt.where(showtime_at_cinemas(filters.selected_cinema_ids))
 
     if filters.days is not None and len(filters.days) > 0:
         stmt = stmt.where(
@@ -908,7 +909,7 @@ def get_showtimes_for_movie(
 ) -> list[Showtime]:
     stmt = select(Showtime).where(col(Showtime.datetime) >= filters.snapshot_time)
     if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
-        stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
+        stmt = stmt.where(showtime_at_cinemas(filters.selected_cinema_ids))
     stmt = stmt.where(col(Showtime.movie_id) == movie_id)
 
     if filters.days is not None and len(filters.days) > 0:
@@ -1037,7 +1038,7 @@ def _build_movies_query(
         )
     )
     if filters.selected_cinema_ids is not None and len(filters.selected_cinema_ids) > 0:
-        stmt = stmt.where(col(Showtime.cinema_id).in_(filters.selected_cinema_ids))
+        stmt = stmt.where(showtime_at_cinemas(filters.selected_cinema_ids))
 
     stmt = apply_search_filter(
         stmt, filters=filters, session=session, current_user_id=current_user_id

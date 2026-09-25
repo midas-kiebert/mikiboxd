@@ -123,6 +123,7 @@ Legend:
 - [x] `seat_availability.py` — `ShowtimeSeatAvailabilityPublic` (busyness level + counts + when it was read + whether a ticket watch applies here) and `SoldOutWatchPublic`. Viewer-independent on purpose, which is what lets it be prefetched and cached per showtime; a showtime with no usable reading is omitted from a batch rather than returned with nulls
 - [ ] `feed_overview.py` — New 2026-09-22. `FeedOverviewPublic`: the website feed overview's lists, each a `FeedOverviewSection` (`kind` + `ShowtimePublic`s), only the non-empty ones, already trimmed to the card's budget
 - [ ] `activity.py` — New 2026-09-22. `ActivitySummaryPublic` (`GET /me/activity/summary`): per-day counts (`ActivityDayCount`, evening buckets), total, next plan + plan count, unanswered invites (≤3) + count, `ActivityFriendTally` ranking
+- [ ] `festivals.py` — New 2026-09-25. Places festival screenings at their real location: `resolve_cineville_festival_cinema` (a Cineville festival event takes the cinema of the festival scraper's screening at the same time and film) and `adopt_placeholder_showtime` (the scraper moves a row Cineville put at the festival to the real cinema, keeping selections)
 - [ ] `cinema_preset.py` — Cinema preset response shapes: `CinemaPresetCreate` (with `overwrite`, the explicit opt-in to replacing a same-named preset), `CinemaPresetRename`, `CinemaPresetPublic`
 - [x] `cinema_scope.py` — `CinemaScope`: a preset's cinema selection as the *rule* behind it (every cinema / whole cities / individual ones) rather than a frozen id list, so cinemas that open later land inside a selection the user meant to be open-ended
 - [ ] `filter_preset.py` — Filter preset response shape
@@ -149,6 +150,7 @@ Legend:
 > They return raw SQLModel objects (not schemas). No business logic here —
 > just reads and writes.
 
+- [ ] `cinema_filter.py` — New 2026-09-25. `showtime_at_cinemas`: the "these cinemas" filter every showtime list/count/search uses, matching `festival_id` as well as `cinema_id`, so picking a festival (a cinema row of kind festival) shows all its screenings wherever they play
 - [ ] `user.py` — User queries, create, update, password check ⚠️ Large (652 LOC). `get_going_status_for_movies` is the page-batched sibling of the (now-deleted) `is_user_going_to_movie`
 - [ ] `movie.py` — Movie queries with filtering ⚠️ Large (599 LOC). The `*_for_movies` functions (`get_showtimes_for_movies`, `get_cinemas_for_movies`, `get_last_showtime_datetimes`, `get_total_number_of_future_showtimes_for_movies`, `get_friends_for_movies`) are page-batched siblings of the singular per-movie versions, for `converters.movie.summaries_for_page`. `get_showtimes_for_movies` is a top-N-per-movie window-function query — see its docstring for why `selected_statuses` uses a correlated `EXISTS` instead of a join there **2026-09-22:** `status_owner_clause` is the one rule for whose selections the going/interested filter matches (everyone visible + you; `friends_only`; `only_you`), used by the three movie status clauses here and `crud/showtime.py`'s — the movie ones now honour `friends_only` too, which they used to ignore
 - [ ] `showtime.py` — Showtime queries, upserts, reconciliation ⚠️ Large (518 LOC)
@@ -308,6 +310,9 @@ Legend:
 **Cinema scrapers — Generic:**
 - [ ] `cinemas/generic/eagerly.py` — Eagerly-based generic scraper; fixed 2026-08-24 a double-slash bug in every derived URL (`self.url`, `ticket_link`) since every call site passes a trailing-slash `url_base` — `self.url_base` now strips it once in `__init__` instead
 
+**Festival scrapers:**
+- [ ] `festivals/liff.py` — New 2026-09-25. Leiden International Film Festival from liff.nl's WordPress REST API (`shows_cpt`/`films_cpt`/`locations_cpt`/`sections_cpt`): every upcoming screening placed at its real cinema or venue (`LOCATION_PREFIX_TO_CINEMA_KEY`; an unknown location goes to the `liff` festival row with the location as its room), tagged `festival_id`, with `cineville_pass` true only for the competition sections. Adopts a placeholder row Cineville put at the festival. Runs as a cinema scraper keyed on the `liff` row
+
 **Letterboxd integration:**
 - [ ] `letterboxd/load_letterboxd_data.py` — Watchlist sync ⚠️ Large (1269 LOC after curl_cffi swap, 2026-09-24) — needs splitting
 - [ ] `letterboxd/watchlist.py` — Watchlist parsing
@@ -332,6 +337,10 @@ Legend:
 - [ ] `tests/api/` — Route-level tests (are all endpoints covered?)
 - [ ] `tests/crud/` — CRUD tests (are complex queries tested?); `test_seat_availability_candidates.py` covers the seat poller's selection + priority ordering
 - [ ] `tests/services/test_seat_availability_interest.py` — the interest-triggered live read, its per-showtime cooldown, and the `checking` state the sheet shows
+- [ ] `tests/services/test_festivals.py` — New 2026-09-25. Festival upsert rules (a None ticket link doesn't blank a festival row's link, festival_id/cineville_pass only overwritten by non-None values, explicit False sticks) plus `resolve_cineville_festival_cinema` (movie id first, then near-identical title, exact time, ignores rows at the festival itself) and `adopt_placeholder_showtime` (moves + clears room, keeps the row id through the following upsert, no-op cases)
+- [ ] `tests/converters/test_festival_converters.py` — New 2026-09-25. `cineville_pass` falls back to `cinema.cineville` only when the showtime's is None; `festival` is None without festival_id and the festival cinema otherwise, on both ShowtimePublic and ShowtimeInMoviePublic
+- [ ] `tests/scraping/test_cineville_festival_routing.py` — New 2026-09-25. `_persist_cineville_results_batch` at a festival venue: lands on the scraper's row at the real cinema (keeps its ticket link), else at the festival row; regular venues get no festival and cineville_pass None
+- [ ] `tests/scraping/test_liff_parsing.py` — New 2026-09-25. LIFF `_parse_show` (cancelled/past skipped, end past midnight, ticket link precedence) and `_cinema_for_location` (known prefix → cinema without room, unknown → festival row with location as room), plus the title/flag/int helpers
 - [ ] `tests/services/` — Service tests (most critical layer)
 - [ ] `tests/converters/` — Converter tests
 - [ ] `tests/scraping/` — Scraper tests

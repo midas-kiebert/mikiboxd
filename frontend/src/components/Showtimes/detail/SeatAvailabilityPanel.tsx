@@ -588,7 +588,7 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
             // clipboard on the way out, ready to paste at the ticket shop.
             onClick={() =>
               copyCinevilleCardForTicketLink(
-                Boolean(showtime.cinema?.cineville),
+                Boolean(showtime.cineville_pass),
               )
             }
           >

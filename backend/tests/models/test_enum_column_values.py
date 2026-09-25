@@ -20,6 +20,7 @@ from app.models.showtime import Showtime
 # member names. Add a row here when a model gains such a column.
 ENUM_COLUMNS = (
     (Cinema, "seating"),
+    (Cinema, "kind"),
     (Showtime, "seats_level_floor"),
     (CinemaRoomFloorPlan, "screen_side"),
 )

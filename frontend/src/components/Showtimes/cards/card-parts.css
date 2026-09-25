@@ -199,6 +199,22 @@
   color: var(--p-secondary);
 }
 
+/* The festival inside a cinema tag: its own palette, inverted, so it reads as
+   a label on the cinema rather than a second cinema. */
+.mk-tag__festival {
+  flex-shrink: 0;
+  margin: -1px -5px -1px 5px;
+  padding: 1px 4px;
+  border-radius: 0 2px 2px 0;
+  background: var(--p-secondary);
+  color: var(--p-primary);
+}
+
+.mk-tag--xs .mk-tag__festival {
+  margin-right: -4px;
+  padding: 1px 3px;
+}
+
 .mk-seat {
   display: inline-flex;
   align-items: center;

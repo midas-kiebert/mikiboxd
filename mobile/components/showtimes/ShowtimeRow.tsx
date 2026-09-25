@@ -3,7 +3,7 @@
  */
 import { StyleSheet, View } from "react-native";
 import { DateTime } from "luxon";
-import type { CinemaPublic, GoingStatus, UserPublic, UserWithFriendStatus } from "shared";
+import type { CinemaPublic, FestivalPublic, GoingStatus, UserPublic, UserWithFriendStatus } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
 import CinemaPill from "@/components/badges/CinemaPill";
@@ -22,6 +22,7 @@ type ShowtimeBase = {
   seat_row?: string | null;
   seat_number?: string | null;
   cinema: CinemaPublic;
+  festival?: FestivalPublic | null;
   subtitles?: string[] | null;
   viewer?: {
     friends_going?: UserPublic[];
@@ -119,7 +120,11 @@ export default function ShowtimeRow({
     <SubtitlesBadges subtitles={showtime.subtitles} variant={isCompact ? "compact" : "default"} />
   );
   const cinemaPill = showCinema ? (
-    <CinemaPill cinema={showtime.cinema} variant={isCompact ? "compact" : "default"} />
+    <CinemaPill
+      cinema={showtime.cinema}
+      festival={showtime.festival}
+      variant={isCompact ? "compact" : "default"}
+    />
   ) : null;
   // Renders nothing unless this showtime's availability is already cached, so
   // rows that have no reading keep exactly the layout they had before.

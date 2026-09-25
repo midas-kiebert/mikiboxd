@@ -38,6 +38,17 @@ class ShowtimeBase(SQLModel):
     # entries (e.g. from different cinemas' scrapers) can otherwise resolve
     # to the same movie_id, and only one of them wins Movie.tmdb_cache_id.
     tmdb_cache_id: int | None = Field(default=None, foreign_key="tmdblookupcache.id")
+    # The festival this screening is part of: a `Cinema` row of kind
+    # "festival", shown as a badge. `cinema_id` stays the real location, so a
+    # LIFF screening in Trianon is still found under Trianon.
+    festival_id: int | None = Field(
+        default=None, foreign_key="cinema.id", index=True
+    )
+    # Whether a Cineville pass gets you in. None means "same as the cinema",
+    # which is right for a regular programme; a festival sets it per screening,
+    # because the pass covers only part of a festival (at LIFF, only the
+    # competitions) even when the hall is a Cineville cinema.
+    cineville_pass: bool | None = None
 
 
 # Properties to receive on showtime creation
@@ -63,7 +74,13 @@ class Showtime(ShowtimeBase, table=True):
     movie_id: int = Field(foreign_key="movie.id")
     movie: "Movie" = Relationship(sa_relationship_kwargs={"lazy": "joined"})
     cinema_id: int = Field(foreign_key="cinema.id")
-    cinema: "Cinema" = Relationship(sa_relationship_kwargs={"lazy": "joined"})
+    # `festival_id` also points at the cinema table, so the join has to be named.
+    cinema: "Cinema" = Relationship(
+        sa_relationship_kwargs={
+            "lazy": "joined",
+            "foreign_keys": "[Showtime.cinema_id]",
+        }
+    )
     # The ticketing platform's own identity for `room`, filled in by the
     # availability poller from the same page it reads the count off. Only
     # Ticketlab needs it: most of its shops print no room name at all, so

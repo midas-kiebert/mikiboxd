@@ -145,6 +145,20 @@
   white-space: nowrap;
 }
 
+/* The festival a screening is part of ("Trianon LIFF"), in the cinema's own
+   colours inverted: a label on the venue, never cut — the name gives way. */
+.fc-plate__label-festival {
+  flex-shrink: 0;
+  margin-left: 3px;
+  padding: 0 3px;
+  border-radius: 2px;
+  background: var(--p-secondary);
+  color: var(--p-primary);
+  transform: translateY(1px);
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
 .fc-plate__date {
   overflow: hidden;
   max-width: 100%;

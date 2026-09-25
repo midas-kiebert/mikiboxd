@@ -6,10 +6,11 @@ import {
   TouchableOpacity,
   type GestureResponderEvent,
   type TextStyle,
+  View,
   type ViewStyle,
 } from "react-native";
 import { useRouter } from "expo-router";
-import type { CinemaPublic } from "shared";
+import type { CinemaPublic, FestivalPublic } from "shared";
 
 import { ThemedText } from "@/components/themed-text";
 import { useSingleFireNavigation } from "@/hooks/useSingleFireNavigation";
@@ -19,6 +20,12 @@ import { getCinemaColorPalette } from "@/utils/cinema-color";
 
 type CinemaPillProps = {
   cinema: CinemaPublic;
+  /**
+   * The festival the screening is part of. Shown as a tag inside the pill,
+   * after the cinema — unless the screening is placed at the festival itself
+   * (its hall is unknown), where the cinema name already says it.
+   */
+  festival?: FestivalPublic | null;
   variant?: "compact" | "default";
   disabledIfSameId?: number;
   /**
@@ -38,6 +45,7 @@ const CINEMA_PILL_HIT_SLOP = { top: 4, bottom: 4, left: 4, right: 4 } as const;
 
 export default function CinemaPill({
   cinema,
+  festival,
   variant = "default",
   disabledIfSameId,
   onNavigate,
@@ -75,6 +83,10 @@ export default function CinemaPill({
   const cinemaPalette = getCinemaColorPalette(cinema, colors);
   const cinemaBackground = cinemaPalette.primary;
   const cinemaText = cinemaPalette.secondary;
+  const shownFestival = festival && festival.id !== cinema.id ? festival : null;
+  const festivalPalette = shownFestival
+    ? getCinemaColorPalette(shownFestival, colors)
+    : null;
 
   const isDisabled = disabledIfSameId !== undefined && cinema.id === disabledIfSameId;
 
@@ -103,6 +115,22 @@ export default function CinemaPill({
       >
         {cinema.name}
       </ThemedText>
+      {shownFestival && festivalPalette ? (
+        <View
+          style={[
+            styles.festivalTag,
+            variant === "compact" ? styles.festivalTagCompact : null,
+            { backgroundColor: festivalPalette.secondary },
+          ]}
+        >
+          <ThemedText
+            style={[styles.text, sizeStyles.text, { color: festivalPalette.primary }]}
+            numberOfLines={1}
+          >
+            {shownFestival.name}
+          </ThemedText>
+        </View>
+      ) : null}
     </TouchableOpacity>
   );
 }
@@ -112,6 +140,7 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     container: {
       borderWidth: 1,
       borderRadius: 3,
+      flexDirection: "row",
       justifyContent: "center",
       alignItems: "center",
       maxWidth: "65%",
@@ -119,6 +148,20 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     text: {
       includeFontPadding: false,
+      flexShrink: 1,
+    },
+    festivalTag: {
+      marginLeft: 4,
+      marginRight: -3,
+      borderRadius: 2,
+      paddingHorizontal: 3,
+      flexShrink: 0,
+      justifyContent: "center",
+    },
+    festivalTagCompact: {
+      marginLeft: 3,
+      marginRight: -2,
+      paddingHorizontal: 2,
     },
     compactContainer: {
       borderRadius: 3,

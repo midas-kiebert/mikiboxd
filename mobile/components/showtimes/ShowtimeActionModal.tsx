@@ -1538,7 +1538,7 @@ export default function ShowtimeActionModal({
   const ticketWarning = !hasCinevilleCard || !showtime
     ? null
     : showtime.cineville_pass === false && (showtime.festival || showtime.cinema.cineville)
-      ? "No Cineville pass"
+      ? "Non-Cineville"
       : cinevilleSurchargeLabel(
           // The availability refetches when a reading lands; the showtime
           // only when its list does.

@@ -183,7 +183,7 @@ type SeatAvailabilityPanelProps = {
   showtime: ShowtimePublic
 }
 
-/** A yellow chip on the Get ticket row: "No Cineville pass", "+€5,00". */
+/** A yellow chip on the Get ticket row: "Non-Cineville", "+€5,00". */
 const TicketRowWarning = ({ children }: { children: ReactNode }) => (
   <Flex
     align="center"
@@ -331,7 +331,7 @@ const SeatAvailabilityPanel = ({ showtime }: SeatAvailabilityPanelProps) => {
     ? null
     : showtime.cineville_pass === false &&
         (showtime.festival || showtime.cinema.cineville)
-      ? "No Cineville pass"
+      ? "Non-Cineville"
       : cinevilleSurchargeLabel(
           // The availability refetches when a reading lands; the showtime
           // only on a page load.

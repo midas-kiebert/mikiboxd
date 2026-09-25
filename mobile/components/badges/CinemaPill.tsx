@@ -157,6 +157,9 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     // Centred with room above and below, clear of the pill's edges.
     festivalTag: {
       alignSelf: "center",
+      // The pill's padding lowers its content for the name's sake; the tag
+      // doesn't need that, so it goes back up.
+      top: -0.5,
       marginVertical: 1,
       marginLeft: 4,
       marginRight: -3,
@@ -173,10 +176,10 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     compactContainer: {
       borderRadius: 3,
       minHeight: 14,
-      // A pixel more above than below: the name has no descenders, so centred
-      // on its line box the ink sat high.
-      paddingTop: 2,
-      paddingBottom: 0,
+      // Half a pixel more above than below: the name has no descenders, so
+      // centred on its line box the ink sat high; a full pixel sat low on iOS.
+      paddingTop: 1.5,
+      paddingBottom: 0.5,
       paddingHorizontal: 5,
     },
     compactText: {
@@ -185,8 +188,8 @@ const createStyles = (colors: typeof import("@/constants/theme").Colors.light) =
     },
     defaultContainer: {
       minHeight: 18,
-      paddingTop: 2,
-      paddingBottom: 0,
+      paddingTop: 1.5,
+      paddingBottom: 0.5,
       paddingHorizontal: 6,
     },
     defaultText: {

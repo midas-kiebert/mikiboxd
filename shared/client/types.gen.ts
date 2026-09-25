@@ -865,12 +865,12 @@ export type ShowtimeInMoviePublic = {
   tmdb_cache_id?: number | null
   festival_id?: number | null
   cineville_pass?: boolean
-  cineville_surcharge_cents?: number | null
   id: number
   cinema: CinemaPublic
   viewer?: ShowtimeInMovieViewerState | null
   seat_availability?: ShowtimeSeatAvailabilityPublic | null
   festival?: FestivalPublic | null
+  cineville_surcharge_cents?: number | null
   /**
    * @deprecated
    */
@@ -976,13 +976,13 @@ export type ShowtimePublic = {
   tmdb_cache_id?: number | null
   festival_id?: number | null
   cineville_pass?: boolean
-  cineville_surcharge_cents?: number | null
   id: number
   movie: MovieInShowtime
   cinema: CinemaPublic
   viewer?: ShowtimeViewerState | null
   seat_availability?: ShowtimeSeatAvailabilityPublic | null
   festival?: FestivalPublic | null
+  cineville_surcharge_cents?: number | null
   /**
    * @deprecated
    */

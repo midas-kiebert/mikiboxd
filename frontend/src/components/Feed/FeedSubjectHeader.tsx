@@ -512,7 +512,14 @@ const CinemaHeader = ({
               {cinema.name}
             </Text>
           )}
-          {cinema.cineville ? (
+          {/* What the place is. A festival's `cineville` only says Cineville
+              lists it — the pass covers part of a festival, per screening
+              (`cineville_pass`) — so a festival says it's a festival. */}
+          {cinema.kind === "festival" || cinema.kind === "venue" ? (
+            <Text fontSize="xs" fontWeight="600" color="fg.muted">
+              {cinema.kind === "festival" ? "Film festival" : "Festival venue"}
+            </Text>
+          ) : cinema.cineville ? (
             <Text fontSize="xs" fontWeight="600" color="fg.muted">
               Cineville
             </Text>

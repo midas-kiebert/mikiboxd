@@ -16,13 +16,29 @@ const GROUPING_MINIMUM = 3;
 /**
  * Split cinemas into per-city sections, alphabetically, with the cities too
  * small to earn a section collected into one "other" bucket.
+ *
+ * Festivals and their venues (`kind` other than "cinema") are kept apart in
+ * `festivals`: they come and go with the festival — the server only lists one
+ * while it has screenings coming up — so they get a section of their own
+ * rather than turning up among a city's cinemas. The festival itself first,
+ * then its venues.
  */
 export function groupCinemas(cinemas: readonly CinemaPublic[]): {
   groupedCities: CityGroup[];
   ungrouped: CinemaPublic[];
+  festivals: CinemaPublic[];
 } {
+  const isCinema = (cinema: CinemaPublic) => (cinema.kind ?? "cinema") === "cinema";
+  const festivals = cinemas
+    .filter((cinema) => !isCinema(cinema))
+    .sort((a, b) => {
+      const aFestival = a.kind === "festival" ? 0 : 1;
+      const bFestival = b.kind === "festival" ? 0 : 1;
+      if (aFestival !== bFestival) return aFestival - bFestival;
+      return a.name.localeCompare(b.name);
+    });
   const groupedByCity = new Map<number, CityGroup>();
-  cinemas.forEach((cinema) => {
+  cinemas.filter(isCinema).forEach((cinema) => {
     const existing = groupedByCity.get(cinema.city.id);
     if (existing) {
       existing.cinemas.push(cinema);
@@ -53,7 +69,7 @@ export function groupCinemas(cinemas: readonly CinemaPublic[]): {
     return a.name.localeCompare(b.name);
   });
 
-  return { groupedCities, ungrouped };
+  return { groupedCities, ungrouped, festivals };
 }
 
 /** Deduplicated and ordered, so a selection has one canonical form. */

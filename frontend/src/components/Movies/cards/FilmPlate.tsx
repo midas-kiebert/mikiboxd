@@ -173,20 +173,32 @@ const labelFestival = (time: FilmTime) => {
  * cut. Counted rather than measured: a row lays its plates out once, from the
  * data, and measuring would mean rendering every plate twice.
  */
-// "Filmhuis Den Haag" (17) is the longest name that has to fit, and does;
-// the festival tag's own padding counts as two more characters.
+// "Filmhuis Den Haag" (17) is the longest name that has to fit, and does.
 const ONE_COLUMN_LABEL_CHARS = 18
 
+/** Label width per character, in row pixels: 9.5px bold, erring wide. */
+const LABEL_CHAR_WIDTH = 6.2
+/** The label's own side padding plus the festival tag's, in row pixels. */
+const LABEL_PADDING = 8
+const FESTIVAL_TAG_PADDING = 9
+
 /**
- * Half-plate grid tracks a plate takes in a film row: two, or three where its
- * label (the cinema, plus the festival tag) would not fit a plate's width —
- * "Filmhuis Den Haag LIFF" — so the name is shown whole rather than cut,
- * at half a plate wider rather than double.
+ * How wide a plate in a film row will lay out, for fitting a line of them:
+ * the standard width, or — where the label (the cinema, plus the festival
+ * tag) needs more, "Filmhuis Den Haag LIFF" — just that. The plate itself is
+ * sized by its content (`film-cards.css`); this is the row's estimate of it,
+ * on the wide side so a line never overflows.
  */
-export const plateSpan = (time: FilmTime): 2 | 3 => {
+export const plateWidth = (time: FilmTime, standardWidth: number): number => {
   const festival = labelFestival(time)
-  const chars = time.cinema.name.length + (festival ? festival.name.length + 2 : 0)
-  return chars > ONE_COLUMN_LABEL_CHARS ? 3 : 2
+  const chars = time.cinema.name.length + (festival ? festival.name.length : 0)
+  if (chars <= ONE_COLUMN_LABEL_CHARS) return standardWidth
+  const unit = standardWidth / 96
+  const label =
+    chars * LABEL_CHAR_WIDTH +
+    LABEL_PADDING +
+    (festival ? FESTIVAL_TAG_PADDING : 0)
+  return Math.max(standardWidth, Math.ceil(label * unit))
 }
 
 export const Plate = ({
@@ -194,13 +206,10 @@ export const Plate = ({
   isSelected,
   onSelect,
   showDate = true,
-  span,
 }: {
   time: FilmTime
   isSelected: boolean
   onSelect?: (time: FilmTime) => void
-  /** Grid tracks to take in a film row — see `plateSpan`. None elsewhere. */
-  span?: 2 | 3
   /**
    * False where something above the plate already says which day it is — the
    * film page groups its run under day headings, and a plate repeating
@@ -228,7 +237,6 @@ export const Plate = ({
       className={`fc-plate ${paletteClass(getCinemaPaletteKey(time.cinema))}${tone}${
         isSelected ? " fc-plate--on" : ""
       }`}
-      style={span ? { gridColumn: `span ${span}` } : undefined}
     >
       <span className="fc-plate__label">
         <span className="fc-plate__label-name">{time.cinema.name}</span>
